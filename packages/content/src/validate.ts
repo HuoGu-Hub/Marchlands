@@ -1,4 +1,14 @@
-import type { Level, MapCity, MapDef, MapEdge, MapPlayer, PlayerId, Ruleset } from "@marchlands/sim";
+import type {
+  Level,
+  MapCity,
+  MapDef,
+  MapEdge,
+  MapPlayer,
+  PlayerId,
+  Ruleset,
+  SiteKind,
+  Stance,
+} from "@marchlands/sim";
 
 export class ContentError extends Error {
   readonly issues: string[];
@@ -29,6 +39,10 @@ function requireNumber(value: unknown, label: string, issues: string[]): number 
     return 0;
   }
   return value;
+}
+
+function edgeKey(from: string, to: string): string {
+  return from < to ? `${from}|${to}` : `${to}|${from}`;
 }
 
 export function validateMap(input: unknown): MapDef {
@@ -67,6 +81,8 @@ export function validateMap(input: unknown): MapDef {
   const cities = Array.isArray(input.cities) ? input.cities : [];
   if (cities.length < 2) issues.push("cities must contain at least 2 entries");
   const cityIds = new Set<string>();
+  const cityKinds = new Map<string, unknown>();
+  const watches = new Map<string, [string, string]>();
   const positions = new Map<string, [number, number]>();
   cities.forEach((entry, index) => {
     if (!isRecord(entry)) {
@@ -80,23 +96,49 @@ export function validateMap(input: unknown): MapDef {
     }
     if (cityIds.has(id)) issues.push(`cities[${index}].id duplicated: ${id}`);
     cityIds.add(id);
-    if (entry.kind !== "town") issues.push(`cities[${id}].kind must be town`);
+    const kind = entry.kind;
+    cityKinds.set(id, kind);
+    if (kind !== "town" && kind !== "granary" && kind !== "outpost") {
+      issues.push(`cities[${id}].kind must be town, granary or outpost`);
+    }
     const owner = requireInt(entry.owner, `cities[${id}].owner`, issues, 0);
     if (owner !== 0 && !playerIds.has(owner)) issues.push(`cities[${id}].owner must be 0 or a player id`);
     const level = requireInt(entry.level, `cities[${id}].level`, issues, 1);
-    if (level !== 1 && level !== 2 && level !== 3) issues.push(`cities[${id}].level must be 1..3`);
+    if (kind === "town") {
+      if (level !== 1 && level !== 2 && level !== 3) issues.push(`cities[${id}].level must be 1..3`);
+    } else if (kind === "granary" || kind === "outpost") {
+      if (level !== 1) issues.push(`cities[${id}].level must be 1 for ${kind}`);
+    }
     requireInt(entry.pop, `cities[${id}].pop`, issues, 0);
     requireInt(entry.layer, `cities[${id}].layer`, issues, 0);
     const pos = Array.isArray(entry.pos) ? entry.pos : [];
     if (pos.length !== 2) {
       issues.push(`cities[${id}].pos must be [x, z]`);
-      return;
+    } else {
+      const x = requireInt(pos[0], `cities[${id}].pos[0]`, issues);
+      const z = requireInt(pos[1], `cities[${id}].pos[1]`, issues);
+      if (width > 0 && Math.abs(x) > width / 2) issues.push(`cities[${id}].pos[0] outside map`);
+      if (height > 0 && Math.abs(z) > height / 2) issues.push(`cities[${id}].pos[1] outside map`);
+      positions.set(id, [x, z]);
     }
-    const x = requireInt(pos[0], `cities[${id}].pos[0]`, issues);
-    const z = requireInt(pos[1], `cities[${id}].pos[1]`, issues);
-    if (width > 0 && Math.abs(x) > width / 2) issues.push(`cities[${id}].pos[0] outside map`);
-    if (height > 0 && Math.abs(z) > height / 2) issues.push(`cities[${id}].pos[1] outside map`);
-    positions.set(id, [x, z]);
+
+    if (kind === "outpost") {
+      const watch = entry.watch;
+      if (!Array.isArray(watch) || watch.length !== 2 || typeof watch[0] !== "string" || typeof watch[1] !== "string") {
+        issues.push(`cities[${id}].watch must be [from, to]`);
+      } else if (watch[0] === watch[1]) {
+        issues.push(`cities[${id}].watch must reference two different sites`);
+      } else {
+        watches.set(id, [watch[0], watch[1]]);
+      }
+      const stance = entry.stance;
+      if (stance !== undefined && stance !== "evade" && stance !== "engage") {
+        issues.push(`cities[${id}].stance must be evade or engage`);
+      }
+    } else {
+      if (entry.watch !== undefined) issues.push(`cities[${id}].watch only allowed on outpost`);
+      if (entry.stance !== undefined) issues.push(`cities[${id}].stance only allowed on outpost`);
+    }
   });
 
   const edges = Array.isArray(input.edges) ? input.edges : [];
@@ -113,7 +155,7 @@ export function validateMap(input: unknown): MapDef {
     if (from === to) issues.push(`edges[${index}] is a self loop`);
     const length = requireInt(entry.length, `edges[${index}].length`, issues, 1);
     if (typeof from === "string" && typeof to === "string") {
-      const key = from < to ? `${from}|${to}` : `${to}|${from}`;
+      const key = edgeKey(from, to);
       if (edgeKeys.has(key)) issues.push(`edges[${index}] duplicated: ${key}`);
       edgeKeys.add(key);
       const a = positions.get(from);
@@ -127,13 +169,42 @@ export function validateMap(input: unknown): MapDef {
     }
   });
 
-  if (issues.length === 0) {
-    const adjacency = new Map<string, string[]>();
-    for (const id of cityIds) adjacency.set(id, []);
-    for (const edge of edges as MapEdge[]) {
-      adjacency.get(edge.from)?.push(edge.to);
-      adjacency.get(edge.to)?.push(edge.from);
+  const adjacency = new Map<string, string[]>();
+  for (const id of cityIds) adjacency.set(id, []);
+  for (const edge of edges as MapEdge[]) {
+    if (typeof edge.from !== "string" || typeof edge.to !== "string") continue;
+    adjacency.get(edge.from)?.push(edge.to);
+    adjacency.get(edge.to)?.push(edge.from);
+  }
+
+  const townCount = [...cityKinds.values()].filter((kind) => kind === "town").length;
+  if (townCount < 2) issues.push("map must contain at least 2 towns");
+
+  for (const [id, kind] of cityKinds) {
+    if (kind === "granary" || kind === "outpost") {
+      const degree = adjacency.get(id)?.length ?? 0;
+      if (degree !== 1) issues.push(`cities[${id}] ${kind} must be a leaf site`);
     }
+    if (kind !== "outpost") continue;
+    const watch = watches.get(id);
+    if (!watch) continue;
+    if (!cityIds.has(watch[0]) || !cityIds.has(watch[1])) {
+      issues.push(`cities[${id}].watch references unknown city`);
+      continue;
+    }
+    if (watch[0] === id || watch[1] === id) {
+      issues.push(`cities[${id}].watch cannot include itself`);
+    }
+    if (!edgeKeys.has(edgeKey(watch[0], watch[1]))) {
+      issues.push(`cities[${id}].watch edge not found`);
+    }
+    const neighbors = adjacency.get(id) ?? [];
+    if (neighbors.length === 1 && !watch.includes(neighbors[0])) {
+      issues.push(`cities[${id}] spur must touch one endpoint of watch edge`);
+    }
+  }
+
+  if (issues.length === 0) {
     const first = [...cityIds].sort()[0];
     const seen = new Set<string>();
     const queue = first ? [first] : [];
@@ -164,7 +235,8 @@ export function validateRules(input: unknown): Ruleset {
   requireInt(input.maxTicks, "maxTicks", issues, 1);
   const sendRatio = requireNumber(input.sendRatio, "sendRatio", issues);
   if (sendRatio <= 0 || sendRatio > 1) issues.push("sendRatio must be in (0, 1]");
-  requireNumber(input.speedDmPerSecond, "speedDmPerSecond", issues);
+  const speed = requireNumber(input.speedDmPerSecond, "speedDmPerSecond", issues);
+  if (speed <= 0) issues.push("speedDmPerSecond must be > 0");
   const maxLevel = requireInt(input.maxLevel, "maxLevel", issues, 1);
   if (tickHz !== 20) issues.push("tickHz must be 20");
 
@@ -188,6 +260,27 @@ export function validateRules(input: unknown): Ruleset {
     requireInt(entry.goldMilli, `levels[${index}].goldMilli`, issues, 1);
   });
 
+  const granary = input.granary;
+  if (!isRecord(granary)) {
+    issues.push("granary required");
+  } else {
+    requireInt(granary.capacity, "granary.capacity", issues, 1);
+    requireInt(granary.defenseMilli, "granary.defenseMilli", issues, 1);
+    requireInt(granary.speedBonusMilli, "granary.speedBonusMilli", issues, 0);
+    requireInt(granary.strengthBonusMilli, "granary.strengthBonusMilli", issues, 0);
+  }
+
+  const outpost = input.outpost;
+  if (!isRecord(outpost)) {
+    issues.push("outpost required");
+  } else {
+    requireInt(outpost.capacity, "outpost.capacity", issues, 1);
+    requireInt(outpost.defenseMilli, "outpost.defenseMilli", issues, 1);
+    requireInt(outpost.graceTicks, "outpost.graceTicks", issues, 0);
+    requireInt(outpost.decayIntervalTicks, "outpost.decayIntervalTicks", issues, 1);
+    requireInt(outpost.decayPerInterval, "outpost.decayPerInterval", issues, 1);
+  }
+
   if (issues.length > 0) throw new ContentError("rules", issues);
   return input as unknown as Ruleset;
 }
@@ -201,8 +294,16 @@ export function validateContent(mapInput: unknown, rulesInput: unknown): { map: 
   if (timeLimit && timeLimit.ticks !== rules.maxTicks) {
     issues.push(`time_limit ${timeLimit.ticks} does not match maxTicks ${rules.maxTicks}`);
   }
+  for (const city of map.cities) {
+    if (city.kind === "granary" && city.pop > rules.granary.capacity) {
+      issues.push(`cities[${city.id}].pop exceeds granary capacity`);
+    }
+    if (city.kind === "outpost" && city.pop > rules.outpost.capacity) {
+      issues.push(`cities[${city.id}].pop exceeds outpost capacity`);
+    }
+  }
   if (issues.length > 0) throw new ContentError("content", issues);
   return { map, rules };
 }
 
-export type { Level, MapCity, MapDef, MapEdge, MapPlayer, PlayerId };
+export type { Level, MapCity, MapDef, MapEdge, MapPlayer, PlayerId, SiteKind, Stance };

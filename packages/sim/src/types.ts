@@ -1,9 +1,12 @@
 import type { MapGraph } from "./path";
 
 export type CityId = string;
+export type SiteId = CityId;
 export type PlayerId = 1 | 2;
 export type Owner = 0 | PlayerId;
 export type Level = 1 | 2 | 3;
+export type SiteKind = "town" | "granary" | "outpost";
+export type Stance = "evade" | "engage";
 export type MatchStatus = "playing" | "finished";
 export type FinishReason = "capture_all" | "eliminated" | "time_limit" | "draw";
 
@@ -16,12 +19,16 @@ export interface MapPlayer {
 
 export interface MapCity {
   id: CityId;
-  kind: "town";
+  kind: SiteKind;
   owner: Owner;
   level: Level;
   pop: number;
   pos: [number, number];
   layer: number;
+  /** 仅临时驻兵点使用；缺省为避战。 */
+  stance?: Stance;
+  /** 仅临时驻兵点使用；它监视的公路边，用于迎战拦截。 */
+  watch?: [CityId, CityId];
 }
 
 export interface MapEdge {
@@ -58,6 +65,21 @@ export interface LevelRule {
   goldMilli: number;
 }
 
+export interface GranaryRule {
+  capacity: number;
+  defenseMilli: number;
+  speedBonusMilli: number;
+  strengthBonusMilli: number;
+}
+
+export interface OutpostRule {
+  capacity: number;
+  defenseMilli: number;
+  graceTicks: number;
+  decayIntervalTicks: number;
+  decayPerInterval: number;
+}
+
 export interface Ruleset {
   ruleset: string;
   tickHz: number;
@@ -66,10 +88,13 @@ export interface Ruleset {
   speedDmPerSecond: number;
   maxLevel: number;
   levels: LevelRule[];
+  granary: GranaryRule;
+  outpost: OutpostRule;
 }
 
 export interface CityState {
   id: CityId;
+  kind: SiteKind;
   owner: Owner;
   level: Level;
   pop: number;
@@ -77,7 +102,12 @@ export interface CityState {
   growthCarry: number;
   pos: [number, number];
   layer: number;
+  stance: Stance;
+  decayAtTick: number;
+  watch: [CityId, CityId] | null;
 }
+
+export type SiteState = CityState;
 
 export interface SquadState {
   id: string;
@@ -88,6 +118,9 @@ export interface SquadState {
   path: CityId[];
   departTick: number;
   arrivalTick: number;
+  speedMilli: number;
+  strengthMilli: number;
+  intercepted: CityId[];
 }
 
 export interface PlayerState {
@@ -117,11 +150,25 @@ export type SimEvent =
     }
   | { type: "cityCaptured"; cityId: CityId; fromOwner: Owner; toOwner: PlayerId; pop: number }
   | { type: "upgradeCompleted"; cityId: CityId; level: Level }
+  | {
+      type: "squadIntercepted";
+      squadId: string;
+      cityId: CityId;
+      squadOwner: PlayerId;
+      outpostOwner: PlayerId;
+      squadLoss: number;
+      outpostLoss: number;
+      squadDestroyed: boolean;
+      outpostEmptied: boolean;
+    }
+  | { type: "outpostDecayed"; cityId: CityId; loss: number; pop: number }
+  | { type: "stanceChanged"; cityId: CityId; stance: Stance }
   | { type: "gameOver"; winner: Owner; reason: FinishReason };
 
 export type Command =
   | { type: "send"; from: CityId; to: CityId }
-  | { type: "upgrade"; city: CityId };
+  | { type: "upgrade"; city: CityId }
+  | { type: "setStance"; city: CityId; stance: Stance };
 
 export interface CommandRejection {
   command: Command;

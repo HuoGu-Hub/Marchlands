@@ -107,6 +107,64 @@
         -120
       ],
       "layer": 0
+    },
+    {
+      "id": "g1",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -200,
+        60
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g2",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        200,
+        60
+      ],
+      "layer": 0
+    },
+    {
+      "id": "o1",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -40,
+        150
+      ],
+      "layer": 0,
+      "stance": "evade",
+      "watch": [
+        "c4",
+        "c5"
+      ]
+    },
+    {
+      "id": "o2",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        40,
+        -150
+      ],
+      "layer": 0,
+      "stance": "evade",
+      "watch": [
+        "c6",
+        "c7"
+      ]
     }
   ],
   "edges": [
@@ -169,6 +227,26 @@
       "from": "c7",
       "to": "c3",
       "length": 170
+    },
+    {
+      "from": "c4",
+      "to": "g1",
+      "length": 100
+    },
+    {
+      "from": "c5",
+      "to": "g2",
+      "length": 100
+    },
+    {
+      "from": "c4",
+      "to": "o1",
+      "length": 85
+    },
+    {
+      "from": "c7",
+      "to": "o2",
+      "length": 85
     }
   ],
   "objectives": [

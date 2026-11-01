@@ -6,6 +6,7 @@ import type { CityState } from "../src/types";
 function city(level: CityState["level"], pop: number): CityState {
   return {
     id: "x",
+    kind: "town",
     owner: 2,
     level,
     pop,
@@ -13,6 +14,9 @@ function city(level: CityState["level"], pop: number): CityState {
     growthCarry: 123,
     pos: [0, 0],
     layer: 0,
+    stance: "evade",
+    decayAtTick: 0,
+    watch: null,
   };
 }
 

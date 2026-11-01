@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_RULESET } from "@marchlands/sim";
 import { loadContent } from "../src/node";
-import { ContentError, validateMap } from "../src";
-import type { MapDef } from "@marchlands/sim";
+import { ContentError, validateContent, validateMap, validateRules } from "../src";
+import type { MapCity, MapDef } from "@marchlands/sim";
 
 describe("forest01", () => {
   const { map, rules } = loadContent();
 
-  it("loads seven cities, two players, five neutrals", () => {
-    expect(map.cities).toHaveLength(7);
+  it("loads seven towns, two granaries and two outposts", () => {
+    expect(map.cities).toHaveLength(11);
+    expect(map.cities.filter((city) => city.kind === "town")).toHaveLength(7);
+    expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(2);
+    expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(2);
     expect(map.players).toHaveLength(2);
-    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(5);
-    expect(map.edges).toHaveLength(12);
+    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(9);
+    expect(map.edges).toHaveLength(16);
     expect(map.cities.every((city) => city.layer === 0)).toBe(true);
   });
 
@@ -45,7 +48,32 @@ describe("forest01", () => {
     expect(length("c1", "c3")).toBe(220);
     expect(length("c4", "c3")).toBe(170);
     expect(length("c4", "c5")).toBe(240);
+    expect(length("c4", "g1")).toBe(100);
+    expect(length("c4", "o1")).toBe(85);
     expect(map.edges.every((edge) => Number.isInteger(edge.length))).toBe(true);
+  });
+
+  it("places buildings as roadside leaves", () => {
+    for (const granary of map.cities.filter((city) => city.kind === "granary")) {
+      const degree = map.edges.filter((edge) => edge.from === granary.id || edge.to === granary.id);
+      expect(degree).toHaveLength(1);
+      expect(granary.level).toBe(1);
+    }
+    for (const outpost of map.cities.filter((city) => city.kind === "outpost")) {
+      const degree = map.edges.filter((edge) => edge.from === outpost.id || edge.to === outpost.id);
+      expect(degree).toHaveLength(1);
+      expect(outpost.level).toBe(1);
+      expect(outpost.stance).toBe("evade");
+      expect(outpost.watch).toBeTruthy();
+      const watch = outpost.watch as [string, string];
+      expect(
+        map.edges.some(
+          (edge) =>
+            (edge.from === watch[0] && edge.to === watch[1]) ||
+            (edge.from === watch[1] && edge.to === watch[0]),
+        ),
+      ).toBe(true);
+    }
   });
 
   it("matches the rules default in sim", () => {
@@ -55,8 +83,9 @@ describe("forest01", () => {
 });
 
 describe("validation", () => {
+  const { map, rules } = loadContent();
+
   it("rejects duplicate city ids", () => {
-    const { map } = loadContent();
     const broken: MapDef = {
       ...map,
       cities: [...map.cities, { ...map.cities[0] }],
@@ -65,13 +94,14 @@ describe("validation", () => {
   });
 
   it("rejects a disconnected graph", () => {
-    const { map } = loadContent();
-    const broken: MapDef = { ...map, edges: [map.edges[0], map.edges[3]] };
+    const towns = map.cities.filter((city) => city.kind === "town");
+    const ids = new Set(towns.map((city) => city.id));
+    const townEdges = map.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
+    const broken: MapDef = { ...map, cities: towns, edges: [townEdges[0], townEdges[3]] };
     expect(() => validateMap(broken)).toThrow(/not connected/);
   });
 
   it("rejects an edge length that disagrees with positions", () => {
-    const { map } = loadContent();
     const broken: MapDef = {
       ...map,
       edges: map.edges.map((edge, index) => (index === 0 ? { ...edge, length: 999 } : edge)),
@@ -80,9 +110,74 @@ describe("validation", () => {
   });
 
   it("rejects a duplicate edge", () => {
-    const { map } = loadContent();
     const first = map.edges[0];
     const broken: MapDef = { ...map, edges: [...map.edges, { ...first, from: first.to, to: first.from }] };
     expect(() => validateMap(broken)).toThrow(/duplicated/);
+  });
+
+  it("rejects a building with more than one road", () => {
+    const granary = map.cities.find((city) => city.kind === "granary");
+    if (!granary) throw new Error("missing granary");
+    const broken: MapDef = {
+      ...map,
+      edges: [...map.edges, { from: granary.id, to: "c1", length: 63 }],
+    };
+    expect(() => validateMap(broken)).toThrow(/must be a leaf site/);
+  });
+
+  it("rejects an outpost without a watch edge", () => {
+    const broken: MapDef = {
+      ...map,
+      cities: map.cities.map((city) =>
+        city.id === "o1" ? ({ ...city, watch: undefined } as MapCity) : city,
+      ),
+    };
+    expect(() => validateMap(broken)).toThrow(/watch must be/);
+  });
+
+  it("rejects an outpost watching a road that does not exist", () => {
+    const broken: MapDef = {
+      ...map,
+      cities: map.cities.map((city) =>
+        city.id === "o1" ? ({ ...city, watch: ["c1", "c2"] } as MapCity) : city,
+      ),
+    };
+    expect(() => validateMap(broken)).toThrow(/watch edge not found/);
+  });
+
+  it("rejects a building with a town level", () => {
+    const broken: MapDef = {
+      ...map,
+      cities: map.cities.map((city) =>
+        city.id === "g1" ? ({ ...city, level: 2 } as MapCity) : city,
+      ),
+    };
+    expect(() => validateMap(broken)).toThrow(/level must be 1/);
+  });
+
+  it("rejects missing granary and outpost rules", () => {
+    const { granary: _granary, ...withoutGranary } = rules;
+    expect(() => validateRules(withoutGranary)).toThrow(/granary required/);
+    const { outpost: _outpost, ...withoutOutpost } = rules;
+    expect(() => validateRules(withoutOutpost)).toThrow(/outpost required/);
+  });
+
+  it("rejects negative granary bonuses and zero decay intervals", () => {
+    expect(() =>
+      validateRules({ ...rules, granary: { ...rules.granary, speedBonusMilli: -1 } }),
+    ).toThrow(/speedBonusMilli/);
+    expect(() =>
+      validateRules({ ...rules, outpost: { ...rules.outpost, decayIntervalTicks: 0 } }),
+    ).toThrow(/decayIntervalTicks/);
+  });
+
+  it("rejects an initial garrison above the building capacity", () => {
+    const broken: MapDef = {
+      ...map,
+      cities: map.cities.map((city) =>
+        city.id === "g1" ? ({ ...city, pop: rules.granary.capacity + 1 } as MapCity) : city,
+      ),
+    };
+    expect(() => validateContent(broken, rules)).toThrow(/granary capacity/);
   });
 });

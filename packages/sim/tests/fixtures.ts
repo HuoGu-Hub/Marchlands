@@ -78,3 +78,134 @@ export const AI_MAP: MapDef = {
 export function rulesWith(overrides: Partial<Ruleset>): Ruleset {
   return { ...DEFAULT_RULESET, ...overrides };
 }
+
+export const OUTPOST_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "outpost",
+  cities: [
+    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [0, 0], layer: 0 },
+    { id: "c", kind: "town", owner: 0, level: 1, pop: 5, pos: [150, 0], layer: 0 },
+    {
+      id: "o1",
+      kind: "outpost",
+      owner: 2,
+      level: 1,
+      pop: 10,
+      pos: [0, 100],
+      layer: 0,
+      stance: "engage",
+      watch: ["a", "b"],
+    },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 150 },
+    { from: "b", to: "c", length: 150 },
+    { from: "b", to: "o1", length: 100 },
+  ],
+};
+
+export const GRANARY_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "granary",
+  cities: [
+    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [50, 0], layer: 0 },
+    { id: "g1", kind: "granary", owner: 1, level: 1, pop: 0, pos: [-150, 100], layer: 0 },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 200 },
+    { from: "a", to: "g1", length: 100 },
+  ],
+};
+
+export const GRANARY_DEFENSE_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "granary-defense",
+  cities: [
+    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "town", owner: 2, level: 1, pop: 10, pos: [50, 0], layer: 0 },
+    { id: "g1", kind: "granary", owner: 2, level: 1, pop: 0, pos: [50, 100], layer: 0 },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 200 },
+    { from: "b", to: "g1", length: 100 },
+  ],
+};
+
+export const DECAY_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "decay",
+  cities: [
+    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [150, 0], layer: 0 },
+    {
+      id: "o1",
+      kind: "outpost",
+      owner: 1,
+      level: 1,
+      pop: 5,
+      pos: [0, 100],
+      layer: 0,
+      stance: "engage",
+      watch: ["a", "b"],
+    },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 300 },
+    { from: "a", to: "o1", length: 180 },
+  ],
+};
+
+export const VICTORY_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "victory",
+  cities: [
+    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-100, 0], layer: 0 },
+    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [100, 0], layer: 0 },
+    { id: "c", kind: "town", owner: 0, level: 1, pop: 0, pos: [0, 200], layer: 0 },
+    { id: "g1", kind: "granary", owner: 2, level: 1, pop: 0, pos: [100, 100], layer: 0 },
+    {
+      id: "o1",
+      kind: "outpost",
+      owner: 2,
+      level: 1,
+      pop: 0,
+      pos: [100, -100],
+      layer: 0,
+      stance: "evade",
+      watch: ["a", "b"],
+    },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 200 },
+    { from: "a", to: "c", length: 224 },
+    { from: "b", to: "c", length: 224 },
+    { from: "b", to: "g1", length: 100 },
+    { from: "b", to: "o1", length: 100 },
+  ],
+};
+
+export const AI_OUTPOST_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "ai-outpost",
+  cities: [
+    { id: "a", kind: "town", owner: 1, level: 1, pop: 10, pos: [-100, 0], layer: 0 },
+    { id: "b", kind: "town", owner: 2, level: 1, pop: 10, pos: [100, 0], layer: 0 },
+    {
+      id: "o1",
+      kind: "outpost",
+      owner: 2,
+      level: 1,
+      pop: 5,
+      pos: [100, 100],
+      layer: 0,
+      stance: "evade",
+      watch: ["a", "b"],
+    },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 200 },
+    { from: "b", to: "o1", length: 100 },
+  ],
+};

@@ -40,17 +40,25 @@ export function canonicalState(state: SimState): string {
   parts.push(`ticks${state.rules.maxTicks}`);
   parts.push(`send${state.rules.sendRatio}`);
   parts.push(`speed${state.rules.speedDmPerSecond}`);
+  const granary = state.rules.granary;
+  parts.push(
+    `G,${granary.capacity},${granary.defenseMilli},${granary.speedBonusMilli},${granary.strengthBonusMilli}`,
+  );
+  const outpost = state.rules.outpost;
+  parts.push(
+    `O,${outpost.capacity},${outpost.defenseMilli},${outpost.graceTicks},${outpost.decayIntervalTicks},${outpost.decayPerInterval}`,
+  );
   for (const player of state.players.slice().sort((a, b) => a.id - b.id)) {
     parts.push(`P${player.id},${player.gold},${player.goldCarry}`);
   }
   for (const city of state.cities.slice().sort(byId)) {
     parts.push(
-      `C${city.id},${city.owner},${city.level},${city.pop},${city.maxPop},${city.growthCarry},${city.layer},${city.pos[0]},${city.pos[1]}`,
+      `C${city.id},${city.kind},${city.owner},${city.level},${city.pop},${city.maxPop},${city.growthCarry},${city.layer},${city.pos[0]},${city.pos[1]},${city.stance},${city.decayAtTick},${city.watch ? city.watch.join(">") : "-"}`,
     );
   }
   for (const squad of state.squads.slice().sort(byId)) {
     parts.push(
-      `S${squad.id},${squad.owner},${squad.from},${squad.to},${squad.count},${squad.departTick},${squad.arrivalTick},${squad.path.join(">")}`,
+      `S${squad.id},${squad.owner},${squad.from},${squad.to},${squad.count},${squad.departTick},${squad.arrivalTick},${squad.speedMilli},${squad.strengthMilli},${squad.path.join(">")},${squad.intercepted.join(">") || "-"}`,
     );
   }
   return parts.join("|");

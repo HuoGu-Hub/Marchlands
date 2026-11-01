@@ -32,6 +32,13 @@ export class MapGraph {
     this.adjacency = adjacency;
   }
 
+  edgeLength(from: CityId, to: CityId): number | null {
+    for (const edge of this.adjacency.get(from) ?? []) {
+      if (edge.to === to) return edge.length;
+    }
+    return null;
+  }
+
   route(from: CityId, to: CityId): Route | null {
     if (from === to) return { path: [from], distance: 0 };
     const key = `${from}${SEP}${to}`;

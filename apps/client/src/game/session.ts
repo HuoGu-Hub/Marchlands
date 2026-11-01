@@ -21,6 +21,9 @@ const REASONS: Record<string, string> = {
   no_route: "没有可行路线",
   max_level: "已达最高等级",
   insufficient_pop: "人口不足",
+  not_upgradable: "该据点不能升级",
+  not_outpost: "只有临时驻兵点可以切换状态",
+  invalid_stance: "无效的驻守状态",
   game_finished: "对局已结束",
 };
 
@@ -105,6 +108,13 @@ export class GameSession {
     this.selected = id;
     this.scene.setSelected(id);
     this.options.onSelect(id);
+    if (city.kind === "outpost") {
+      this.options.onToast("R 切换迎战 / 避战");
+    } else if (city.kind === "granary") {
+      const speed = Math.round(this.state.rules.granary.speedBonusMilli / 10);
+      const strength = Math.round(this.state.rules.granary.strengthBonusMilli / 10);
+      this.options.onToast(`粮仓：行军速度 +${speed}% · 战斗力 +${strength}%`);
+    }
   }
 
   clearSelection(): void {
@@ -118,7 +128,29 @@ export class GameSession {
       this.options.onToast("先选择己方城镇");
       return;
     }
+    const city = this.getCity(this.selected);
+    if (city?.kind !== "town") {
+      this.options.onToast("该据点不能升级");
+      return;
+    }
     this.commands.push({ type: "upgrade", city: this.selected });
+  }
+
+  toggleStance(): void {
+    if (!this.selected) {
+      this.options.onToast("先选择己方临时驻兵点");
+      return;
+    }
+    const city = this.getCity(this.selected);
+    if (!city || city.owner !== 1 || city.kind !== "outpost") {
+      this.options.onToast("只有己方临时驻兵点可以切换状态");
+      return;
+    }
+    this.commands.push({
+      type: "setStance",
+      city: city.id,
+      stance: city.stance === "engage" ? "evade" : "engage",
+    });
   }
 
   dispose(): void {
@@ -200,13 +232,19 @@ export class GameSession {
         }
       } else if (event.type === "squadSpawned" && this.getCity(event.from)?.owner === 1) {
         audio.send();
+      } else if (event.type === "stanceChanged") {
+        this.options.onToast(
+          `${event.cityId} ${event.stance === "engage" ? "迎战" : "避战"}`,
+        );
       }
     }
   }
 
   private updateHud(): void {
-    const cities = this.state.cities.filter((city) => city.owner === 1);
-    const pop = cities.reduce((sum, city) => sum + city.pop, 0);
+    const cities = this.state.cities.filter((city) => city.owner === 1 && city.kind === "town");
+    const pop = this.state.cities
+      .filter((city) => city.owner === 1)
+      .reduce((sum, city) => sum + city.pop, 0);
     const gold = this.state.players.find((player) => player.id === 1)?.gold ?? 0;
     this.setText("hud-cities", String(cities.length));
     this.setText("hud-pop", String(pop));
@@ -281,5 +319,8 @@ export class GameSession {
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "q" || event.key === "Q") this.scene.rotate(1);
     if (event.key === "e" || event.key === "E") this.scene.rotate(-1);
+    if ((event.key === "r" || event.key === "R") && !this.paused && !this.finished) {
+      this.toggleStance();
+    }
   };
 }

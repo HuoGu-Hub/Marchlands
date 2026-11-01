@@ -12,6 +12,19 @@ export const DEFAULT_RULESET: Ruleset = {
     { level: 2, maxPop: 45, upgradeCost: 22, defense: 1.1, growthMilli: 62, goldMilli: 125 },
     { level: 3, maxPop: 65, upgradeCost: 32, defense: 1.2, growthMilli: 75, goldMilli: 150 },
   ],
+  granary: {
+    capacity: 50,
+    defenseMilli: 1300,
+    speedBonusMilli: 200,
+    strengthBonusMilli: 200,
+  },
+  outpost: {
+    capacity: 50,
+    defenseMilli: 800,
+    graceTicks: 600,
+    decayIntervalTicks: 200,
+    decayPerInterval: 2,
+  },
 };
 
 export function levelRule(rules: Ruleset, level: number): LevelRule {
@@ -28,6 +41,21 @@ export function speedPerTick(rules: Ruleset): number {
   return rules.speedDmPerSecond / rules.tickHz;
 }
 
+export function granarySpeedMilli(rules: Ruleset, hasGranary: boolean): number {
+  return 1000 + (hasGranary ? rules.granary.speedBonusMilli : 0);
+}
+
+export function granaryStrengthMilli(rules: Ruleset, hasGranary: boolean): number {
+  return 1000 + (hasGranary ? rules.granary.strengthBonusMilli : 0);
+}
+
+export function travelTicks(distance: number, rules: Ruleset, speedMilli: number): number {
+  return Math.max(
+    1,
+    Math.ceil((distance * rules.tickHz * 1000) / (rules.speedDmPerSecond * Math.max(1, speedMilli))),
+  );
+}
+
 export function arrivalTicks(distance: number, rules: Ruleset): number {
-  return Math.max(1, Math.ceil((distance * rules.tickHz) / rules.speedDmPerSecond));
+  return travelTicks(distance, rules, 1000);
 }

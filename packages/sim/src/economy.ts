@@ -2,6 +2,10 @@ import { levelRule } from "./rules";
 import type { CityState, LevelRule, PlayerState, Ruleset } from "./types";
 
 export function growCity(city: CityState, rule: LevelRule): void {
+  if (city.kind !== "town") {
+    city.growthCarry = 0;
+    return;
+  }
   if (city.pop >= city.maxPop) {
     city.growthCarry = 0;
     return;
@@ -21,6 +25,7 @@ export function growGold(player: PlayerState, milli: number): void {
 }
 
 export function applyUpgrade(city: CityState, rules: Ruleset): boolean {
+  if (city.kind !== "town") return false;
   if (city.level >= rules.maxLevel) return false;
   const cost = levelRule(rules, city.level).upgradeCost;
   if (city.pop < cost) return false;

@@ -4,6 +4,7 @@ export type {
   Command,
   CommandRejection,
   FinishReason,
+  GranaryRule,
   Level,
   LevelRule,
   MapCity,
@@ -12,13 +13,18 @@ export type {
   MapObjective,
   MapPlayer,
   MatchStatus,
+  OutpostRule,
   Owner,
   PlayerId,
   PlayerState,
   Ruleset,
   SimEvent,
   SimState,
+  SiteId,
+  SiteKind,
+  SiteState,
   SquadState,
+  Stance,
   StepResult,
 } from "./types";
 
@@ -26,9 +32,24 @@ export { createGame, step } from "./game";
 export { canonicalState, hash, hashText } from "./hash";
 export { createAi } from "./ai";
 export type { AiController } from "./ai";
-export { DEFAULT_RULESET, arrivalTicks, levelRule, sendPercent, speedPerTick } from "./rules";
+export {
+  DEFAULT_RULESET,
+  arrivalTicks,
+  granarySpeedMilli,
+  granaryStrengthMilli,
+  levelRule,
+  sendPercent,
+  speedPerTick,
+  travelTicks,
+} from "./rules";
 export { MapGraph } from "./path";
 export type { Route } from "./path";
-export { defenseValue, resolveAttack } from "./combat";
-export type { CombatOutcome } from "./combat";
+export {
+  attackValue,
+  defenseMilliFor,
+  defenseValue,
+  resolveAttack,
+  resolveFieldCombat,
+} from "./combat";
+export type { CombatModifiers, CombatOutcome, FieldOutcome } from "./combat";
 export { applyUpgrade, growCity, growGold } from "./economy";

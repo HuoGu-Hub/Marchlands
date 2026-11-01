@@ -3,6 +3,7 @@
 **版本** v0.1  
 **日期** 2026-11-01  
 **当前里程碑** M1 首图单机一局  
+**机制扩展** 粮草与临时驻兵点（ADR 0002）<br>
 **适用对象** 参与本项目的 Agent 与人类开发者
 
 本文件是当前开发的执行合同。它规定做什么、按什么规则做、做到什么程度算完成。  
@@ -12,7 +13,7 @@
 
 ## 0. 开始前先读这三条
 
-1. **只做 M1。** 当前只做一张图、单机一局、完整页面。Agent、服务器、法术、塔、城堡、新机制都不做。
+1. **只做 M1。** 当前只做一张图、单机一局、完整页面。Agent、服务器、法术、塔、城堡不做；粮草与临时驻兵点按 [ADR 0002](adr/0002-granary-outpost.md) 执行，不另加机制。
 2. **不复制原作资产与关卡。** .work/original 只读，用于理解规则和节奏；不把原作 PNG、OGG、文本、坐标或节点直接放进项目。
 3. **模拟核心保持纯净。** packages/sim 不得 import Cocos、DOM、Node API；不得使用 Math.random、Date.now；所有随机来自种子。
 
@@ -52,11 +53,13 @@ M1 完成 = 以下全部成立：
 
 ### 2.1 做
 
-- 1 张图：forest01。7 城，2 玩家，5 中立城，所有 layer 0。
+- 1 张图：forest01。7 城镇、2 粮仓、2 驻兵点，2 玩家，5 中立城镇，所有 layer 0。
 - 1 人类 + 1 AI；2 个玩家。
 - 城镇与中立城；派兵、行军、战斗、占领、升级。
+- 粮仓：不产兵、可屯兵、为全队提供速度与战斗力增幅；不产金币、不可升级。
+- 临时驻兵点：路边叶子据点，可屯兵、会掉兵、可设避战/迎战；不计入胜负。
 - 人口增长、金币收入与 HUD 显示；不做金币消费。
-- 胜负：占满 7 城或消灭 AI；15 分钟硬上限，按城市数、人口判定。
+- 胜负：占满 7 座城镇或消灭 AI；15 分钟硬上限，按城镇数与城镇人口判定。
 - 3D 地形、四向镜头、单位、选中与派兵交互。
 - 完整页面流程与设置。
 - 设置持久化、重开、结算统计；不做对局中途存档。
@@ -65,7 +68,7 @@ M1 完成 = 以下全部成立：
 ### 2.2 不做
 
 - 不做第二张图、不做 5 图、不做 15 图。
-- 不做塔、城堡、铁匠铺、马厩、法术、市场、高地战斗加成。
+- 不做塔、城堡、铁匠铺、马厩、法术、市场、高地战斗加成；粮仓与临时驻兵点按 ADR 0002 例外。
 - 不做 Agent、MCP、HTTP、在线榜单、账号、服务器。
 - 不做人类 PvP、地图工坊、移动端、全程配音、第二生态。
 - 不做自由 360° 镜头，不做实时方向光阴影，不做破坏地形。
@@ -111,10 +114,11 @@ c7 - c3
 
 **首图规则**
 
-- 所有城市 layer 0，高度 0 m。
+- 所有据点 layer 0，高度 0 m。
 - p1 从 c1 出发，p2 从 c2 出发。
 - 中立城被占领后归占领者，等级保留，人口为战斗剩余。
-- 首图没有法术、没有特殊建筑、没有金币消费。
+- 另有 2 座中立粮仓 `g1`/`g2` 与 2 个中立驻兵点 `o1`/`o2`，均为叶子据点；`o1` 监视 `c4-c5`，`o2` 监视 `c6-c7`。
+- 首图没有法术、没有金币消费；粮仓与驻兵点按 ADR 0002 执行。
 
 ### 2.4 页面目标
 
@@ -123,7 +127,7 @@ c7 - c3
 | 启动 | Logo、加载条、版本号；加载失败显示错误与重试 | 主菜单 |
 | 主菜单 | 开始游戏、设置、退出 | 简报、设置、退出确认 |
 | 简报 | 标题、三行目标、开始、返回 | 对局、主菜单 |
-| 对局 | HUD、选中城信息、人口、城市数、金币、计时、暂停 | 暂停、结算 |
+| 对局 | HUD、选中据点信息、人口、城镇数、金币、计时、暂停 | 暂停、结算 |
 | 暂停 | 继续、重开、返回主菜单；重开要确认 | 对局、对局、主菜单 |
 | 结算 | 胜利/失败、统计、重玩、主菜单 | 对局、主菜单 |
 | 设置 | 分辨率、窗口模式、主音量、语言占位、保存、返回 | 主菜单 |
@@ -250,10 +254,11 @@ tools/map-export/
 - 每 tick 增长：50 / 62 / 75 milli-pop，对应等级 1/2/3。
 - 到达人口上限停止增长。
 - 被攻击后人口下降，增长继续。
+- 粮仓与驻兵点不增长，只能靠派兵增援。
 
 **金币**
 
-- 每座己方城按自身等级产生收入，累加到该玩家金币。
+- 每座己方城镇按自身等级产生收入，累加到该玩家金币；粮仓与驻兵点不产金币。
 - 每 tick 收入：100 / 125 / 150 milli-gold，对应等级 1/2/3。
 - 首轮只累计与显示，不消费。
 
@@ -261,19 +266,19 @@ tools/map-export/
 
 **派兵**
 
-- 指令只允许从己方城出发。
-- 目标可以是己方城、敌方城、中立城。
+- 指令只允许从己方据点出发。
+- 目标可以是任意据点：城镇、粮仓、临时驻兵点。
 - 派出数量 = floor(当前人口 × 50%)，最少 1。
 - 当前人口 < 2 时拒绝派兵。
-- 出发时立即扣除人口；到达前城市可继续增长。
-- 同一城市可以同时派出多支队伍。
+- 出发时立即扣除人口；到达前据点可继续增长（仅城镇）。
+- 同一据点可以同时派出多支队伍。
 
 **寻路**
 
 - 图是无向图；边权为两点距离。
-- 用 Dijkstra 找最短路径；节点数 7，直接缓存 path。
-- 路径总长度换算成 ETA ticks：ceil(distance / 3)。
-- 队伍沿路径匀速移动；到达目标城后结算。
+- 用 Dijkstra 找最短路径；首图 11 个据点，直接缓存 path。
+- 基础 ETA ticks = ceil(distance / 3)；粮仓速度增幅按 5.7 缩短 ETA。
+- 队伍沿路径匀速移动；到达目标据点后结算。
 - 同 tick 到达的多支队伍按 squadId 升序结算。
 
 **战斗**
@@ -294,6 +299,7 @@ else:
 防御系数大于 1 时，D 可能大于原人口；守方人口不能因被攻击而增加。
 
 - 首轮没有塔、没有铁匠铺、没有高地修正。
+- 粮仓与驻兵点使用 5.7 的据点防御值；粮仓增幅会同时提高攻防。
 - 守方是中立城时，防御系数按等级表。
 - 若目标在到达前已被同玩家占领，按增援处理：人口相加，封顶人口上限，溢出丢弃。
 - 若目标在到达前被其他玩家占领，按敌方城结算。
@@ -301,11 +307,11 @@ else:
 
 ### 5.4 胜负
 
-- 任一玩家拥有全部 7 城，立即胜利。
-- 任一玩家城市数为 0，立即失败。
+- 任一玩家拥有全部 7 座城镇，立即胜利。
+- 任一玩家城镇数为 0，立即失败；粮仓与临时驻兵点不计入城镇数，也不能阻止淘汰。
 - 到达 18000 tick，即 15 分钟：
-  - 城市数多者胜。
-  - 城市数相同，总人口多者胜。
+  - 城镇数多者胜。
+  - 城镇数相同，城镇总人口多者胜。
   - 再相同，金币多者胜。
   - 仍相同，平局。
 - 结算后停止模拟，只允许重开或回主菜单。
@@ -318,7 +324,9 @@ else:
 2. 若没有可攻下目标，且人口 >= 80% 上限、等级 < 3，升级。
 3. 若人口已到 80% 且仍无必胜目标，向防御不超过出兵数 2 倍的目标派兵，避免人口顶满。
 4. 若 600 tick 没有动作，最强城向最近目标派兵，保证对局推进。
-5. 不主动放弃城市；不修改资源；不预测玩家指令。
+5. 未拥有粮仓时优先考虑可攻下的粮仓；已拥有粮仓后不再为增益重复投资。
+6. 把己方有驻军的临时驻兵点切到迎战；不主动进攻敌方驻兵点。
+7. 不主动放弃城市；不修改资源；不预测玩家指令。
 
 AI 必须能完成：至少一次占领、一次升级、一次进攻；15 分钟内结束一局。
 
@@ -333,9 +341,54 @@ AI 必须能完成：至少一次占领、一次升级、一次进攻；15 分�
 | combatResolved | cityId, attacker, defender, attackerLoss, defenderLoss, captured | 数字与特效 |
 | cityCaptured | cityId, fromOwner, toOwner, pop | 旗色、音效 |
 | upgradeCompleted | cityId, level | 升级特效 |
+| squadIntercepted | squadId, cityId, squadOwner, outpostOwner, squadLoss, outpostLoss, squadDestroyed, outpostEmptied | 路边伏击 |
+| outpostDecayed | cityId, loss, pop | 掉兵飘字 |
+| stanceChanged | cityId, stance | 驻兵状态提示 |
 | gameOver | winner, reason | 结算页 |
 
 事件只用于表现与日志，不反向驱动模拟。
+
+### 5.7 粮仓与临时驻兵点
+
+完整决策见 [ADR 0002](adr/0002-granary-outpost.md)。本节只列执行合同。
+
+**据点种类**
+
+| kind | 产兵 | 产金币 | 可升级 | 计入胜负 | 备注 |
+|---|---|---|---|---|---|
+| town | 是 | 是 | 是 | 是 | 原城镇 |
+| granary | 否 | 否 | 否 | 否 | 容量 50，防御 1.30 |
+| outpost | 否 | 否 | 否 | 否 | 容量 50，防御 0.80，会掉兵 |
+
+粮仓与驻兵点必须是叶子据点，只有一条支路连接公路节点。
+
+**粮仓增幅**
+
+- 己方拥有至少一座粮仓时，全体部队行军速度 +20%，攻防战斗力 +20%。
+- 多座不叠加；空置粮仓也生效。
+- 队伍出发时记录速度与战斗力增幅，途中粮仓易手不改变该队伍；防守方按战斗时的粮仓归属计算。
+
+**临时驻兵点**
+
+- 宽限 600 tick 后开始掉兵，每 200 tick 掉 2 兵；友军增援重置宽限期。
+- 掉到 0 兵时变中立，状态回到避战。
+- 状态：`evade` 避战、`engage` 迎战；默认避战，攻占后重置为避战。
+- 迎战时，敌方队伍经过 `watch` 边会被拦截；拦截点在边中点。
+- 拦截不占领据点：路过方胜则守军全灭、据点中立，路过方损失后继续；守方胜则路过方全灭。
+- 敌方直接以驻兵点为目标时，无视状态强制交战；胜方占领。
+- 驻兵点不计入城镇数与胜负。
+
+**战斗**
+
+```text
+A = floor(队伍兵力 × 攻击方增幅 / 1000)
+D = floor(守军人口 × 据点防御千分比 × 防守方增幅 / 1000000)
+
+A > D: 守军全灭；进攻方损失 = min(兵力, floor(D × 1000 / 攻击方增幅))
+否则:   进攻方全灭；守军剩余 = min(原人口, max(0, D - A))
+```
+
+无粮仓时增幅为 1000，退化为原版战斗。
 
 ---
 
@@ -363,7 +416,11 @@ AI 必须能完成：至少一次占领、一次升级、一次进攻；15 分�
     {"id": "c4", "kind": "town", "owner": 0, "level": 1, "pop": 10, "pos": [-120, 120], "layer": 0},
     {"id": "c5", "kind": "town", "owner": 0, "level": 1, "pop": 10, "pos": [120, 120], "layer": 0},
     {"id": "c6", "kind": "town", "owner": 0, "level": 1, "pop": 10, "pos": [-120, -120], "layer": 0},
-    {"id": "c7", "kind": "town", "owner": 0, "level": 1, "pop": 10, "pos": [120, -120], "layer": 0}
+    {"id": "c7", "kind": "town", "owner": 0, "level": 1, "pop": 10, "pos": [120, -120], "layer": 0},
+    {"id": "g1", "kind": "granary", "owner": 0, "level": 1, "pop": 0, "pos": [-200, 60], "layer": 0},
+    {"id": "g2", "kind": "granary", "owner": 0, "level": 1, "pop": 0, "pos": [200, 60], "layer": 0},
+    {"id": "o1", "kind": "outpost", "owner": 0, "level": 1, "pop": 0, "pos": [-40, 150], "layer": 0, "stance": "evade", "watch": ["c4", "c5"]},
+    {"id": "o2", "kind": "outpost", "owner": 0, "level": 1, "pop": 0, "pos": [40, -150], "layer": 0, "stance": "evade", "watch": ["c6", "c7"]}
   ],
   "edges": [
     {"from": "c1", "to": "c4", "length": 156},
@@ -377,7 +434,11 @@ AI 必须能完成：至少一次占领、一次升级、一次进攻；15 分�
     {"from": "c4", "to": "c3", "length": 170},
     {"from": "c5", "to": "c3", "length": 170},
     {"from": "c6", "to": "c3", "length": 170},
-    {"from": "c7", "to": "c3", "length": 170}
+    {"from": "c7", "to": "c3", "length": 170},
+    {"from": "c4", "to": "g1", "length": 100},
+    {"from": "c5", "to": "g2", "length": 100},
+    {"from": "c4", "to": "o1", "length": 85},
+    {"from": "c7", "to": "o2", "length": 85}
   ],
   "objectives": [{"type": "capture_all"}, {"type": "time_limit", "ticks": 18000}]
 }
@@ -385,16 +446,21 @@ AI 必须能完成：至少一次占领、一次升级、一次进攻；15 分�
 
 - 地图坐标是分米；渲染除以 10。
 - 首图所有 layer 0；字段保留，测试场景可复用。
-- 地图数据必须通过 validate-map：7 城、2 玩家、5 中立、图连通、无自环、无重复边、每条边有正整数 length。
+- 地图数据必须通过 validate-map：7 城镇、2 粮仓、2 驻兵点、2 玩家、图连通、无自环、无重复边、每条边有正整数 length。
+- `granary`/`outpost` 必须是度数为 1 的叶子据点；`outpost` 的 `watch` 必须是真实存在的公路边，且支路端点落在该边上。
+- `level` 仅对 `town` 有 1..3；粮仓和驻兵点固定为 1。`stance`/`watch` 只允许出现在驻兵点上。
 
 ### 6.2 状态与指令
 
 ~~~ts
 export type CityId = string;
 export type PlayerId = 1 | 2;
+export type SiteKind = "town" | "granary" | "outpost";
+export type Stance = "evade" | "engage";
 
 export interface CityState {
   id: CityId;
+  kind: SiteKind;
   owner: 0 | PlayerId;
   level: 1 | 2 | 3;
   pop: number;
@@ -402,6 +468,9 @@ export interface CityState {
   growthCarry: number;
   pos: [number, number];
   layer: number;
+  stance: Stance;
+  decayAtTick: number;
+  watch: [CityId, CityId] | null;
 }
 
 export interface SquadState {
@@ -413,6 +482,9 @@ export interface SquadState {
   path: CityId[];
   departTick: number;
   arrivalTick: number;
+  speedMilli: number;
+  strengthMilli: number;
+  intercepted: CityId[];
 }
 
 export interface SimState {
@@ -444,7 +516,8 @@ export interface StepResult {
 
 export type Command =
   | { type: "send"; from: CityId; to: CityId }
-  | { type: "upgrade"; city: CityId };
+  | { type: "upgrade"; city: CityId }
+  | { type: "setStance"; city: CityId; stance: Stance };
 
 export function createGame(map: MapDef, seed: number, rules?: Ruleset): SimState;
 export function step(state: SimState, commands: Command[]): StepResult;
@@ -459,6 +532,8 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 - step 是纯函数：不读全局，不写文件，不依赖时间。
 - 指令在 tick 开始时校验，在 tick 边界生效。
 - 无效指令返回 rejected，不改变状态；首轮 UI 只发合法指令，但 sim 仍要防御性校验。
+- `send` 可用于任何己方据点；`upgrade` 只对城镇有效；`setStance` 只对己方驻兵点有效。
+- 队伍出发时把粮仓速度/战斗力增幅写入 `SquadState`；防守方增幅在战斗时按据点归属计算。
 
 ### 6.3 规则 JSON
 
@@ -474,14 +549,27 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
     {"level": 1, "maxPop": 30, "upgradeCost": 15, "defense": 1.0, "growthMilli": 50, "goldMilli": 100},
     {"level": 2, "maxPop": 45, "upgradeCost": 22, "defense": 1.1, "growthMilli": 62, "goldMilli": 125},
     {"level": 3, "maxPop": 65, "upgradeCost": 32, "defense": 1.2, "growthMilli": 75, "goldMilli": 150}
-  ]
+  ],
+  "granary": {
+    "capacity": 50,
+    "defenseMilli": 1300,
+    "speedBonusMilli": 200,
+    "strengthBonusMilli": 200
+  },
+  "outpost": {
+    "capacity": 50,
+    "defenseMilli": 800,
+    "graceTicks": 600,
+    "decayIntervalTicks": 200,
+    "decayPerInterval": 2
+  }
 }
 ~~~
 
 ### 6.4 哈希与回放
 
 - 每 20 tick 计算一次状态哈希。
-- 哈希输入：tick、seed、slug、status、winner、finishReason、nextSquad、rules、玩家金币、所有城市、所有队伍；按 id 排序。
+- 哈希输入：tick、seed、slug、status、winner、finishReason、nextSquad、rules、玩家金币、所有据点、所有队伍；按 id 排序。据点包含 kind、stance、decayAtTick、watch；队伍包含 speedMilli、strengthMilli、intercepted。
 - 不参与哈希：map、graph、events；这三项不影响模拟结果。
 - 回放文件：map slug、map hash、ruleset、seed、指令数组、检查点哈希、结果。
 - 首轮不实现回放 UI；先保证 harness 能导出与重放。
@@ -493,30 +581,33 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 
 ### 7.1 tick 顺序
 
-1. 应用本 tick 指令：校验、扣人口、生成 squad、升级。
-2. 人口增长与金币收入，按城市 id 升序。
-3. 队伍推进；到达到期队伍，按 squadId 升序结算。
-4. 战斗结算，更新城市归属与人口。
-5. 检查胜负与时间上限。
-6. 清理过期事件，生成 tick 事件。
-7. tick +1。
+1. 应用本 tick 指令：校验、扣人口、生成 squad、升级、切换驻守状态。
+2. 城镇人口增长与金币收入，按据点 id 升序。
+3. 队伍推进：先结算迎战拦截，再结算到达到期队伍，按 squadId 升序。
+4. 战斗结算，更新据点归属与人口。
+5. 临时驻兵点掉兵。
+6. 检查胜负与时间上限。
+7. 汇总本 tick 事件；tick +1。
 
 ### 7.2 边界情况
 
-- 城市人口为 0 但仍归属某玩家；下一次任何进攻都能占领。
+- 据点人口为 0 但仍归属某玩家；下一次任何进攻都能占领。
 - 队伍到达时目标已不存在，直接丢弃并记 rejected。
-- 同一 tick 多队到达同一城，按 squadId 升序；后到队伍按最新归属结算。
-- 增援超过人口上限，溢出丢弃，不返还。
+- 同一 tick 多队到达同一据点，按 squadId 升序；后到队伍按最新归属结算。
+- 增援超过容量，溢出丢弃，不返还。
 - 升级时人口刚好等于消耗，允许升级，人口变 0。
 - 时间上限到达时，先结算本 tick 战斗，再判胜负。
+- 队伍以驻兵点为目标时跳过路过拦截；迎战拦截只打一场遭遇战，不改变据点归属。
+- 友军增援驻兵点会重置掉兵宽限期；掉到 0 兵立即变中立并回到避战。
+- 同一 tick 多支队伍经过同一条监视边，按 squadId 升序依次与驻兵点结算。
 - 所有数组按 id 排序，禁止依赖对象键顺序。
 
 ### 7.3 确定性
 
 - 禁止 Math.random、Date.now、performance.now 进入 sim。
 - 随机只用种子 xorshift128+；首轮 AI 可以完全确定，不需要随机。
-- 边长度在 map JSON 里写死为整数；sim 运行时不做 sqrt 或浮点路径计算。
-- 浮点只用于渲染；战斗、人口、金币、路径代价用整数。
+- 边长度在 map JSON 里写死为整数；sim 运行时不做 sqrt 路径计算。
+- 战斗、人口、金币、路径代价用整数；速度换算用整数除法后向上取整，保持跨平台稳定。
 - 等长路径按城市 id 字典序选择，保证稳定。
 - 路径缓存按 from/to 排序键；不能依赖 Map 插入顺序。
 - state hash 覆盖所有影响结果的字段。
@@ -530,7 +621,7 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 - 首图是 60 × 60 m 的桌面沙盘。
 - 美术：Kenney CC0 塔楼、城墙、树木、岩石、道具，配程序化地面与瓦片纹理；许可见 ASSETS.md。
 - 道路：2 m 宽石板路，中央环岛，城镇路口广场，路缘、路灯、草肩；民居 2.2–2.5 m 宽，塔楼 3–4 m，路宽不再压过建筑。
-- 7 座城，2 个阵营，基础单位。
+- 7 座城镇、2 座粮仓、2 个临时驻兵点，2 个阵营，基础单位。
 - 地形、河流、树、石、道路都可有，但不要做第二生态。
 - 先灰盒：方块地形、方块城、胶囊单位；灰盒可玩后再换美术。
 
@@ -566,7 +657,7 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 ### 8.4 性能
 
 - 目标 GTX 1050 / 核显笔记本，1080p 60 帧。
-- 首图上限：7 城、4 支队伍、20 个蒙皮单位、3 万三角面、80 draw call。
+- 首图上限：11 个据点、4 支队伍、20 个蒙皮单位、3 万三角面、80 draw call。
 - 四向切换不超过 1 帧卡顿。
 - 加载 forest01 不超过 5 秒。
 - 不做实时方向光阴影；不做全屏后处理堆叠。
@@ -586,7 +677,7 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 
 ### 9.2 对局 HUD
 
-- 左上：城市数、总人口、金币。
+- 左上：城镇数、总人口、金币；城镇数只统计 `kind === "town"`。
 - 右上：计时、暂停按钮。
 - 底部：选中城面板，显示等级、人口/上限、升级按钮、派兵提示。
 - 选中城：地面环、屏幕空间描边、目标线。
@@ -675,7 +766,8 @@ pnpm test:e2e
 **必须有的测试**
 
 - 规则单测：派兵、升级、战斗、占领、胜负、时间上限。
-- 属性测试：人口不为负、金币不为负、城市归属合法、队伍不重复结算。
+- 机制单测：粮仓速度/战斗力增幅、驻兵点宽限/掉兵/增援重置、迎战拦截、直接入侵、建筑不计胜负。
+- 属性测试：人口不为负、金币不为负、据点归属合法、队伍不重复结算。
 - 确定性：同一地图、种子、指令流，Node 与浏览器哈希一致。
 - AI 自对弈：100 局，全部 15 分钟内结束；座位镜像后由另一方获胜。
 - forest01 起始表给 p1 优势，AI 自对弈固定 p1 获胜属预期；平衡通过镜像测试验证，不靠随机。
@@ -692,7 +784,7 @@ pnpm test:e2e
 - 禁止把原作 PNG、OGG、TXT、坐标、节点、UI 直接复制进项目。
 - 禁止在 sim 里 import Three.js、DOM、Node API。
 - 禁止在 sim 里使用 Math.random、Date.now。
-- 禁止首轮加 Agent、服务器、法术、塔、城堡、新机制。
+- 禁止首轮加 Agent、服务器、法术、塔、城堡；粮草与临时驻兵点按 ADR 0002 执行，不在此列。
 - 禁止自由 360° 镜头。
 - 禁止为了“以后可能用”提前抽象复杂系统；先让一局跑通。
 
@@ -710,6 +802,7 @@ pnpm test:e2e
 - 胜负与 15 分钟上限。
 - 主菜单、暂停、结算、重开。
 - forest01 的 7 城与 2 玩家。
+- 粮仓增幅、驻兵点掉兵与迎战拦截的模拟规则。
 - 3D 四向镜头。
 - 确定性哈希。
 
@@ -722,6 +815,7 @@ pnpm test:e2e
 | 决策 | 当前假设 | 影响 |
 |---|---|---|
 | 首图 | forest01，重画 7 城 2 玩家 5 中立 | 决定第一周数据 |
+| 粮草机制 | 2026-11-02 用户指定：粮仓增幅 + 临时驻兵点 | 已落入 ADR 0002 |
 | 3D 方案 | 全 3D 低模，正交四向 | 决定美术与性能 |
 | 页面范围 | 启动、主菜单、简报、对局、暂停、结算、设置、退出 | 决定第 5 周工作量 |
 | Agent | 第二阶段，首轮完全不接 | 决定仓库是否引入 protocol |
@@ -735,6 +829,7 @@ pnpm test:e2e
 
 ## 14. 参考
 
+- 粮草与驻兵点：[ADR 0002](adr/0002-granary-outpost.md)
 - 完整方案：[Marchlands 开发方案](../plans/Marchlands-开发方案.html)
 - 运行架构：[architecture.html](../plans/diagrams/architecture.html)
 - Agent 时序：[agent-sequence.html](../plans/diagrams/agent-sequence.html)
@@ -746,7 +841,8 @@ pnpm test:e2e
 ## 15. 进度
 
 - [x] M1.1 数据与页面图：forest01、rules/1、校验、页面流程图
-- [x] M1.2 模拟核心：33 项单测、属性测试、100 局自对弈、回放哈希
+- [x] M1.2 模拟核心：52 项单测、属性测试、100 局自对弈、回放哈希
+- [x] 机制扩展：粮仓增幅、临时驻兵点掉兵/迎战拦截、内容校验与 AI 适配（ADR 0002）
 - [x] M1.3 3D 灰盒：四向镜头、地形、7 城、单位、选中与派兵
 - [x] M1.4 AI 与胜负、HUD、计时、高低差测试场景
 - [x] M1.5 页面：八个页面可走，Playwright 流程通过
