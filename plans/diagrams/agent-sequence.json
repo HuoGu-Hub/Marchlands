@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Agent 对局时序",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1400,
+      700
+    ]
+  },
+  "participants": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent 运行时",
+      "sublabel": "LLM / 脚本"
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "Agent 网关",
+      "sublabel": "鉴权 · 限流"
+    },
+    {
+      "id": "match",
+      "type": "backend",
+      "label": "对局服务",
+      "sublabel": "调度 · 计时"
+    },
+    {
+      "id": "sim",
+      "type": "backend",
+      "label": "模拟核心",
+      "sublabel": "20Hz 确定性"
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "数据层",
+      "sublabel": "结果 · 回放"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 300,
+      "label": "建立对局"
+    },
+    {
+      "from": 300,
+      "to": 480,
+      "label": "决策窗"
+    },
+    {
+      "from": 480,
+      "to": 635,
+      "label": "结算"
+    }
+  ],
+  "messages": [
+    {
+      "id": "create",
+      "from": "agent",
+      "to": "gateway",
+      "y": 180,
+      "label": "创建对局",
+      "variant": "emphasis"
+    },
+    {
+      "id": "auth",
+      "from": "gateway",
+      "to": "match",
+      "y": 215,
+      "label": "鉴权 + 配额"
+    },
+    {
+      "id": "init",
+      "from": "match",
+      "to": "sim",
+      "y": 250,
+      "label": "init(seed, map)"
+    },
+    {
+      "id": "initial",
+      "from": "sim",
+      "to": "match",
+      "y": 280,
+      "label": "初始状态",
+      "variant": "return"
+    },
+    {
+      "id": "obs",
+      "from": "match",
+      "to": "gateway",
+      "y": 315,
+      "label": "观察 #0"
+    },
+    {
+      "id": "obs-json",
+      "from": "gateway",
+      "to": "agent",
+      "y": 345,
+      "label": "JSON 观察",
+      "variant": "return"
+    },
+    {
+      "id": "orders",
+      "from": "agent",
+      "to": "gateway",
+      "y": 395,
+      "label": "提交指令",
+      "variant": "emphasis"
+    },
+    {
+      "id": "validated",
+      "from": "gateway",
+      "to": "match",
+      "y": 425,
+      "label": "校验后指令"
+    },
+    {
+      "id": "apply",
+      "from": "match",
+      "to": "sim",
+      "y": 460,
+      "label": "epoch 边界应用"
+    },
+    {
+      "id": "events",
+      "from": "sim",
+      "to": "match",
+      "y": 495,
+      "label": "tick + 事件",
+      "variant": "return"
+    },
+    {
+      "id": "persist",
+      "from": "match",
+      "to": "store",
+      "y": 530,
+      "label": "结果 + 回放",
+      "variant": "dashed"
+    },
+    {
+      "id": "result",
+      "from": "match",
+      "to": "gateway",
+      "y": 565,
+      "label": "结算 / 下一轮"
+    },
+    {
+      "id": "result-agent",
+      "from": "gateway",
+      "to": "agent",
+      "y": 595,
+      "label": "结果 + 评分",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "gateway",
+      "from": 180,
+      "to": 600,
+      "type": "security"
+    },
+    {
+      "participant": "match",
+      "from": 215,
+      "to": 570,
+      "type": "backend"
+    },
+    {
+      "participant": "sim",
+      "from": 250,
+      "to": 495,
+      "type": "backend"
+    },
+    {
+      "participant": "store",
+      "from": 528,
+      "to": 570,
+      "type": "database"
+    }
+  ]
+}

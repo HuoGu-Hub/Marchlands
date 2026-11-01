@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Marchlands 运行架构",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1200,
+      620
+    ]
+  },
+  "components": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent 运行时",
+      "sublabel": "LLM / 脚本 / RL",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "Agent 网关",
+      "sublabel": "鉴权 · 限流 · 协议",
+      "pos": [
+        320,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "MCP / HTTPS"
+    },
+    {
+      "id": "match",
+      "type": "backend",
+      "label": "对局服务",
+      "sublabel": "权威模拟 · 回合调度",
+      "pos": [
+        620,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "sim",
+      "type": "backend",
+      "label": "确定性模拟核心",
+      "sublabel": "固定步长 · 种子随机",
+      "pos": [
+        940,
+        40
+      ],
+      "size": [
+        190,
+        72
+      ],
+      "tag": "共用代码"
+    },
+    {
+      "id": "tactical",
+      "type": "backend",
+      "label": "战术渲染器",
+      "sublabel": "SVG / PNG 观察",
+      "pos": [
+        320,
+        170
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "玩家客户端",
+      "sublabel": "Cocos 3D · Windows",
+      "pos": [
+        40,
+        350
+      ],
+      "size": [
+        160,
+        72
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "账号与榜单 API",
+      "sublabel": "档案 · 赛季 · 评分",
+      "pos": [
+        320,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "data",
+      "type": "database",
+      "label": "数据层",
+      "sublabel": "PostgreSQL · Redis · 回放",
+      "pos": [
+        940,
+        350
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "verifier",
+      "type": "backend",
+      "label": "回放校验器",
+      "sublabel": "复算 · 防篡改",
+      "pos": [
+        940,
+        490
+      ],
+      "size": [
+        190,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "agent-gateway",
+      "from": "agent",
+      "to": "gateway",
+      "label": "MCP / HTTPS",
+      "variant": "emphasis",
+      "labelAt": [
+        260,
+        125
+      ]
+    },
+    {
+      "id": "gateway-match",
+      "from": "gateway",
+      "to": "match",
+      "label": "创建 / 加入",
+      "labelAt": [
+        545,
+        125
+      ]
+    },
+    {
+      "id": "match-sim",
+      "from": "match",
+      "to": "sim",
+      "label": "20Hz 推进",
+      "variant": "emphasis",
+      "labelAt": [
+        870,
+        125
+      ]
+    },
+    {
+      "id": "gateway-render",
+      "from": "gateway",
+      "to": "tactical",
+      "label": "PNG 观察",
+      "variant": "dashed",
+      "labelAt": [
+        410,
+        142
+      ]
+    },
+    {
+      "id": "client-api",
+      "from": "client",
+      "to": "api",
+      "label": "账号 / 榜单",
+      "labelAt": [
+        260,
+        440
+      ]
+    },
+    {
+      "id": "api-data",
+      "from": "api",
+      "to": "data",
+      "label": "档案 / 评分",
+      "labelAt": [
+        715,
+        440
+      ]
+    },
+    {
+      "id": "match-api",
+      "from": "match",
+      "to": "api",
+      "label": "结果上报",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right",
+      "via": [
+        [
+          590,
+          72
+        ],
+        [
+          590,
+          382
+        ]
+      ],
+      "labelAt": [
+        602,
+        250
+      ]
+    },
+    {
+      "id": "verifier-data",
+      "from": "verifier",
+      "to": "data",
+      "label": "校验结果",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        1040,
+        460
+      ]
+    },
+    {
+      "id": "verifier-sim",
+      "from": "verifier",
+      "to": "sim",
+      "label": "复算",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          1170,
+          522
+        ],
+        [
+          1170,
+          130
+        ],
+        [
+          1035,
+          130
+        ]
+      ],
+      "labelAt": [
+        1182,
+        300
+      ]
+    }
+  ]
+}
