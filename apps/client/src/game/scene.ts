@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
 import { art } from "./assets";
+import { buildTown, buildWall, paletteFor } from "./buildings";
 
 const PLAYER_COLORS: Record<Owner, number> = {
   0: 0x97917f,
@@ -10,7 +11,7 @@ const PLAYER_COLORS: Record<Owner, number> = {
 
 const PITCH = (55 * Math.PI) / 180;
 const CAMERA_DISTANCE = 90;
-const VIEW_HEIGHT = 56;
+const VIEW_HEIGHT = 57;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 2.4;
 
@@ -53,7 +54,7 @@ export class BattleScene {
   private yawIndex = 0;
   private yaw = Math.PI / 4;
   private targetYaw = Math.PI / 4;
-  private zoom = 1;
+  private zoom = 1.12;
   private elapsed = 0;
   private selected: CityId | null = null;
   private disposed = false;
@@ -65,7 +66,7 @@ export class BattleScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 1.28;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0c120e);
@@ -105,7 +106,7 @@ export class BattleScene {
     const position = this.positions.get(cityId);
     if (!position) return null;
     const rect = this.canvas.getBoundingClientRect();
-    const projected = position.clone().setY(8.5).project(this.camera);
+    const projected = position.clone().setY(4.2).project(this.camera);
     return {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
@@ -115,7 +116,7 @@ export class BattleScene {
   pickCity(clientX: number, clientY: number, state: SimState): CityId | null {
     const rect = this.canvas.getBoundingClientRect();
     let bestId: CityId | null = null;
-    let bestDistance = 46;
+    let bestDistance = 40;
     for (const city of state.cities) {
       const position = this.positions.get(city.id);
       if (!position) continue;
@@ -154,8 +155,10 @@ export class BattleScene {
       const mesh = object as THREE.Mesh;
       if (mesh.geometry) mesh.geometry.dispose();
       const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
-      else material?.dispose();
+      if (Array.isArray(material)) material.forEach((entry) => {
+        if (entry.userData.shared !== true) entry.dispose();
+      });
+      else if (material && material.userData.shared !== true) material.dispose();
     });
     for (const view of this.cityViews.values()) view.texture.dispose();
     for (const view of this.squadViews.values()) view.texture.dispose();
@@ -190,11 +193,11 @@ export class BattleScene {
         this.rebuildCityModel(view, city);
       }
 
-      view.label.position.y = city.level === 1 ? 10 : city.level === 2 ? 14 : 16;
+      view.label.position.y = 5.0;
       const label = `${city.id} · L${city.level}\n${city.pop}/${city.maxPop}`;
       if (label !== view.labelText) {
         view.labelText = label;
-        this.paintLabel(view.canvas, view.texture, label.split("\n"), "#f2ead7");
+        this.paintLabel(view.canvas, view.texture, label.split("\n"), "#f2ead7", [78, 54]);
         view.label.material.map = view.texture;
         view.label.material.needsUpdate = true;
       }
@@ -262,7 +265,7 @@ export class BattleScene {
     group.position.copy(position);
 
     const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(6.1, 30),
+      new THREE.CircleGeometry(5.0, 30),
       new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }),
     );
     shadow.rotation.x = -Math.PI / 2;
@@ -270,7 +273,7 @@ export class BattleScene {
     group.add(shadow);
 
     const apron = new THREE.Mesh(
-      new THREE.CylinderGeometry(5.25, 5.55, 0.16, 12),
+      new THREE.CylinderGeometry(4.25, 4.55, 0.16, 12),
       new THREE.MeshStandardMaterial({ color: 0x3d4f34, roughness: 1, flatShading: true }),
     );
     apron.position.y = 0.08;
@@ -278,7 +281,7 @@ export class BattleScene {
 
     const platformSide = new THREE.MeshStandardMaterial({ color: 0x6a6150, roughness: 1, flatShading: true });
     const platformTop = new THREE.MeshStandardMaterial({ map: flagstoneTexture(), roughness: 0.95 });
-    const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 5.1, 0.22, 10), [
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(3.9, 4.2, 0.22, 10), [
       platformSide,
       platformTop,
       platformSide,
@@ -292,14 +295,14 @@ export class BattleScene {
 
     const labelCanvas = document.createElement("canvas");
     labelCanvas.width = 512;
-    labelCanvas.height = 192;
+    labelCanvas.height = 160;
     const texture = new THREE.CanvasTexture(labelCanvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     const label = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
-    label.scale.set(6.4, 2.4, 1);
-    label.position.y = 13.5;
+    label.scale.set(5.4, 1.7, 1);
+    label.position.y = 5.0;
     group.add(label);
 
     this.scene.add(group);
@@ -318,290 +321,18 @@ export class BattleScene {
   }
 
   private rebuildCityModel(view: CityView, city: CityState): void {
+    view.model.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+    });
     view.model.clear();
-    const tint = PLAYER_COLORS[city.owner];
-    const built = art.ready ? this.buildArtCity(city, tint) : this.buildFallbackCity(city, tint);
+    const seed = hashId(city.id) + city.level * 17;
+    const palette = paletteFor(city.owner);
+    const built = buildTown(city.level, palette, seed);
+    built.add(buildWall(city.level, palette));
     view.model.add(built);
     view.owner = city.owner;
     view.level = city.level;
-  }
-
-  private buildHouse(scale: number, roofStyle: number): THREE.Group {
-    const group = new THREE.Group();
-    const width = 4.2;
-    const depth = 3.4;
-    const wallHeight = 3.4;
-    const roofHeight = 1.3;
-    const overhang = 0.22;
-
-    const plaster = new THREE.MeshStandardMaterial({
-      map: housePlasterTexture(),
-      roughness: 0.92,
-      side: THREE.DoubleSide,
-    });
-    const roofMaterial = new THREE.MeshStandardMaterial({
-      map: houseRoofTexture(roofStyle),
-      roughness: 0.85,
-      side: THREE.DoubleSide,
-    });
-    const trim = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.95 });
-
-    const plinth = new THREE.Mesh(
-      new THREE.BoxGeometry(width + 0.24, 0.32, depth + 0.24),
-      new THREE.MeshStandardMaterial({ color: 0x8a8170, roughness: 1 }),
-    );
-    plinth.position.y = 0.16;
-    group.add(plinth);
-
-    const body = new THREE.Mesh(new THREE.BoxGeometry(width, wallHeight, depth), plaster);
-    body.position.y = 0.3 + wallHeight / 2;
-    group.add(body);
-
-    const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(width * 0.72, 18),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.16, depthWrite: false }),
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.02;
-    group.add(shadow);
-
-    const geometry = new THREE.BufferGeometry();
-    const x0 = -width / 2 - overhang;
-    const x1 = width / 2 + overhang;
-    const z0 = -depth / 2 - overhang;
-    const z1 = depth / 2 + overhang;
-    const eave = 0.3 + wallHeight;
-    const ridge = 0.3 + wallHeight + roofHeight;
-    const positions = [
-      x0, eave, z1, x1, eave, z1, x1, ridge, 0, x0, ridge, 0,
-      x1, eave, z0, x0, eave, z0, x0, ridge, 0, x1, ridge, 0,
-    ];
-    const uvs = [0, 0, 2, 0, 2, 1, 0, 1, 0, 0, 2, 0, 2, 1, 0, 1];
-    const indices = [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7];
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    const roof = new THREE.Mesh(geometry, roofMaterial);
-    group.add(roof);
-
-    for (const side of [-1, 1]) {
-      const gable = new THREE.Mesh(new THREE.BufferGeometry(), plaster);
-      const gx = side * (width / 2);
-      const gpos = [gx, eave, z0, gx, eave, z1, gx, ridge, 0];
-      gable.geometry.setAttribute("position", new THREE.Float32BufferAttribute(gpos, 3));
-      gable.geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0.5, 1], 2));
-      gable.geometry.setIndex(side > 0 ? [0, 1, 2] : [2, 1, 0]);
-      gable.geometry.computeVertexNormals();
-      group.add(gable);
-    }
-
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.55, 0.1), trim);
-    door.position.set(0.3, 1.08, depth / 2 + 0.02);
-    group.add(door);
-
-    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x2a241c, roughness: 0.6 });
-    const addWindow = (x: number, y: number, z: number, rotation: number): void => {
-      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.58, 0.08), windowMaterial);
-      pane.position.set(x, y, z);
-      pane.rotation.y = rotation;
-      group.add(pane);
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.74, 0.04), trim);
-      frame.position.set(x, y, z);
-      frame.rotation.y = rotation;
-      group.add(frame);
-    };
-    for (const x of [-1.2, 1.25]) {
-      addWindow(x, 2.55, depth / 2 + 0.03, 0);
-      addWindow(x, 2.55, -depth / 2 - 0.03, 0);
-    }
-    for (const z of [-0.8, 0.85]) {
-      addWindow(width / 2 + 0.03, 2.55, z, Math.PI / 2);
-      addWindow(-width / 2 - 0.03, 2.55, z, Math.PI / 2);
-    }
-
-    const ridgeCap = new THREE.Mesh(new THREE.BoxGeometry(width + 0.46, 0.14, 0.24), trim);
-    ridgeCap.position.set(0, ridge + 0.02, 0);
-    group.add(ridgeCap);
-
-    for (const cx of [-width / 2 + 0.06, width / 2 - 0.06]) {
-      for (const cz of [-depth / 2 + 0.06, depth / 2 - 0.06]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 0.12), trim);
-        post.position.set(cx, wallHeight / 2, cz);
-        group.add(post);
-      }
-    }
-    for (const z of [-depth / 2 - 0.01, depth / 2 + 0.01]) {
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(width, 0.12, 0.08), trim);
-      beam.position.set(0, wallHeight - 0.12, z);
-      group.add(beam);
-    }
-
-    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x8a8170, roughness: 1 }));
-    chimney.position.set(-width / 4, ridge - 0.1, -0.5);
-    group.add(chimney);
-
-    group.scale.setScalar(scale);
-    return group;
-  }
-
-  private buildArtCity(city: CityState, tint: number): THREE.Group {
-    const group = new THREE.Group();
-    const castle = (name: string, x: number, y: number, z: number, scale: number, rotation = 0) => {
-      const piece = art.castle(name, tint);
-      if (!piece) return;
-      piece.position.set(x, y, z);
-      piece.scale.setScalar(scale);
-      piece.rotation.y = rotation;
-      group.add(piece);
-    };
-    const town = (name: string, x: number, y: number, z: number, scale: number, rotation = 0) => {
-      const piece = art.model(name);
-      if (!piece) return;
-      piece.position.set(x, y, z);
-      piece.scale.setScalar(scale);
-      piece.rotation.y = rotation;
-      group.add(piece);
-    };
-
-    const village = city.level === 1;
-    const wallRole = village ? "fence" : "wall";
-    const wallScale = village ? 2.6 : 2.5;
-    const radius = 4.55;
-    this.addWallRing(
-      group,
-      wallRole,
-      radius,
-      wallScale,
-      village ? "fenceGate" : "wallDoor",
-      1,
-    );
-
-    if (city.level === 1) {
-      const scale = 0.28;
-      castle("towerSquareBase", 0, 0, -1.7, scale);
-      castle("towerSquareTopRoofHigh", 0, 10 * scale, -1.7, scale);
-      castle("flagBlue", 0, 21 * scale, -1.7, scale * 1.1);
-      this.addKeepDoor(group, -0.25, 1.1, 1.6);
-      const houseLeft = this.buildHouse(0.58, 0);
-      houseLeft.position.set(-2.7, 0, 2.1);
-      houseLeft.rotation.y = 0.22;
-      group.add(houseLeft);
-      const houseRight = this.buildHouse(0.55, 1);
-      houseRight.position.set(2.7, 0, 2.0);
-      houseRight.rotation.y = -0.26;
-      group.add(houseRight);
-      town("lantern", -3.1, 0, -1.6, 1.6);
-      town("cart", 0.2, 0, 2.6, 1.4, 0.5);
-    } else if (city.level === 2) {
-      const scale = 0.34;
-      castle("towerSquareBase", 0, 0, -1.8, scale);
-      castle("towerSquareMidWindows", 0, 10 * scale, -1.8, scale);
-      castle("towerSquareTopRoofHigh", 0, 20 * scale, -1.8, scale);
-      castle("flagBlue", 0, 32 * scale, -1.8, scale * 1.05);
-      this.addKeepDoor(group, 0.0, 1.3, 1.9);
-      castle("flagBlueWide", -2.4, 0, 1.9, scale * 0.9);
-      castle("flagBlueWide", 2.4, 0, 1.9, scale * 0.9);
-      const houseLeft = this.buildHouse(0.58, 2);
-      houseLeft.position.set(-2.9, 0, 2.2);
-      houseLeft.rotation.y = 0.2;
-      group.add(houseLeft);
-      const houseRight = this.buildHouse(0.55, 1);
-      houseRight.position.set(2.9, 0, 2.1);
-      houseRight.rotation.y = -0.24;
-      group.add(houseRight);
-      town("lantern", -3.2, 0, -1.5, 1.6);
-    } else {
-      const scale = 0.4;
-      for (const side of [-1, 1]) {
-        castle("towerSquareBase", side * 2.55, 0, -2.1, 0.24);
-        castle("towerSquareTopRoofHigh", side * 2.55, 10 * 0.24, -2.1, 0.24);
-        castle("flagBlue", side * 2.55, 21 * 0.24, -2.1, 0.24);
-      }
-      castle("towerSquareBase", 0, 0, -1.6, scale);
-      castle("towerSquareMidWindows", 0, 10 * scale, -1.6, scale);
-      castle("towerSquareTopRoofHigh", 0, 20 * scale, -1.6, scale);
-      castle("flagBlue", 0, 32 * scale, -1.6, scale);
-      this.addKeepDoor(group, 0.55, 1.5, 2.2);
-      castle("flagBlueWide", -2.8, 0, 1.9, 0.27);
-      castle("flagBlueWide", 2.8, 0, 1.9, 0.27);
-      const houseLeft = this.buildHouse(0.55, 0);
-      houseLeft.position.set(-2.9, 0, 2.3);
-      houseLeft.rotation.y = 0.3;
-      group.add(houseLeft);
-      const houseRight = this.buildHouse(0.53, 2);
-      houseRight.position.set(2.9, 0, 2.2);
-      houseRight.rotation.y = -0.34;
-      group.add(houseRight);
-      town("lantern", -3.4, 0, -1.4, 1.7);
-    }
-
-    return group;
-  }
-
-  private addKeepDoor(group: THREE.Group, z: number, width: number, height: number): void {
-    const material = new THREE.MeshStandardMaterial({ color: 0x3b2a1c, roughness: 0.9 });
-    const door = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.14), material);
-    door.position.set(0, height / 2, z);
-    group.add(door);
-    const arch = new THREE.Mesh(
-      new THREE.BoxGeometry(width + 0.3, 0.22, 0.2),
-      new THREE.MeshStandardMaterial({ color: 0x8a8170, roughness: 1 }),
-    );
-    arch.position.set(0, height + 0.11, z);
-    group.add(arch);
-
-    const slitMaterial = new THREE.MeshStandardMaterial({ color: 0x241d15, roughness: 0.8 });
-    for (const [x, y] of [[-0.5, height + 0.9], [0.5, height + 0.9], [0, height + 1.9]] as Array<[number, number]>) {
-      const slit = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.1), slitMaterial);
-      slit.position.set(x, y, z - 0.05);
-      group.add(slit);
-    }
-  }
-
-  private addWallRing(
-    group: THREE.Group,
-    role: string,
-    radius: number,
-    scale: number,
-    doorRole: string,
-    rows: number,
-  ): void {
-    const count = Math.max(6, Math.round((Math.PI * 2 * radius) / scale));
-    const doorIndex = Math.round(count * 0.25);
-    for (let index = 0; index < count; index += 1) {
-      const angle = (index / count) * Math.PI * 2;
-      for (let row = 0; row < rows; row += 1) {
-        const piece = art.model(index === doorIndex && row === 0 ? doorRole : role);
-        if (!piece) return;
-        piece.position.set(Math.cos(angle) * radius, row * scale, Math.sin(angle) * radius);
-        piece.scale.setScalar(scale);
-        piece.rotation.y = -angle;
-        group.add(piece);
-      }
-    }
-  }
-
-  private buildFallbackCity(city: CityState, tint: number): THREE.Group {
-    const group = new THREE.Group();
-    const scale = 0.9 + city.level * 0.12;
-    const keep = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(1.85, 1.65, 1.85),
-      new THREE.MeshStandardMaterial({ color: 0xd8cfb6, roughness: 0.9, flatShading: true }),
-    );
-    body.position.y = 0.82;
-    keep.add(body);
-    const roof = new THREE.Mesh(
-      new THREE.ConeGeometry(1.5, 1, 4),
-      new THREE.MeshStandardMaterial({ color: tint, roughness: 0.8, flatShading: true }),
-    );
-    roof.rotation.y = Math.PI / 4;
-    roof.position.y = 2.5;
-    keep.add(roof);
-    keep.scale.set(scale, scale, scale);
-    group.add(keep);
-    return group;
   }
 
   private createSquadView(squad: SquadState): SquadView {
@@ -649,29 +380,36 @@ export class BattleScene {
     return { group, units, label, canvas, texture, labelText: String(squad.count) };
   }
 
-  private paintLabel(canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, lines: string[], color: string): void {
+  private paintLabel(
+    canvas: HTMLCanvasElement,
+    texture: THREE.CanvasTexture,
+    lines: string[],
+    color: string,
+    sizes?: number[],
+  ): void {
     const context = canvas.getContext("2d");
     if (!context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.lineJoin = "round";
-    const sizes = lines.length > 1 ? [58, 42] : [60];
-    let y = canvas.height / 2 - (lines.length - 1) * 24;
+    const fontSizes = sizes ?? (lines.length > 1 ? [58, 42] : [60]);
+    const step = canvas.height * 0.42;
+    let y = canvas.height / 2 - ((lines.length - 1) * step) / 2;
     lines.forEach((line, index) => {
-      context.font = `600 ${sizes[index] ?? 32}px "Segoe UI", "Microsoft YaHei", sans-serif`;
+      context.font = `600 ${fontSizes[index] ?? 32}px "Segoe UI", "Microsoft YaHei", sans-serif`;
       context.strokeStyle = "rgba(8, 11, 9, 0.85)";
-      context.lineWidth = 7;
+      context.lineWidth = 8;
       context.strokeText(line, canvas.width / 2, y);
       context.fillStyle = color;
       context.fillText(line, canvas.width / 2, y);
-      y += 66;
+      y += step;
     });
     texture.needsUpdate = true;
   }
 
   private buildLights(): void {
-    const hemisphere = new THREE.HemisphereLight(0xe4edcf, 0x1b2618, 1.35);
+    const hemisphere = new THREE.HemisphereLight(0xe4edcf, 0x1b2618, 1.5);
     this.scene.add(hemisphere);
     const sun = new THREE.DirectionalLight(0xffd39c, 2.7);
     sun.position.set(26, 42, 18);
@@ -711,9 +449,9 @@ export class BattleScene {
   }
 
   private buildRoads(): void {
-    const width = 2.0;
+    const width = 1.6;
     const centerId = "c3";
-    const cityRadius = (id: string) => (id === centerId ? 7.3 : 5.35);
+    const cityRadius = () => 4.35;
     const roadMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(1, 1), roughness: 1 });
     const plazaMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
     const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xb3aa96, roughness: 1 });
@@ -723,8 +461,8 @@ export class BattleScene {
       const to = this.positions.get(edge.to);
       if (!from || !to) continue;
       const direction = new THREE.Vector3().subVectors(to, from).normalize();
-      const start = from.clone().addScaledVector(direction, cityRadius(edge.from));
-      const end = to.clone().addScaledVector(direction, -cityRadius(edge.to));
+      const start = from.clone().addScaledVector(direction, cityRadius());
+      const end = to.clone().addScaledVector(direction, -cityRadius());
       const length = start.distanceTo(end);
       if (length < 0.6) continue;
       this.addRoad(start, end, length, width, roadMaterial, curbMaterial, edge.from !== centerId, edge.to !== centerId, plazaMaterial);
@@ -788,7 +526,7 @@ export class BattleScene {
   }
 
   private addPlaza(position: THREE.Vector3, material: THREE.Material): void {
-    const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.95, 22), material);
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.65, 22), material);
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.set(position.x, 0.04, position.z);
     this.scene.add(plaza);
@@ -797,7 +535,7 @@ export class BattleScene {
   private addRoundabout(centerId: string, width: number, plazaMaterial: THREE.Material, curbMaterial: THREE.Material): void {
     const center = this.positions.get(centerId);
     if (!center) return;
-    const inner = 5.35;
+    const inner = 4.35;
     const outer = inner + width;
     const ringMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(10, 2), roughness: 1 });
     const shoulder = new THREE.Mesh(
@@ -825,7 +563,7 @@ export class BattleScene {
       const position = this.positions.get(city.id);
       if (!position) return;
       const direction = new THREE.Vector3().subVectors(position, center).normalize();
-      const pad = new THREE.Mesh(new THREE.CircleGeometry(1.75, 20), plazaMaterial);
+      const pad = new THREE.Mesh(new THREE.CircleGeometry(1.55, 20), plazaMaterial);
       pad.rotation.x = -Math.PI / 2;
       pad.position.set(center.x + direction.x * outer, 0.055, center.z + direction.z * outer);
       this.scene.add(pad);
@@ -865,8 +603,8 @@ export class BattleScene {
       const radius = 17 + random() * 12;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (nearCity(this.positions, x, z, 6.4)) continue;
-      if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
+      if (nearCity(this.positions, x, z, 5.4)) continue;
+      if (nearRoad(this.map.edges, this.positions, x, z, 1.9)) continue;
       treePlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 2.6 + random() * 1.1 });
     }
 
@@ -877,8 +615,8 @@ export class BattleScene {
       const radius = 16 + random() * 13;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (nearCity(this.positions, x, z, 5.6)) continue;
-      if (nearRoad(this.map.edges, this.positions, x, z, 1.4)) continue;
+      if (nearCity(this.positions, x, z, 4.7)) continue;
+      if (nearRoad(this.map.edges, this.positions, x, z, 1.3)) continue;
       rockPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.6 + random() * 1.2 });
     }
 
@@ -889,8 +627,8 @@ export class BattleScene {
       const radius = 15 + random() * 14;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (nearCity(this.positions, x, z, 4.6)) continue;
-      if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
+      if (nearCity(this.positions, x, z, 4.1)) continue;
+      if (nearRoad(this.map.edges, this.positions, x, z, 1.1)) continue;
       plantPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
     }
 
@@ -970,6 +708,15 @@ export class BattleScene {
   }
 }
 
+function hashId(id: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -1044,90 +791,6 @@ function makeGroundTexture(): THREE.CanvasTexture {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(3, 3);
-  return texture;
-}
-
-let plasterTexture: THREE.CanvasTexture | null = null;
-function housePlasterTexture(): THREE.CanvasTexture {
-  if (plasterTexture) return plasterTexture;
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 256;
-  const context = canvas.getContext("2d");
-  if (context) {
-    context.fillStyle = "#d9ccb2";
-    context.fillRect(0, 0, 256, 256);
-    let seed = 4242;
-    const random = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 4294967296;
-    };
-    for (let index = 0; index < 260; index += 1) {
-      context.fillStyle = `rgba(120, 104, 78, ${0.03 + random() * 0.05})`;
-      context.fillRect(random() * 256, random() * 256, 1 + random() * 4, 1 + random() * 4);
-    }
-    context.fillStyle = "#5a3f2a";
-    context.fillRect(0, 0, 256, 14);
-    context.fillRect(0, 242, 256, 14);
-    context.fillRect(0, 0, 14, 256);
-    context.fillRect(242, 0, 14, 256);
-    context.fillRect(18, 120, 220, 12);
-    for (const x of [36, 128, 220]) context.fillRect(x, 0, 10, 256);
-    context.save();
-    context.translate(70, 120);
-    context.rotate(0.6);
-    context.fillRect(0, 0, 120, 9);
-    context.restore();
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  plasterTexture = texture;
-  return texture;
-}
-
-const roofPalettes: Array<[string, string, string, string]> = [
-  ["#a14b35", "#b25840", "#97432f", "rgba(70, 30, 20, 0.35)"],
-  ["#576b46", "#637a50", "#4b5d3c", "rgba(32, 44, 26, 0.35)"],
-  ["#4f5f6b", "#5c6e7c", "#43525d", "rgba(24, 32, 38, 0.35)"],
-];
-const roofTextures = new Map<number, THREE.CanvasTexture>();
-
-function houseRoofTexture(style: number): THREE.CanvasTexture {
-  const cached = roofTextures.get(style);
-  if (cached) return cached;
-  const palette = roofPalettes[style % roofPalettes.length];
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 256;
-  const context = canvas.getContext("2d");
-  if (context) {
-    context.fillStyle = palette[0];
-    context.fillRect(0, 0, 256, 256);
-    for (let row = 0; row < 8; row += 1) {
-      const y = row * 32;
-      for (let col = 0; col < 8; col += 1) {
-        const x = col * 32 + (row % 2) * 16;
-        context.fillStyle = row % 2 === 0 ? palette[1] : palette[2];
-        context.beginPath();
-        context.roundRect(x + 1, y + 1, 30, 30, 6);
-        context.fill();
-        context.strokeStyle = palette[3];
-        context.lineWidth = 2;
-        context.beginPath();
-        context.moveTo(x + 4, y + 24);
-        context.quadraticCurveTo(x + 16, y + 32, x + 28, y + 24);
-        context.stroke();
-      }
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(1.6, 1.2);
-  roofTextures.set(style, texture);
   return texture;
 }
 
