@@ -4,6 +4,9 @@ dist/
 *.log
 .work/
 tools/harness/out/
+apps/client/dist/
+test-results/
+playwright-report/
 apps/client/library/
 apps/client/temp/
 apps/client/local/

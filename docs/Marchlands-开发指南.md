@@ -665,8 +665,8 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 pnpm install
 pnpm --filter @marchlands/sim test
 pnpm --filter @marchlands/sim test:determinism
-pnpm --filter @marchlands/sim sim:forest01 --matches 100
-pnpm --filter client dev
+pnpm sim:forest01
+pnpm --filter @marchlands/client dev
 pnpm test:e2e
 ~~~
 
@@ -745,9 +745,9 @@ pnpm test:e2e
 
 - [x] M1.1 数据与页面图：forest01、rules/1、校验、页面流程图
 - [x] M1.2 模拟核心：33 项单测、属性测试、100 局自对弈、回放哈希
-- [ ] M1.3 3D 灰盒：镜头、地形、7 城、单位、选中与派兵
-- [ ] M1.4 AI 与胜负：AI 与胜负规则已完成；HUD、计时、高低差待做
-- [ ] M1.5 页面
+- [x] M1.3 3D 灰盒：四向镜头、地形、7 城、单位、选中与派兵
+- [x] M1.4 AI 与胜负、HUD、计时；高低差测试场景待做
+- [x] M1.5 页面：八个页面可走，Playwright 5 条流程通过
 - [ ] M1.6 美术与音频
 - [ ] M1.7 试玩与修复
 - [ ] M1.8 验收

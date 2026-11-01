@@ -7,7 +7,9 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./node": "./src/node.ts"
+    "./node": "./src/node.ts",
+    "./maps/forest01.json": "./maps/forest01.json",
+    "./rules/1.json": "./rules/1.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
