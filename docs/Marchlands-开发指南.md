@@ -40,7 +40,7 @@ M1 完成 = 以下全部成立：
 - 所有页面可走通：启动、主菜单、简报、对局、暂停、结算、设置、退出确认。
 - 1280×720 与 1920×1080 下页面不重叠、不缺字、没有无响应按钮。
 - 目标机器 1080p 60 帧；加载 forest01 不超过 5 秒。
-- Node 与 Cocos 原生对同一指令流得到相同状态哈希。
+- Node 与 PC 客户端对同一指令流得到相同状态哈希。
 - 3 节点高低差测试场景能跑：单位上下坡、四向可见、城市不悬空。
 - 10 名外部玩家能自行完成一局；0 个 P0/P1 缺陷。
 
@@ -158,7 +158,8 @@ c7 - c3
 
 ## 4. 技术栈与仓库
 
-- 引擎：Cocos Creator 3.8.x，TypeScript，Windows x64 原生构建。
+- 渲染：Three.js；PC 外壳：Electron；TypeScript。
+- 选择原因见 docs/adr/0001-renderer.md；模拟核心与渲染完全解耦。
 - 包管理：pnpm + Turborepo。
 - 测试：Vitest、fast-check、Playwright。
 - 首轮不引入后端、数据库、Redis、Docker。
@@ -168,7 +169,7 @@ c7 - c3
 ~~~text
 marchlands/
   apps/
-    client/                 Cocos Creator 3.8 项目
+    client/                 Three.js + Vite 客户端
   packages/
     sim/                    确定性模拟核心
     content/                地图、规则、文本
@@ -484,7 +485,7 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 - 不参与哈希：map、graph、events；这三项不影响模拟结果。
 - 回放文件：map slug、map hash、ruleset、seed、指令数组、检查点哈希、结果。
 - 首轮不实现回放 UI；先保证 harness 能导出与重放。
-- Node 与 Cocos 原生必须对同一回放得到相同最终哈希。
+- Node 与 PC 客户端必须对同一回放得到相同最终哈希。
 
 ---
 
@@ -608,7 +609,7 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 
 - 写 forest01 JSON 与 rules 1 JSON。
 - 画页面流程图。
-- Cocos 空场景 + 正交相机 + 四向旋转 + 灰盒地形。
+- Three.js 空场景 + 正交相机 + 四向旋转 + 灰盒地形。
 - 验收：目标机 60 帧；7 城可加载。
 
 ### 第 2 周：模拟核心
@@ -687,7 +688,7 @@ pnpm test:e2e
 **禁止**
 
 - 禁止把原作 PNG、OGG、TXT、坐标、节点、UI 直接复制进项目。
-- 禁止在 sim 里 import Cocos、DOM、Node API。
+- 禁止在 sim 里 import Three.js、DOM、Node API。
 - 禁止在 sim 里使用 Math.random、Date.now。
 - 禁止首轮加 Agent、服务器、法术、塔、城堡、新机制。
 - 禁止自由 360° 镜头。
