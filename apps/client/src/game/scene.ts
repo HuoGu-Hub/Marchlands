@@ -262,7 +262,7 @@ export class BattleScene {
     group.position.copy(position);
 
     const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(5.9, 30),
+      new THREE.CircleGeometry(6.1, 30),
       new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }),
     );
     shadow.rotation.x = -Math.PI / 2;
@@ -278,7 +278,7 @@ export class BattleScene {
 
     const platformSide = new THREE.MeshStandardMaterial({ color: 0x6a6150, roughness: 1, flatShading: true });
     const platformTop = new THREE.MeshStandardMaterial({ map: flagstoneTexture(), roughness: 0.95 });
-    const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.55, 4.8, 0.22, 10), [
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 5.1, 0.22, 10), [
       platformSide,
       platformTop,
       platformSide,
@@ -467,7 +467,7 @@ export class BattleScene {
     const village = city.level === 1;
     const wallRole = village ? "fence" : "wall";
     const wallScale = village ? 2.6 : 2.5;
-    const radius = 4.2;
+    const radius = 4.55;
     this.addWallRing(
       group,
       wallRole,
@@ -479,36 +479,36 @@ export class BattleScene {
 
     if (city.level === 1) {
       const scale = 0.28;
-      castle("towerSquareBase", 0, 0, -1.3, scale);
-      castle("towerSquareTopRoofHigh", 0, 10 * scale, -1.3, scale);
-      castle("flagBlue", 0, 21 * scale, -1.3, scale * 1.1);
-      this.addKeepDoor(group, 0.05, 1.1, 1.6);
-      const houseLeft = this.buildHouse(0.72, 0);
-      houseLeft.position.set(-2.6, 0, 1.7);
-      houseLeft.rotation.y = 0.35;
+      castle("towerSquareBase", 0, 0, -1.7, scale);
+      castle("towerSquareTopRoofHigh", 0, 10 * scale, -1.7, scale);
+      castle("flagBlue", 0, 21 * scale, -1.7, scale * 1.1);
+      this.addKeepDoor(group, -0.25, 1.1, 1.6);
+      const houseLeft = this.buildHouse(0.58, 0);
+      houseLeft.position.set(-2.7, 0, 2.1);
+      houseLeft.rotation.y = 0.22;
       group.add(houseLeft);
-      const houseRight = this.buildHouse(0.66, 1);
-      houseRight.position.set(2.55, 0, 1.35);
-      houseRight.rotation.y = -0.4;
+      const houseRight = this.buildHouse(0.55, 1);
+      houseRight.position.set(2.7, 0, 2.0);
+      houseRight.rotation.y = -0.26;
       group.add(houseRight);
       town("lantern", -3.1, 0, -1.6, 1.6);
       town("cart", 0.2, 0, 2.6, 1.4, 0.5);
     } else if (city.level === 2) {
       const scale = 0.34;
-      castle("towerSquareBase", 0, 0, -1.4, scale);
-      castle("towerSquareMidWindows", 0, 10 * scale, -1.4, scale);
-      castle("towerSquareTopRoofHigh", 0, 20 * scale, -1.4, scale);
-      castle("flagBlue", 0, 32 * scale, -1.4, scale * 1.05);
-      this.addKeepDoor(group, 0.35, 1.3, 1.9);
+      castle("towerSquareBase", 0, 0, -1.8, scale);
+      castle("towerSquareMidWindows", 0, 10 * scale, -1.8, scale);
+      castle("towerSquareTopRoofHigh", 0, 20 * scale, -1.8, scale);
+      castle("flagBlue", 0, 32 * scale, -1.8, scale * 1.05);
+      this.addKeepDoor(group, 0.0, 1.3, 1.9);
       castle("flagBlueWide", -2.4, 0, 1.9, scale * 0.9);
       castle("flagBlueWide", 2.4, 0, 1.9, scale * 0.9);
-      const houseLeft = this.buildHouse(0.68, 2);
-      houseLeft.position.set(-2.7, 0, 1.6);
-      houseLeft.rotation.y = 0.3;
+      const houseLeft = this.buildHouse(0.58, 2);
+      houseLeft.position.set(-2.9, 0, 2.2);
+      houseLeft.rotation.y = 0.2;
       group.add(houseLeft);
-      const houseRight = this.buildHouse(0.62, 1);
-      houseRight.position.set(2.6, 0, 1.3);
-      houseRight.rotation.y = -0.45;
+      const houseRight = this.buildHouse(0.55, 1);
+      houseRight.position.set(2.9, 0, 2.1);
+      houseRight.rotation.y = -0.24;
       group.add(houseRight);
       town("lantern", -3.2, 0, -1.5, 1.6);
     } else {
@@ -518,20 +518,20 @@ export class BattleScene {
         castle("towerSquareTopRoofHigh", side * 2.55, 10 * 0.24, -2.1, 0.24);
         castle("flagBlue", side * 2.55, 21 * 0.24, -2.1, 0.24);
       }
-      castle("towerSquareBase", 0, 0, -0.8, scale);
-      castle("towerSquareMidWindows", 0, 10 * scale, -0.8, scale);
-      castle("towerSquareTopRoofHigh", 0, 20 * scale, -0.8, scale);
-      castle("flagBlue", 0, 32 * scale, -0.8, scale);
-      this.addKeepDoor(group, 1.35, 1.5, 2.2);
+      castle("towerSquareBase", 0, 0, -1.6, scale);
+      castle("towerSquareMidWindows", 0, 10 * scale, -1.6, scale);
+      castle("towerSquareTopRoofHigh", 0, 20 * scale, -1.6, scale);
+      castle("flagBlue", 0, 32 * scale, -1.6, scale);
+      this.addKeepDoor(group, 0.55, 1.5, 2.2);
       castle("flagBlueWide", -2.8, 0, 1.9, 0.27);
       castle("flagBlueWide", 2.8, 0, 1.9, 0.27);
-      const houseLeft = this.buildHouse(0.66, 0);
-      houseLeft.position.set(-2.9, 0, 1.7);
-      houseLeft.rotation.y = 0.6;
+      const houseLeft = this.buildHouse(0.55, 0);
+      houseLeft.position.set(-2.9, 0, 2.3);
+      houseLeft.rotation.y = 0.3;
       group.add(houseLeft);
-      const houseRight = this.buildHouse(0.62, 2);
-      houseRight.position.set(2.85, 0, 1.4);
-      houseRight.rotation.y = -0.65;
+      const houseRight = this.buildHouse(0.53, 2);
+      houseRight.position.set(2.9, 0, 2.2);
+      houseRight.rotation.y = -0.34;
       group.add(houseRight);
       town("lantern", -3.4, 0, -1.4, 1.7);
     }
@@ -711,22 +711,145 @@ export class BattleScene {
   }
 
   private buildRoads(): void {
-    const material = new THREE.MeshStandardMaterial({ color: 0x7a674b, roughness: 1 });
-    const edgeMaterial = new THREE.MeshStandardMaterial({ color: 0x8c7959, roughness: 1 });
+    const width = 2.0;
+    const centerId = "c3";
+    const cityRadius = (id: string) => (id === centerId ? 7.3 : 5.35);
+    const roadMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(1, 1), roughness: 1 });
+    const plazaMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
+    const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xb3aa96, roughness: 1 });
+
     for (const edge of this.map.edges) {
       const from = this.positions.get(edge.from);
       const to = this.positions.get(edge.to);
       if (!from || !to) continue;
-      const length = from.distanceTo(to);
-      const road = new THREE.Mesh(new THREE.BoxGeometry(length, 0.06, 0.68), material);
-      road.position.set((from.x + to.x) / 2, 0.03, (from.z + to.z) / 2);
-      road.rotation.y = -Math.atan2(to.z - from.z, to.x - from.x);
-      this.scene.add(road);
-      const center = new THREE.Mesh(new THREE.BoxGeometry(length, 0.03, 0.14), edgeMaterial);
-      center.position.set(road.position.x, 0.07, road.position.z);
-      center.rotation.y = road.rotation.y;
-      this.scene.add(center);
+      const direction = new THREE.Vector3().subVectors(to, from).normalize();
+      const start = from.clone().addScaledVector(direction, cityRadius(edge.from));
+      const end = to.clone().addScaledVector(direction, -cityRadius(edge.to));
+      const length = start.distanceTo(end);
+      if (length < 0.6) continue;
+      this.addRoad(start, end, length, width, roadMaterial, curbMaterial, edge.from !== centerId, edge.to !== centerId, plazaMaterial);
     }
+
+    this.addRoundabout(centerId, width, plazaMaterial, curbMaterial);
+  }
+
+  private addRoad(
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+    length: number,
+    width: number,
+    material: THREE.Material,
+    curbMaterial: THREE.Material,
+    startPlaza: boolean,
+    endPlaza: boolean,
+    plazaMaterial: THREE.Material,
+  ): void {
+    const dx = end.x - start.x;
+    const dz = end.z - start.z;
+    const angle = Math.atan2(dz, dx);
+    const middleX = (start.x + end.x) / 2;
+    const middleZ = (start.z + end.z) / 2;
+    const geometry = new THREE.PlaneGeometry(length, width);
+    geometry.rotateX(-Math.PI / 2);
+    const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
+    for (let index = 0; index < uv.count; index += 1) {
+      uv.setXY(index, uv.getX(index) * (length / 3.2), uv.getY(index));
+    }
+    const shoulderGeometry = new THREE.PlaneGeometry(length + 0.5, width + 0.55);
+    shoulderGeometry.rotateX(-Math.PI / 2);
+    const shoulder = new THREE.Mesh(
+      shoulderGeometry,
+      new THREE.MeshStandardMaterial({ color: 0x4b4a36, roughness: 1 }),
+    );
+    shoulder.position.set(middleX, 0.035, middleZ);
+    shoulder.rotation.y = -angle;
+    this.scene.add(shoulder);
+
+    const road = new THREE.Mesh(geometry, material);
+    road.position.set(middleX, 0.05, middleZ);
+    road.rotation.y = -angle;
+    this.scene.add(road);
+
+    const perpX = -Math.sin(angle);
+    const perpZ = Math.cos(angle);
+    for (const side of [-1, 1]) {
+      const curb = new THREE.Mesh(new THREE.BoxGeometry(length, 0.14, 0.16), curbMaterial);
+      curb.position.set(
+        middleX + perpX * side * (width / 2 + 0.08),
+        0.07,
+        middleZ + perpZ * side * (width / 2 + 0.08),
+      );
+      curb.rotation.y = -angle;
+      this.scene.add(curb);
+    }
+
+    if (startPlaza) this.addPlaza(start, plazaMaterial);
+    if (endPlaza) this.addPlaza(end, plazaMaterial);
+  }
+
+  private addPlaza(position: THREE.Vector3, material: THREE.Material): void {
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.95, 22), material);
+    plaza.rotation.x = -Math.PI / 2;
+    plaza.position.set(position.x, 0.04, position.z);
+    this.scene.add(plaza);
+  }
+
+  private addRoundabout(centerId: string, width: number, plazaMaterial: THREE.Material, curbMaterial: THREE.Material): void {
+    const center = this.positions.get(centerId);
+    if (!center) return;
+    const inner = 5.35;
+    const outer = inner + width;
+    const ringMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(10, 2), roughness: 1 });
+    const shoulder = new THREE.Mesh(
+      new THREE.RingGeometry(inner - 0.3, outer + 0.3, 64),
+      new THREE.MeshStandardMaterial({ color: 0x4b4a36, roughness: 1 }),
+    );
+    shoulder.rotation.x = -Math.PI / 2;
+    shoulder.position.set(center.x, 0.035, center.z);
+    this.scene.add(shoulder);
+
+    const ring = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 64), ringMaterial);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(center.x, 0.05, center.z);
+    this.scene.add(ring);
+
+    for (const radius of [inner, outer]) {
+      const curb = new THREE.Mesh(new THREE.RingGeometry(radius - 0.09, radius + 0.09, 64), curbMaterial);
+      curb.rotation.x = -Math.PI / 2;
+      curb.position.set(center.x, 0.11, center.z);
+      this.scene.add(curb);
+    }
+
+    const neighbours = this.map.cities.filter((city) => city.id !== centerId);
+    neighbours.forEach((city, index) => {
+      const position = this.positions.get(city.id);
+      if (!position) return;
+      const direction = new THREE.Vector3().subVectors(position, center).normalize();
+      const pad = new THREE.Mesh(new THREE.CircleGeometry(1.75, 20), plazaMaterial);
+      pad.rotation.x = -Math.PI / 2;
+      pad.position.set(center.x + direction.x * outer, 0.055, center.z + direction.z * outer);
+      this.scene.add(pad);
+
+      if (index % 2 === 0) {
+        const lamp = art.model("lantern");
+        if (lamp) {
+          const perp = new THREE.Vector3(-direction.z, 0, direction.x);
+          lamp.position.set(
+            center.x + direction.x * (outer + 1.2) + perp.x * 1.4,
+            0,
+            center.z + direction.z * (outer + 1.2) + perp.z * 1.4,
+          );
+          lamp.scale.setScalar(2.5);
+          this.scene.add(lamp);
+          const base = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.34, 0.42, 0.42, 8),
+            new THREE.MeshStandardMaterial({ color: 0x8a8170, roughness: 1 }),
+          );
+          base.position.set(lamp.position.x, 0.21, lamp.position.z);
+          this.scene.add(base);
+        }
+      }
+    });
   }
 
   private buildScenery(): void {
@@ -823,7 +946,7 @@ export class BattleScene {
 
   private buildRing(): THREE.Mesh {
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(5.5, 5.85, 64),
+      new THREE.RingGeometry(5.75, 6.1, 64),
       new THREE.MeshBasicMaterial({ color: 0xe8c883, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
     );
     ring.rotation.x = -Math.PI / 2;
@@ -1044,4 +1167,52 @@ function flagstoneTexture(): THREE.CanvasTexture {
   texture.repeat.set(2, 2);
   flagstoneTextureCache = texture;
   return texture;
+}
+
+let cobbleCache: THREE.CanvasTexture | null = null;
+
+function cobbleTexture(repeatX: number, repeatY: number): THREE.CanvasTexture {
+  if (!cobbleCache) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.fillStyle = "#5f5848";
+      context.fillRect(0, 0, 256, 256);
+      let seed = 5521;
+      const random = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+      for (let row = 0; row < 9; row += 1) {
+        for (let col = 0; col < 9; col += 1) {
+          const w = 22 + random() * 6;
+          const h = 20 + random() * 6;
+          const x = col * 29 + (row % 2) * 12 + 3;
+          const y = row * 29 + 3;
+          context.fillStyle = `rgb(${104 + random() * 22}, ${96 + random() * 20}, ${78 + random() * 18})`;
+          context.beginPath();
+          context.roundRect(x, y, w, h, 5);
+          context.fill();
+          context.strokeStyle = "rgba(40, 36, 28, 0.32)";
+          context.lineWidth = 2;
+          context.stroke();
+          context.fillStyle = "rgba(255, 245, 220, 0.05)";
+          context.fillRect(x + 3, y + 3, w - 6, 3);
+        }
+      }
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    cobbleCache = texture;
+  }
+  const clone = cobbleCache.clone();
+  clone.needsUpdate = true;
+  clone.wrapS = THREE.RepeatWrapping;
+  clone.wrapT = THREE.RepeatWrapping;
+  clone.repeat.set(repeatX, repeatY);
+  return clone;
 }

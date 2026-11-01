@@ -63,18 +63,36 @@ const TEMPLATE = `
   <div class="vignette"></div>
   <div class="hud">
     <div class="hud-left">
-      <div class="chip">城镇 <b id="hud-cities">1</b></div>
-      <div class="chip">人口 <b id="hud-pop">30</b></div>
-      <div class="chip">金币 <b id="hud-gold">0</b></div>
+      <div class="res-card">
+        <svg viewBox="0 0 24 24"><path d="M4 20V10l4-3 4 3v10M12 20V7l4-3 4 3v13M3 20h18" /></svg>
+        <div><span>城镇</span><b id="hud-cities">1</b></div>
+      </div>
+      <div class="res-card">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5" /></svg>
+        <div><span>人口</span><b id="hud-pop">30</b></div>
+      </div>
+      <div class="res-card">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" /><path d="M12 8v8M9.5 10.2c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.7-1 1.5-2.5 1.8-2.5.8-2.5 1.8 1.1 1.7 2.5 1.7 2.5-.7 2.5-1.7" /></svg>
+        <div><span>金币</span><b id="hud-gold">0</b></div>
+      </div>
     </div>
     <div class="hud-right">
-      <div class="timer" id="hud-timer">00:00</div>
+      <div class="timer-card">
+        <span>对局时间</span>
+        <b id="hud-timer">00:00</b>
+      </div>
       <button class="icon-btn" id="btn-pause">暂停</button>
     </div>
     <div class="city-panel" id="city-panel">
-      <div>
-        <div class="city-name"><span id="city-name">c1</span><i id="city-level">LV.3</i></div>
+      <div class="city-accent" id="city-accent"></div>
+      <div class="city-main">
+        <div class="city-name">
+          <span id="city-name">c1</span>
+          <i id="city-level">LV.3</i>
+          <div class="level-pips" id="city-pips"><i></i><i></i><i></i></div>
+        </div>
         <div class="city-line">守军 <b id="city-pop">30</b> / <span id="city-max">65</span> · 防御 <b id="city-defense">1.20</b></div>
+        <div class="pop-bar"><i id="city-pop-fill"></i></div>
       </div>
       <div class="city-actions">
         <button class="btn" id="city-upgrade">升级</button>
@@ -450,6 +468,13 @@ export class App {
     this.el("city-level").textContent = `LV.${city.level}`;
     this.el("city-pop").textContent = String(city.pop);
     this.el("city-max").textContent = String(city.maxPop);
+    const accent = this.el("city-accent");
+    accent.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#8d8778";
+    const fill = this.el("city-pop-fill");
+    fill.style.width = `${Math.round((city.pop / Math.max(1, city.maxPop)) * 100)}%`;
+    fill.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#b3ab97";
+    const pips = this.el("city-pips").querySelectorAll("i");
+    pips.forEach((pip, index) => pip.classList.toggle("on", index < city.level));
     const defense = [1, 1.1, 1.2][city.level - 1] ?? 1;
     this.el("city-defense").textContent = defense.toFixed(2);
     const cost = [15, 22, 32][city.level - 1] ?? 0;
