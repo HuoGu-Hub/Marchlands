@@ -3,6 +3,7 @@ import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
 import type { SimState } from "@marchlands/sim";
 import { audio } from "./audio";
+import { art } from "./game/assets";
 import { GameSession } from "./game/session";
 import { loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
@@ -59,6 +60,7 @@ const TEMPLATE = `
 
 <section id="page-game" class="page">
   <canvas id="game-canvas"></canvas>
+  <div class="vignette"></div>
   <div class="hud">
     <div class="hud-left">
       <div class="chip">城镇 <b id="hud-cities">1</b></div>
@@ -210,20 +212,20 @@ export class App {
   }
 
   start(): void {
-    let progress = 0;
     const status = this.el("boot-status");
     const bar = this.el("boot-progress");
-    const timer = window.setInterval(() => {
-      progress = Math.min(100, progress + 4 + Math.random() * 6);
-      bar.style.width = `${progress}%`;
-      if (progress > 35 && progress < 70) status.textContent = "正在校准镜头";
-      if (progress >= 70) status.textContent = "正在连接模拟核心";
-      if (progress >= 100) {
-        window.clearInterval(timer);
-        status.textContent = "准备就绪";
-        window.setTimeout(() => this.show("menu"), 260);
-      }
-    }, 40);
+    status.textContent = "正在装载美术资源";
+    void art
+      .load((done, total) => {
+        const percent = total === 0 ? 100 : Math.round((done / total) * 100);
+        bar.style.width = `${percent}%`;
+        status.textContent = `正在装载美术资源 ${done}/${total}`;
+      })
+      .then(() => {
+        bar.style.width = "100%";
+        status.textContent = art.ready ? "准备就绪" : "资源加载失败，使用简化美术";
+        window.setTimeout(() => this.show("menu"), 320);
+      });
   }
 
   private bind(): void {
