@@ -57,6 +57,18 @@ test("settings persist to local storage", async ({ page }) => {
   expect(stored).toContain('"volume":35');
 });
 
+test("height test scene boots with a live canvas", async ({ page }) => {
+  await page.goto("/?scene=height");
+  await expect(page.locator("#height-canvas")).toBeVisible();
+  await expect(page.locator(".chip").first()).toContainText("HeightTest");
+  const size = await page.locator("#height-canvas").evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    return { width: canvas.width, height: canvas.height };
+  });
+  expect(size.width).toBeGreaterThan(0);
+  expect(size.height).toBeGreaterThan(0);
+});
+
 test("result screen appears at the time limit", async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto("/?speed=20");

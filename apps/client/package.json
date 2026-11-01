@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "electron:dev": "electron . --dev",
+    "electron:start": "electron .",
+    "package:win": "node electron/package.cjs"
   },
   "dependencies": {
     "@marchlands/content": "workspace:*",
@@ -17,6 +20,9 @@
   "devDependencies": {
     "@types/three": "^0.171.0",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
-  }
+    "vite": "^6.0.7",
+    "@electron/packager": "^18.3.6",
+    "electron": "^33.2.1"
+  },
+  "main": "electron/main.cjs"
 }

@@ -8,6 +8,7 @@ import type {
   Ruleset,
   SimState,
 } from "@marchlands/sim";
+import { audio } from "../audio";
 import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
@@ -170,6 +171,8 @@ export class GameSession {
     if (this.state.status === "finished" && !this.finished) {
       this.finished = true;
       this.paused = true;
+      if (this.state.winner === 1) audio.win();
+      else if (this.state.winner === 2) audio.lose();
       this.options.onFinish(this.state);
     }
   }
@@ -178,9 +181,25 @@ export class GameSession {
     for (const event of this.state.events) {
       if (event.type === "cityCaptured") {
         const side = event.toOwner === 1 ? "已占领" : "已失守";
+        if (event.toOwner === 1) {
+          audio.capture();
+          this.floatText(event.cityId, "占领", "gold");
+        } else {
+          audio.lostCity();
+          this.floatText(event.cityId, "失守", "loss");
+        }
         this.options.onToast(`${event.cityId} ${side}`);
-      } else if (event.type === "combatResolved" && !event.captured && event.attacker === 1) {
-        this.options.onToast(`${event.cityId} 进攻失利`);
+      } else if (event.type === "combatResolved" && !event.captured) {
+        this.floatText(event.cityId, `-${event.defenderLoss}`, event.attacker === 1 ? "loss" : "gain");
+        if (event.attacker === 1) this.options.onToast(`${event.cityId} 进攻失利`);
+      } else if (event.type === "upgradeCompleted") {
+        const city = this.getCity(event.cityId);
+        if (city?.owner === 1) {
+          audio.upgrade();
+          this.floatText(event.cityId, "升级", "gold");
+        }
+      } else if (event.type === "squadSpawned" && this.getCity(event.from)?.owner === 1) {
+        audio.send();
       }
     }
   }
@@ -193,6 +212,18 @@ export class GameSession {
     this.setText("hud-pop", String(pop));
     this.setText("hud-gold", String(gold));
     this.setText("hud-timer", this.formatTime(this.state.tick));
+  }
+
+  private floatText(cityId: CityId, text: string, tone: "gain" | "loss" | "gold"): void {
+    const point = this.scene.projectCity(cityId);
+    if (!point) return;
+    const node = document.createElement("div");
+    node.className = `float-text ${tone}`;
+    node.textContent = text;
+    node.style.left = `${Math.round(point.x)}px`;
+    node.style.top = `${Math.round(point.y)}px`;
+    this.options.hud.appendChild(node);
+    window.setTimeout(() => node.remove(), 1100);
   }
 
   private setText(id: string, text: string): void {

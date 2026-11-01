@@ -2,6 +2,7 @@ import forestMapJson from "@marchlands/content/maps/forest01.json";
 import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
 import type { SimState } from "@marchlands/sim";
+import { audio } from "./audio";
 import { GameSession } from "./game/session";
 import { loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
@@ -205,6 +206,7 @@ export class App {
     this.root.innerHTML = TEMPLATE;
     this.bind();
     this.syncSettingsForm();
+    audio.setVolume(this.settings.volume);
   }
 
   start(): void {
@@ -254,6 +256,17 @@ export class App {
     });
 
     window.addEventListener("keydown", (event) => this.onKeyDown(event));
+    window.addEventListener(
+      "pointerdown",
+      () => {
+        audio.unlock();
+      },
+      { once: true },
+    );
+    this.root.addEventListener("click", (event) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".btn, .icon-btn")) audio.click();
+    });
   }
 
   private onKeyDown(event: KeyboardEvent): void {
@@ -379,11 +392,19 @@ export class App {
       volume: Number((this.el("set-volume") as HTMLInputElement).value),
     };
     saveSettings(this.settings);
+    audio.setVolume(this.settings.volume);
     this.applyWindowMode();
     if (notify) this.toast("设置已保存");
   }
 
   private applyWindowMode(): void {
+    const host = window.marchlandsHost;
+    if (host) {
+      const [hostWidth, hostHeight] = this.settings.resolution.split("x").map(Number);
+      void host.setFullscreen(this.settings.windowMode === "fullscreen");
+      void host.setSize(hostWidth, hostHeight);
+      return;
+    }
     try {
       if (this.settings.windowMode === "fullscreen" && !document.fullscreenElement) {
         void document.documentElement.requestFullscreen();
@@ -403,6 +424,10 @@ export class App {
 
   private exitApp(): void {
     this.hideOverlay("exit-overlay");
+    if (window.marchlandsHost) {
+      window.marchlandsHost.quit();
+      return;
+    }
     window.close();
     window.setTimeout(() => this.toast("浏览器不允许关闭窗口，请直接关闭标签页"), 120);
   }

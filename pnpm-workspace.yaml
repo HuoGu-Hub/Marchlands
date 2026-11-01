@@ -3,4 +3,5 @@ packages:
   - "packages/*"
   - "tools/*"
 allowBuilds:
+  electron: true
   esbuild: true

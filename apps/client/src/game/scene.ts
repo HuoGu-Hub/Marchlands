@@ -19,6 +19,10 @@ interface CityView {
   flag: THREE.Mesh;
   roof: THREE.Mesh;
   disc: THREE.Mesh;
+  palisade: THREE.Group;
+  banner: THREE.Group;
+  bannerFlags: THREE.Mesh[];
+  crown: THREE.Mesh;
   shadow: THREE.Mesh;
   label: THREE.Sprite;
   canvas: HTMLCanvasElement;
@@ -28,7 +32,7 @@ interface CityView {
 
 interface SquadView {
   group: THREE.Group;
-  body: THREE.Mesh;
+  units: THREE.Mesh[];
   label: THREE.Sprite;
   canvas: HTMLCanvasElement;
   texture: THREE.CanvasTexture;
@@ -97,6 +101,17 @@ export class BattleScene {
   zoomBy(delta: number): void {
     this.zoom = THREE.MathUtils.clamp(this.zoom + delta, ZOOM_MIN, ZOOM_MAX);
     this.resize();
+  }
+
+  projectCity(cityId: CityId): { x: number; y: number } | null {
+    const position = this.positions.get(cityId);
+    if (!position) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const projected = position.clone().setY(3.2).project(this.camera);
+    return {
+      x: rect.left + ((projected.x + 1) / 2) * rect.width,
+      y: rect.top + ((1 - projected.y) / 2) * rect.height,
+    };
   }
 
   pickCity(clientX: number, clientY: number, state: SimState): CityId | null {
@@ -177,6 +192,12 @@ export class BattleScene {
       (view.flag.material as THREE.MeshStandardMaterial).color.setHex(color);
       (view.roof.material as THREE.MeshStandardMaterial).color.setHex(color);
       (view.disc.material as THREE.MeshBasicMaterial).color.setHex(color);
+      for (const bannerFlag of view.bannerFlags) {
+        (bannerFlag.material as THREE.MeshStandardMaterial).color.setHex(color);
+      }
+      view.palisade.visible = city.level === 1;
+      view.banner.visible = city.level >= 2;
+      view.crown.visible = city.level >= 3;
       const scale = 0.9 + city.level * 0.12;
       view.keep.scale.set(scale, scale, scale);
 
@@ -200,7 +221,10 @@ export class BattleScene {
         this.squadViews.set(squad.id, view);
       }
       const point = this.squadPoint(squad, state.tick);
-      view.group.position.set(point.x, 0.5, point.z);
+      view.group.position.set(point.x, 0.42, point.z);
+      view.units.forEach((unit, index) => {
+        unit.position.y = Math.sin(this.elapsed / 170 + index * 1.7) * 0.05;
+      });
     }
     for (const [id, view] of this.squadViews) {
       if (seen.has(id)) continue;
@@ -326,6 +350,47 @@ export class BattleScene {
     keep.position.y = 0.55;
     group.add(keep);
 
+    const palisade = new THREE.Group();
+    const postMaterial = new THREE.MeshStandardMaterial({ color: 0x6b4f30, roughness: 1, flatShading: true });
+    for (let index = 0; index < 8; index += 1) {
+      const angle = (index / 8) * Math.PI * 2;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.62, 5), postMaterial);
+      post.position.set(Math.cos(angle) * 2.55, 0.78, Math.sin(angle) * 2.55);
+      palisade.add(post);
+    }
+    group.add(palisade);
+
+    const banner = new THREE.Group();
+    const bannerFlags: THREE.Mesh[] = [];
+    for (const side of [-1, 1]) {
+      const bannerPole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.045, 0.045, 2.1, 5),
+        new THREE.MeshStandardMaterial({ color: 0x2b2620 }),
+      );
+      bannerPole.position.set(side * 2.1, 1.55, 1.45);
+      banner.add(bannerPole);
+      const bannerFlag = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.85, 0.55),
+        new THREE.MeshStandardMaterial({
+          color: PLAYER_COLORS[city.owner],
+          roughness: 0.75,
+          side: THREE.DoubleSide,
+        }),
+      );
+      bannerFlag.position.set(side * 2.1 + 0.42, 2.25, 1.45);
+      banner.add(bannerFlag);
+      bannerFlags.push(bannerFlag);
+    }
+    group.add(banner);
+
+    const crown = new THREE.Mesh(
+      new THREE.TorusGeometry(1.58, 0.075, 6, 20),
+      new THREE.MeshStandardMaterial({ color: 0xe8c883, metalness: 0.25, roughness: 0.5 }),
+    );
+    crown.rotation.x = Math.PI / 2;
+    crown.position.y = 2.02;
+    keep.add(crown);
+
     const labelCanvas = document.createElement("canvas");
     labelCanvas.width = 512;
     labelCanvas.height = 192;
@@ -339,25 +404,45 @@ export class BattleScene {
     group.add(label);
 
     this.scene.add(group);
-    return { group, keep, flag, roof, disc, shadow, label, canvas: labelCanvas, texture, labelText: "" };
+    return {
+      group,
+      keep,
+      flag,
+      roof,
+      disc,
+      palisade,
+      banner,
+      bannerFlags,
+      crown,
+      shadow,
+      label,
+      canvas: labelCanvas,
+      texture,
+      labelText: "",
+    };
   }
 
   private createSquadView(squad: SquadState): SquadView {
     const group = new THREE.Group();
     const color = PLAYER_COLORS[squad.owner];
-    const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.32, 0.42, 0.8, 6),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true }),
-    );
-    body.position.y = 0.4;
-    group.add(body);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true });
+    const headMaterial = new THREE.MeshStandardMaterial({ color: 0xe8dcc2, roughness: 0.8 });
+    const units: THREE.Mesh[] = [];
 
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 8, 6),
-      new THREE.MeshStandardMaterial({ color: 0xe8dcc2, roughness: 0.8 }),
-    );
-    head.position.y = 0.98;
-    group.add(head);
+    const offsets: Array<[number, number]> = [
+      [-0.26, -0.14],
+      [0.26, -0.1],
+      [0, 0.3],
+    ];
+    for (const [x, z] of offsets) {
+      const unit = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.55, 6), bodyMaterial);
+      unit.position.set(x, 0.28, z);
+      group.add(unit);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), headMaterial);
+      head.position.set(x, 0.63, z);
+      group.add(head);
+      units.push(unit);
+    }
 
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -369,11 +454,11 @@ export class BattleScene {
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
     label.scale.set(2.2, 1.1, 1);
-    label.position.y = 1.9;
+    label.position.y = 1.45;
     group.add(label);
 
     this.scene.add(group);
-    return { group, body, label, canvas, texture, labelText: String(squad.count) };
+    return { group, units, label, canvas, texture, labelText: String(squad.count) };
   }
 
   private paintLabel(canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, lines: string[], color: string): void {
@@ -409,10 +494,16 @@ export class BattleScene {
   }
 
   private buildGround(): void {
-    const ground = new THREE.Mesh(
-      new THREE.BoxGeometry(60, 1.2, 60),
-      new THREE.MeshStandardMaterial({ color: 0x35472f, roughness: 1, flatShading: true }),
-    );
+    const side = new THREE.MeshStandardMaterial({ color: 0x2a3524, roughness: 1, flatShading: true });
+    const top = new THREE.MeshStandardMaterial({ map: makeGroundTexture(), roughness: 1 });
+    const ground = new THREE.Mesh(new THREE.BoxGeometry(60, 1.2, 60), [
+      side,
+      side,
+      top,
+      side,
+      side,
+      side,
+    ]);
     ground.position.y = -0.6;
     this.scene.add(ground);
 
@@ -526,4 +617,41 @@ export class BattleScene {
     this.camera.bottom = -viewHeight / 2;
     this.camera.updateProjectionMatrix();
   }
+}
+
+function makeGroundTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = "#37492f";
+    context.fillRect(0, 0, 512, 512);
+    let seed = 77123;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let index = 0; index < 420; index += 1) {
+      const x = random() * 512;
+      const y = random() * 512;
+      const radius = 6 + random() * 26;
+      context.fillStyle = `rgba(${52 + Math.floor(random() * 26)}, ${72 + Math.floor(random() * 24)}, ${44 + Math.floor(random() * 16)}, 0.35)`;
+      context.beginPath();
+      context.ellipse(x, y, radius, radius * 0.6, random() * Math.PI, 0, Math.PI * 2);
+      context.fill();
+    }
+    for (let index = 0; index < 520; index += 1) {
+      const x = random() * 512;
+      const y = random() * 512;
+      context.fillStyle = `rgba(96, 78, 50, ${0.12 + random() * 0.18})`;
+      context.fillRect(x, y, 1 + random() * 2, 1 + random() * 2);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 3);
+  return texture;
 }

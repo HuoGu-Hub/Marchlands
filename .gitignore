@@ -5,12 +5,8 @@ dist/
 .work/
 tools/harness/out/
 apps/client/dist/
+apps/client/.package/
+release/
 test-results/
 playwright-report/
-apps/client/library/
-apps/client/temp/
-apps/client/local/
-apps/client/build/
-apps/client/profiles/
-apps/client/.creator/
 *.rar
