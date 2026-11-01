@@ -106,7 +106,7 @@ export class BattleScene {
     const position = this.positions.get(cityId);
     if (!position) return null;
     const rect = this.canvas.getBoundingClientRect();
-    const projected = position.clone().setY(4.2).project(this.camera);
+    const projected = position.clone().setY(4.8).project(this.camera);
     return {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
@@ -116,7 +116,7 @@ export class BattleScene {
   pickCity(clientX: number, clientY: number, state: SimState): CityId | null {
     const rect = this.canvas.getBoundingClientRect();
     let bestId: CityId | null = null;
-    let bestDistance = 40;
+    let bestDistance = 48;
     for (const city of state.cities) {
       const position = this.positions.get(city.id);
       if (!position) continue;
@@ -193,7 +193,7 @@ export class BattleScene {
         this.rebuildCityModel(view, city);
       }
 
-      view.label.position.y = 5.0;
+      view.label.position.y = 5.4;
       const label = `${city.id} · L${city.level}\n${city.pop}/${city.maxPop}`;
       if (label !== view.labelText) {
         view.labelText = label;
@@ -265,7 +265,7 @@ export class BattleScene {
     group.position.copy(position);
 
     const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(5.0, 30),
+      new THREE.CircleGeometry(5.8, 30),
       new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }),
     );
     shadow.rotation.x = -Math.PI / 2;
@@ -273,7 +273,7 @@ export class BattleScene {
     group.add(shadow);
 
     const apron = new THREE.Mesh(
-      new THREE.CylinderGeometry(4.25, 4.55, 0.16, 12),
+      new THREE.CylinderGeometry(4.95, 5.25, 0.16, 12),
       new THREE.MeshStandardMaterial({ color: 0x3d4f34, roughness: 1, flatShading: true }),
     );
     apron.position.y = 0.08;
@@ -281,7 +281,7 @@ export class BattleScene {
 
     const platformSide = new THREE.MeshStandardMaterial({ color: 0x6a6150, roughness: 1, flatShading: true });
     const platformTop = new THREE.MeshStandardMaterial({ map: flagstoneTexture(), roughness: 0.95 });
-    const platform = new THREE.Mesh(new THREE.CylinderGeometry(3.9, 4.2, 0.22, 10), [
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.7, 5.0, 0.22, 10), [
       platformSide,
       platformTop,
       platformSide,
@@ -301,8 +301,8 @@ export class BattleScene {
     const label = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
-    label.scale.set(5.4, 1.7, 1);
-    label.position.y = 5.0;
+    label.scale.set(5.8, 1.85, 1);
+    label.position.y = 5.4;
     group.add(label);
 
     this.scene.add(group);
@@ -329,7 +329,7 @@ export class BattleScene {
     const seed = hashId(city.id) + city.level * 17;
     const palette = paletteFor(city.owner);
     const built = buildTown(city.level, palette, seed);
-    built.add(buildWall(city.level, palette));
+    built.add(buildWall(city.level, palette, 4.5));
     view.model.add(built);
     view.owner = city.owner;
     view.level = city.level;
@@ -451,7 +451,7 @@ export class BattleScene {
   private buildRoads(): void {
     const width = 1.6;
     const centerId = "c3";
-    const cityRadius = () => 4.35;
+    const cityRadius = () => 5.0;
     const roadMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(1, 1), roughness: 1 });
     const plazaMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
     const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xb3aa96, roughness: 1 });
@@ -526,7 +526,7 @@ export class BattleScene {
   }
 
   private addPlaza(position: THREE.Vector3, material: THREE.Material): void {
-    const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.65, 22), material);
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.85, 22), material);
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.set(position.x, 0.04, position.z);
     this.scene.add(plaza);
@@ -535,7 +535,7 @@ export class BattleScene {
   private addRoundabout(centerId: string, width: number, plazaMaterial: THREE.Material, curbMaterial: THREE.Material): void {
     const center = this.positions.get(centerId);
     if (!center) return;
-    const inner = 4.35;
+    const inner = 5.0;
     const outer = inner + width;
     const ringMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(10, 2), roughness: 1 });
     const shoulder = new THREE.Mesh(
@@ -603,8 +603,8 @@ export class BattleScene {
       const radius = 17 + random() * 12;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (nearCity(this.positions, x, z, 5.4)) continue;
-      if (nearRoad(this.map.edges, this.positions, x, z, 1.9)) continue;
+      if (nearCity(this.positions, x, z, 6.2)) continue;
+      if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
       treePlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 2.6 + random() * 1.1 });
     }
 
@@ -615,8 +615,8 @@ export class BattleScene {
       const radius = 16 + random() * 13;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (nearCity(this.positions, x, z, 4.7)) continue;
-      if (nearRoad(this.map.edges, this.positions, x, z, 1.3)) continue;
+      if (nearCity(this.positions, x, z, 5.3)) continue;
+      if (nearRoad(this.map.edges, this.positions, x, z, 1.5)) continue;
       rockPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.6 + random() * 1.2 });
     }
 
@@ -627,8 +627,8 @@ export class BattleScene {
       const radius = 15 + random() * 14;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (nearCity(this.positions, x, z, 4.1)) continue;
-      if (nearRoad(this.map.edges, this.positions, x, z, 1.1)) continue;
+      if (nearCity(this.positions, x, z, 4.7)) continue;
+      if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
       plantPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
     }
 

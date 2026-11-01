@@ -3,13 +3,13 @@ import { buildTown, buildWall, paletteFor } from "./buildings";
 
 const PITCH = (55 * Math.PI) / 180;
 const DISTANCE = 96;
-const VIEW_HEIGHT = 18;
+const VIEW_HEIGHT = 20;
 const TARGET = new THREE.Vector3(0, 1.2, 0);
 
 const TOWNS = [
-  { x: -9.2, level: 1, owner: 0, title: "L1 村庄 · 中立", color: "#c2bcaa" },
+  { x: -9.8, level: 1, owner: 0, title: "L1 村庄 · 中立", color: "#c2bcaa" },
   { x: 0, level: 2, owner: 1, title: "L2 城镇 · 绿方", color: "#8ed9a0" },
-  { x: 9.2, level: 3, owner: 2, title: "L3 要塞 · 红方", color: "#ef9278" },
+  { x: 9.8, level: 3, owner: 2, title: "L3 要塞 · 红方", color: "#ef9278" },
 ];
 
 export function runTownShowcase(host: HTMLElement): void {
@@ -91,13 +91,13 @@ class TownShowcase {
 
   private build(): void {
     const ground = new THREE.Mesh(
-      new THREE.BoxGeometry(34, 0.6, 18),
+      new THREE.BoxGeometry(42, 0.6, 20),
       new THREE.MeshStandardMaterial({ color: 0x35472f, roughness: 1 }),
     );
     ground.position.set(0, -0.3, 0);
     this.scene.add(ground);
 
-    const grid = new THREE.GridHelper(34, 17, 0x6d8a5c, 0x4b6440);
+    const grid = new THREE.GridHelper(42, 21, 0x6d8a5c, 0x4b6440);
     grid.position.set(0, 0.01, 0);
     const gridMaterial = grid.material as THREE.Material;
     gridMaterial.transparent = true;
@@ -106,12 +106,12 @@ class TownShowcase {
 
     for (const town of TOWNS) {
       const group = buildTown(town.level, paletteFor(town.owner), town.owner * 31 + town.level);
-      group.add(buildWall(town.level, paletteFor(town.owner)));
+      group.add(buildWall(town.level, paletteFor(town.owner), 4.5));
       group.position.set(town.x, 0, 0);
       this.scene.add(group);
 
       const shadow = new THREE.Mesh(
-        new THREE.CircleGeometry(5.0, 30),
+        new THREE.CircleGeometry(5.8, 30),
         new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }),
       );
       shadow.rotation.x = -Math.PI / 2;
@@ -119,7 +119,7 @@ class TownShowcase {
       this.scene.add(shadow);
 
       const apron = new THREE.Mesh(
-        new THREE.CylinderGeometry(4.25, 4.55, 0.16, 12),
+        new THREE.CylinderGeometry(4.95, 5.25, 0.16, 12),
         new THREE.MeshStandardMaterial({ color: 0x3d4f34, roughness: 1, flatShading: true }),
       );
       apron.position.set(town.x, 0.08, 0);
@@ -127,12 +127,12 @@ class TownShowcase {
 
       const side = new THREE.MeshStandardMaterial({ color: 0x6a6150, roughness: 1, flatShading: true });
       const top = new THREE.MeshStandardMaterial({ color: 0x8a8270, roughness: 0.95 });
-      const platform = new THREE.Mesh(new THREE.CylinderGeometry(3.9, 4.2, 0.22, 10), [side, top, side]);
+      const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.7, 5.0, 0.22, 10), [side, top, side]);
       platform.position.set(town.x, 0.11, 0);
       this.scene.add(platform);
 
       const caption = label(town.title, town.color);
-      caption.position.set(town.x, 1.0, 5.4);
+      caption.position.set(town.x, 1.0, 6.0);
       this.scene.add(caption);
     }
   }

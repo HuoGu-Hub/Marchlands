@@ -326,7 +326,9 @@ input {
 #lab-canvas,
 #piece-canvas,
 #building-canvas,
-#town-canvas {
+#town-canvas,
+#switch-canvas,
+#road-canvas {
   display: block;
   width: 100%;
   height: 100%;

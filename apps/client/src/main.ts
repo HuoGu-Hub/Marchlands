@@ -4,6 +4,8 @@ import { runAssetLab } from "./game/asset-lab";
 import { runBuildingGallery } from "./game/building-gallery";
 import { runHeightTest } from "./game/height-test";
 import { runPieceViewer } from "./game/piece-viewer";
+import { runRoadShowcase } from "./game/road-showcase";
+import { runSwitchDemo } from "./game/switch-demo";
 import { runTownShowcase } from "./game/town-showcase";
 
 const host = document.getElementById("app");
@@ -20,6 +22,10 @@ if (scene === "height") {
   runBuildingGallery(host);
 } else if (scene === "towns") {
   runTownShowcase(host);
+} else if (scene === "switch") {
+  runSwitchDemo(host);
+} else if (scene === "roads") {
+  runRoadShowcase(host);
 } else {
   new App(host).start();
 }
