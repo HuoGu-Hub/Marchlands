@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "slug": "forest01",
+  "name": "Forest 01",
+  "biome": "forest",
+  "size": [
+    600,
+    600
+  ],
+  "scale": 0.1,
+  "ruleset": "1",
+  "players": [
+    {
+      "id": 1,
+      "name": "Player",
+      "color": "green",
+      "ai": false
+    },
+    {
+      "id": 2,
+      "name": "AI",
+      "color": "red",
+      "ai": true
+    }
+  ],
+  "cities": [
+    {
+      "id": "c1",
+      "kind": "town",
+      "owner": 1,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -220,
+        0
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c2",
+      "kind": "town",
+      "owner": 2,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        220,
+        0
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c3",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        0,
+        0
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c4",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        -120,
+        120
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c5",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        120,
+        120
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c6",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        -120,
+        -120
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c7",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        120,
+        -120
+      ],
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "c1",
+      "to": "c4",
+      "length": 156
+    },
+    {
+      "from": "c1",
+      "to": "c6",
+      "length": 156
+    },
+    {
+      "from": "c1",
+      "to": "c3",
+      "length": 220
+    },
+    {
+      "from": "c2",
+      "to": "c5",
+      "length": 156
+    },
+    {
+      "from": "c2",
+      "to": "c7",
+      "length": 156
+    },
+    {
+      "from": "c2",
+      "to": "c3",
+      "length": 220
+    },
+    {
+      "from": "c4",
+      "to": "c5",
+      "length": 240
+    },
+    {
+      "from": "c6",
+      "to": "c7",
+      "length": 240
+    },
+    {
+      "from": "c4",
+      "to": "c3",
+      "length": 170
+    },
+    {
+      "from": "c5",
+      "to": "c3",
+      "length": 170
+    },
+    {
+      "from": "c6",
+      "to": "c3",
+      "length": 170
+    },
+    {
+      "from": "c7",
+      "to": "c3",
+      "length": 170
+    }
+  ],
+  "objectives": [
+    {
+      "type": "capture_all"
+    },
+    {
+      "type": "time_limit",
+      "ticks": 18000
+    }
+  ]
+}

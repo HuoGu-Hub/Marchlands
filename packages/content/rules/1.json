@@ -1,0 +1,34 @@
+{
+  "ruleset": "1",
+  "tickHz": 20,
+  "maxTicks": 18000,
+  "sendRatio": 0.5,
+  "speedDmPerSecond": 60,
+  "maxLevel": 3,
+  "levels": [
+    {
+      "level": 1,
+      "maxPop": 30,
+      "upgradeCost": 15,
+      "defense": 1,
+      "growthMilli": 50,
+      "goldMilli": 100
+    },
+    {
+      "level": 2,
+      "maxPop": 45,
+      "upgradeCost": 22,
+      "defense": 1.1,
+      "growthMilli": 62,
+      "goldMilli": 125
+    },
+    {
+      "level": 3,
+      "maxPop": 65,
+      "upgradeCost": 32,
+      "defense": 1.2,
+      "growthMilli": 75,
+      "goldMilli": 150
+    }
+  ]
+}

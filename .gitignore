@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.turbo/
+*.log
+.work/
+tools/harness/out/
+apps/client/library/
+apps/client/temp/
+apps/client/local/
+apps/client/build/
+apps/client/profiles/
+apps/client/.creator/

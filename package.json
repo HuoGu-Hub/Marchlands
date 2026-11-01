@@ -1,0 +1,20 @@
+{
+  "name": "marchlands",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "sim:forest01": "pnpm --filter @marchlands/harness start -- --matches 100",
+    "validate:content": "pnpm --filter @marchlands/content validate",
+    "build:forest01": "pnpm --filter @marchlands/map-export build:forest01"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}
