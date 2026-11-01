@@ -39,6 +39,10 @@ export class MapGraph {
     return null;
   }
 
+  neighbors(from: CityId): CityId[] {
+    return (this.adjacency.get(from) ?? []).map((edge) => edge.to);
+  }
+
   route(from: CityId, to: CityId): Route | null {
     if (from === to) return { path: [from], distance: 0 };
     const key = `${from}${SEP}${to}`;

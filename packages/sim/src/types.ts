@@ -80,6 +80,15 @@ export interface OutpostRule {
   decayPerInterval: number;
 }
 
+export interface SupplyRule {
+  /** 队伍出发后可安全行军的 tick 数。 */
+  carryTicks: number;
+  /** 断粮后掉兵间隔。 */
+  starveIntervalTicks: number;
+  /** 断粮后每次掉兵数量。 */
+  starveLoss: number;
+}
+
 export interface Ruleset {
   ruleset: string;
   tickHz: number;
@@ -90,6 +99,7 @@ export interface Ruleset {
   levels: LevelRule[];
   granary: GranaryRule;
   outpost: OutpostRule;
+  supply: SupplyRule;
 }
 
 export interface CityState {
@@ -116,10 +126,19 @@ export interface SquadState {
   to: CityId;
   count: number;
   path: CityId[];
+  /** 当前正在走的边在 path 中的下标。 */
+  pathIndex: number;
+  /** 当前边开始、结束的 tick。 */
+  legStartTick: number;
+  legEndTick: number;
   departTick: number;
   arrivalTick: number;
   speedMilli: number;
   strengthMilli: number;
+  /** 剩余可安全行军的 tick；0 表示断粮。 */
+  supplyLeft: number;
+  /** 下一次断粮掉兵的 tick。 */
+  nextStarveTick: number;
   intercepted: CityId[];
 }
 
@@ -163,12 +182,28 @@ export type SimEvent =
     }
   | { type: "outpostDecayed"; cityId: CityId; loss: number; pop: number }
   | { type: "stanceChanged"; cityId: CityId; stance: Stance }
+  | {
+      type: "squadRetargeted";
+      squadId: string;
+      to: CityId;
+      via: CityId | null;
+      arrivalTick: number;
+    }
+  | {
+      type: "squadStarved";
+      squadId: string;
+      owner: PlayerId;
+      loss: number;
+      count: number;
+      destroyed: boolean;
+    }
   | { type: "gameOver"; winner: Owner; reason: FinishReason };
 
 export type Command =
   | { type: "send"; from: CityId; to: CityId }
   | { type: "upgrade"; city: CityId }
-  | { type: "setStance"; city: CityId; stance: Stance };
+  | { type: "setStance"; city: CityId; stance: Stance }
+  | { type: "retarget"; squad: string; to: CityId; via?: CityId };
 
 export interface CommandRejection {
   command: Command;

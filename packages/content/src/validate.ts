@@ -281,6 +281,15 @@ export function validateRules(input: unknown): Ruleset {
     requireInt(outpost.decayPerInterval, "outpost.decayPerInterval", issues, 1);
   }
 
+  const supply = input.supply;
+  if (!isRecord(supply)) {
+    issues.push("supply required");
+  } else {
+    requireInt(supply.carryTicks, "supply.carryTicks", issues, 0);
+    requireInt(supply.starveIntervalTicks, "supply.starveIntervalTicks", issues, 1);
+    requireInt(supply.starveLoss, "supply.starveLoss", issues, 1);
+  }
+
   if (issues.length > 0) throw new ContentError("rules", issues);
   return input as unknown as Ruleset;
 }

@@ -3,7 +3,7 @@
 **版本** v0.1  
 **日期** 2026-11-01  
 **当前里程碑** M1 首图单机一局  
-**机制扩展** 粮草与临时驻兵点（ADR 0002）<br>
+**机制扩展** 粮草与临时驻兵点（ADR 0002）；行军改道与兵团粮草（ADR 0003）<br>
 **适用对象** 参与本项目的 Agent 与人类开发者
 
 本文件是当前开发的执行合同。它规定做什么、按什么规则做、做到什么程度算完成。  
@@ -13,7 +13,7 @@
 
 ## 0. 开始前先读这三条
 
-1. **只做 M1。** 当前只做一张图、单机一局、完整页面。Agent、服务器、法术、塔、城堡不做；粮草与临时驻兵点按 [ADR 0002](adr/0002-granary-outpost.md) 执行，不另加机制。
+1. **只做 M1。** 当前只做一张图、单机一局、完整页面。Agent、服务器、法术、塔、城堡不做；粮草、临时驻兵点、行军改道按 [ADR 0002](adr/0002-granary-outpost.md) 与 [ADR 0003](adr/0003-squad-reroute-supply.md) 执行，不另加机制。
 2. **不复制原作资产与关卡。** .work/original 只读，用于理解规则和节奏；不把原作 PNG、OGG、文本、坐标或节点直接放进项目。
 3. **模拟核心保持纯净。** packages/sim 不得 import Cocos、DOM、Node API；不得使用 Math.random、Date.now；所有随机来自种子。
 
@@ -58,6 +58,8 @@ M1 完成 = 以下全部成立：
 - 城镇与中立城；派兵、行军、战斗、占领、升级。
 - 粮仓：不产兵、可屯兵、为全队提供速度与战斗力增幅；不产金币、不可升级。
 - 临时驻兵点：路边叶子据点，可屯兵、会掉兵、可设避战/迎战；不计入胜负。
+- 行军改道：点击路上兵团查看路线，在下一个岔路口前改道或改目的地。
+- 兵团粮草：出发携带，安全行军一段时间后开始掉兵。
 - 人口增长、金币收入与 HUD 显示；不做金币消费。
 - 胜负：占满 7 座城镇或消灭 AI；15 分钟硬上限，按城镇数与城镇人口判定。
 - 3D 地形、四向镜头、单位、选中与派兵交互。
@@ -280,6 +282,15 @@ tools/map-export/
 - 基础 ETA ticks = ceil(distance / 3)；粮仓速度增幅按 5.7 缩短 ETA。
 - 队伍沿路径匀速移动；到达目标据点后结算。
 - 同 tick 到达的多支队伍按 squadId 升序结算。
+- 队伍记录 `pathIndex`、当前边开始/结束 tick；抵达中间节点只推进路径，不结算战斗。
+
+**改道**
+
+- 新增指令 `retarget { squad, to, via? }`。
+- 指令可在任意时刻发，但在**下一个节点**生效；当前边不中途掉头。
+- `via` 是下一个节点之后要走的第一跳；省略时从下一个节点走最短路径。
+- 改道不重置粮草，不重复结算已发生的迎战拦截。
+- UI 用 `routeOptions(graph, squad)` 获取当前路线与所有可抵达目的地的简单分支；当前路线亮色，其余暗色。点击暗色线路发送 `via`，点击据点发送新的 `to`。
 
 **战斗**
 
@@ -326,7 +337,8 @@ else:
 4. 若 600 tick 没有动作，最强城向最近目标派兵，保证对局推进。
 5. 未拥有粮仓时优先考虑可攻下的粮仓；已拥有粮仓后不再为增益重复投资。
 6. 把己方有驻军的临时驻兵点切到迎战；不主动进攻敌方驻兵点。
-7. 不主动放弃城市；不修改资源；不预测玩家指令。
+7. 不使用改道；按派兵时算好的最短路径行军。
+8. 不主动放弃城市；不修改资源；不预测玩家指令。
 
 AI 必须能完成：至少一次占领、一次升级、一次进攻；15 分钟内结束一局。
 
@@ -344,6 +356,8 @@ AI 必须能完成：至少一次占领、一次升级、一次进攻；15 分�
 | squadIntercepted | squadId, cityId, squadOwner, outpostOwner, squadLoss, outpostLoss, squadDestroyed, outpostEmptied | 路边伏击 |
 | outpostDecayed | cityId, loss, pop | 掉兵飘字 |
 | stanceChanged | cityId, stance | 驻兵状态提示 |
+| squadRetargeted | squadId, to, via, arrivalTick | 改道后刷新路线 |
+| squadStarved | squadId, owner, loss, count, destroyed | 断粮掉兵提示 |
 | gameOver | winner, reason | 结算页 |
 
 事件只用于表现与日志，不反向驱动模拟。
@@ -389,6 +403,15 @@ A > D: 守军全灭；进攻方损失 = min(兵力, floor(D × 1000 / 攻击方�
 ```
 
 无粮仓时增幅为 1000，退化为原版战斗。
+
+### 5.8 兵团粮草
+
+- 每个兵团出发时携带 `rules.supply.carryTicks` 的安全行军时间。
+- 出发当 tick 不消耗；之后每 tick 消耗 1，归零后按 `starveIntervalTicks` 掉 `starveLoss` 兵。
+- 改道、战斗损失、迎战拦截都不重置粮草；首版没有粮仓补给或队伍合并。
+- 粮草归零发 `squadStarved`；兵力归零则队伍消失，不再参与到达结算。
+- UI 在选中兵团的信息卡显示剩余秒数与断粮节奏；断粮时颜色变红。
+- 默认 600 / 200 / 1，即 30 秒安全期，之后每 10 秒掉 1 兵。
 
 ---
 
@@ -480,10 +503,15 @@ export interface SquadState {
   to: CityId;
   count: number;
   path: CityId[];
+  pathIndex: number;
+  legStartTick: number;
+  legEndTick: number;
   departTick: number;
   arrivalTick: number;
   speedMilli: number;
   strengthMilli: number;
+  supplyLeft: number;
+  nextStarveTick: number;
   intercepted: CityId[];
 }
 
@@ -517,7 +545,8 @@ export interface StepResult {
 export type Command =
   | { type: "send"; from: CityId; to: CityId }
   | { type: "upgrade"; city: CityId }
-  | { type: "setStance"; city: CityId; stance: Stance };
+  | { type: "setStance"; city: CityId; stance: Stance }
+  | { type: "retarget"; squad: string; to: CityId; via?: CityId };
 
 export function createGame(map: MapDef, seed: number, rules?: Ruleset): SimState;
 export function step(state: SimState, commands: Command[]): StepResult;
@@ -533,7 +562,9 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 - 指令在 tick 开始时校验，在 tick 边界生效。
 - 无效指令返回 rejected，不改变状态；首轮 UI 只发合法指令，但 sim 仍要防御性校验。
 - `send` 可用于任何己方据点；`upgrade` 只对城镇有效；`setStance` 只对己方驻兵点有效。
+- `retarget` 可在任意时刻发，但在下一个节点生效；`via` 必须是下一个节点的邻居且能到达新目的地。
 - 队伍出发时把粮仓速度/战斗力增幅写入 `SquadState`；防守方增幅在战斗时按据点归属计算。
+- 改道不重置 `supplyLeft` 与 `nextStarveTick`。
 
 ### 6.3 规则 JSON
 
@@ -562,6 +593,11 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
     "graceTicks": 600,
     "decayIntervalTicks": 200,
     "decayPerInterval": 2
+  },
+  "supply": {
+    "carryTicks": 600,
+    "starveIntervalTicks": 200,
+    "starveLoss": 1
   }
 }
 ~~~
@@ -569,7 +605,7 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 ### 6.4 哈希与回放
 
 - 每 20 tick 计算一次状态哈希。
-- 哈希输入：tick、seed、slug、status、winner、finishReason、nextSquad、rules、玩家金币、所有据点、所有队伍；按 id 排序。据点包含 kind、stance、decayAtTick、watch；队伍包含 speedMilli、strengthMilli、intercepted。
+- 哈希输入：tick、seed、slug、status、winner、finishReason、nextSquad、rules、玩家金币、所有据点、所有队伍；按 id 排序。据点包含 kind、stance、decayAtTick、watch；队伍包含 pathIndex、legStartTick、legEndTick、speedMilli、strengthMilli、supplyLeft、nextStarveTick、intercepted。
 - 不参与哈希：map、graph、events；这三项不影响模拟结果。
 - 回放文件：map slug、map hash、ruleset、seed、指令数组、检查点哈希、结果。
 - 首轮不实现回放 UI；先保证 harness 能导出与重放。
@@ -581,13 +617,14 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 
 ### 7.1 tick 顺序
 
-1. 应用本 tick 指令：校验、扣人口、生成 squad、升级、切换驻守状态。
+1. 应用本 tick 指令：校验、扣人口、生成 squad、升级、切换驻守状态、改道。
 2. 城镇人口增长与金币收入，按据点 id 升序。
-3. 队伍推进：先结算迎战拦截，再结算到达到期队伍，按 squadId 升序。
+3. 队伍推进：先结算迎战拦截，再推进中间节点与最终到达，按 squadId 升序。
 4. 战斗结算，更新据点归属与人口。
-5. 临时驻兵点掉兵。
-6. 检查胜负与时间上限。
-7. 汇总本 tick 事件；tick +1。
+5. 兵团粮草消耗与断粮掉兵。
+6. 临时驻兵点掉兵。
+7. 检查胜负与时间上限。
+8. 汇总本 tick 事件；tick +1。
 
 ### 7.2 边界情况
 
@@ -600,6 +637,10 @@ MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字�
 - 队伍以驻兵点为目标时跳过路过拦截；迎战拦截只打一场遭遇战，不改变据点归属。
 - 友军增援驻兵点会重置掉兵宽限期；掉到 0 兵立即变中立并回到避战。
 - 同一 tick 多支队伍经过同一条监视边，按 squadId 升序依次与驻兵点结算。
+- 改道在下一个节点生效；当前边不中途掉头，已经过的岔路口不能回选。
+- `via` 不是下一节点邻居、或从 `via` 无法到达新目的地时拒绝。
+- 同一 tick 同一队伍多次改道按指令顺序应用，最后一次生效。
+- 改道不重置粮草；断粮掉兵归零时队伍立即移除，不再到达。
 - 所有数组按 id 排序，禁止依赖对象键顺序。
 
 ### 7.3 确定性
@@ -770,6 +811,7 @@ pnpm test:e2e
 
 - 规则单测：派兵、升级、战斗、占领、胜负、时间上限。
 - 机制单测：粮仓速度/战斗力增幅、驻兵点宽限/掉兵/增援重置、迎战拦截、直接入侵、建筑不计胜负。
+- 行军单测：改道下一跳/改目的地、非法 via、路线选项过滤、粮草耗尽掉兵与溃散、改道不重置粮草。
 - 属性测试：人口不为负、金币不为负、据点归属合法、队伍不重复结算。
 - 确定性：同一地图、种子、指令流，Node 与浏览器哈希一致。
 - AI 自对弈：100 局，全部 15 分钟内结束；座位镜像后由另一方获胜。
@@ -819,6 +861,7 @@ pnpm test:e2e
 |---|---|---|
 | 首图 | forest01，重画 7 城 2 玩家 5 中立 | 决定第一周数据 |
 | 粮草机制 | 2026-11-02 用户指定：粮仓增幅 + 临时驻兵点 | 已落入 ADR 0002 |
+| 行军改道 | 2026-11-02 用户指定：点击兵团改道/改目的地 + 粮草 | 已落入 ADR 0003 |
 | 3D 方案 | 全 3D 低模，正交四向 | 决定美术与性能 |
 | 页面范围 | 启动、主菜单、简报、对局、暂停、结算、设置、退出 | 决定第 5 周工作量 |
 | Agent | 第二阶段，首轮完全不接 | 决定仓库是否引入 protocol |
@@ -833,6 +876,7 @@ pnpm test:e2e
 ## 14. 参考
 
 - 粮草与驻兵点：[ADR 0002](adr/0002-granary-outpost.md)
+- 行军改道与兵团粮草：[ADR 0003](adr/0003-squad-reroute-supply.md)
 - 完整方案：[Marchlands 开发方案](../plans/Marchlands-开发方案.html)
 - 运行架构：[architecture.html](../plans/diagrams/architecture.html)
 - Agent 时序：[agent-sequence.html](../plans/diagrams/agent-sequence.html)
@@ -844,8 +888,9 @@ pnpm test:e2e
 ## 15. 进度
 
 - [x] M1.1 数据与页面图：forest01、rules/1、校验、页面流程图
-- [x] M1.2 模拟核心：52 项单测、属性测试、100 局自对弈、回放哈希
+- [x] M1.2 模拟核心：61 项单测、属性测试、100 局自对弈、回放哈希
 - [x] 机制扩展：粮仓增幅、临时驻兵点掉兵/迎战拦截、内容校验与 AI 适配（ADR 0002）
+- [x] 行军扩展：改道、路线叠加层、兵团粮草与断粮掉兵（ADR 0003）
 - [x] M1.3 3D 灰盒：四向镜头、地形、7 城、单位、选中与派兵
 - [x] M1.4 AI 与胜负、HUD、计时、高低差测试场景
 - [x] M1.5 页面：八个页面可走，Playwright 流程通过

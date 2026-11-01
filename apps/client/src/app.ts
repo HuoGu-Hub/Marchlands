@@ -100,7 +100,7 @@ const TEMPLATE = `
       </div>
     </div>
     <div class="toast" id="toast"></div>
-    <div class="hint">左键选择与派兵 · 右键取消 · Q / E 旋转 · 滚轮缩放</div>
+    <div class="hint">左键选择与派兵 · 点击行军兵团改道 · 右键取消 · Q / E 旋转 · 滚轮缩放</div>
   </div>
 
   <div class="overlay" id="pause-overlay">

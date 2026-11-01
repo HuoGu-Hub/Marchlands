@@ -27,6 +27,9 @@ describe("ai", () => {
         if (command.type === "send") {
           const from = state.cities.find((city) => city.id === command.from);
           expect(from?.owner).toBe(1);
+        } else if (command.type === "retarget") {
+          const squad = state.squads.find((entry) => entry.id === command.squad);
+          expect(squad?.owner).toBe(1);
         } else {
           const city = state.cities.find((entry) => entry.id === command.city);
           expect(city?.owner).toBe(1);

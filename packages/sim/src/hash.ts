@@ -48,6 +48,8 @@ export function canonicalState(state: SimState): string {
   parts.push(
     `O,${outpost.capacity},${outpost.defenseMilli},${outpost.graceTicks},${outpost.decayIntervalTicks},${outpost.decayPerInterval}`,
   );
+  const supply = state.rules.supply;
+  parts.push(`F,${supply.carryTicks},${supply.starveIntervalTicks},${supply.starveLoss}`);
   for (const player of state.players.slice().sort((a, b) => a.id - b.id)) {
     parts.push(`P${player.id},${player.gold},${player.goldCarry}`);
   }
@@ -58,7 +60,7 @@ export function canonicalState(state: SimState): string {
   }
   for (const squad of state.squads.slice().sort(byId)) {
     parts.push(
-      `S${squad.id},${squad.owner},${squad.from},${squad.to},${squad.count},${squad.departTick},${squad.arrivalTick},${squad.speedMilli},${squad.strengthMilli},${squad.path.join(">")},${squad.intercepted.join(">") || "-"}`,
+      `S${squad.id},${squad.owner},${squad.from},${squad.to},${squad.count},${squad.pathIndex},${squad.legStartTick},${squad.legEndTick},${squad.departTick},${squad.arrivalTick},${squad.speedMilli},${squad.strengthMilli},${squad.supplyLeft},${squad.nextStarveTick},${squad.path.join(">")},${squad.intercepted.join(">") || "-"}`,
     );
   }
   return parts.join("|");

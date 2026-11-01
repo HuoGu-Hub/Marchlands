@@ -1,6 +1,7 @@
 import { resolveAttack, resolveFieldCombat } from "./combat";
 import { applyUpgrade, growCity, growGold } from "./economy";
 import { MapGraph } from "./path";
+import { buildRetargetPath } from "./routes";
 import {
   DEFAULT_RULESET,
   granarySpeedMilli,
@@ -36,6 +37,11 @@ function byId(a: { id: string }, b: { id: string }): number {
 
 function findCity(state: SimState, id: CityId): CityState | undefined {
   for (const city of state.cities) if (city.id === id) return city;
+  return undefined;
+}
+
+function findSquad(state: SimState, id: string): SquadState | undefined {
+  for (const squad of state.squads) if (squad.id === id) return squad;
   return undefined;
 }
 
@@ -76,27 +82,32 @@ function strengthFor(state: SimState, owner: Owner): number {
   return granaryStrengthMilli(state.rules, playerHasGranary(state, owner));
 }
 
-function watchDistance(state: SimState, squad: SquadState, watch: [CityId, CityId]): number | null {
-  let travelled = 0;
-  for (let index = 0; index < squad.path.length - 1; index += 1) {
+function interceptTick(state: SimState, squad: SquadState, outpost: CityState): number | null {
+  if (!outpost.watch) return null;
+  if (squad.to === outpost.id) return null;
+
+  let cursor = squad.legEndTick;
+  for (let index = squad.pathIndex; index < squad.path.length - 1; index += 1) {
     const from = squad.path[index];
     const to = squad.path[index + 1];
     const length = state.graph.edgeLength(from, to);
     if (length === null) return null;
+    const startTick = index === squad.pathIndex ? squad.legStartTick : cursor;
+    const endTick =
+      index === squad.pathIndex
+        ? squad.legEndTick
+        : startTick + travelTicks(length, state.rules, squad.speedMilli);
     const matches =
-      (from === watch[0] && to === watch[1]) || (from === watch[1] && to === watch[0]);
-    if (matches) return travelled + Math.floor(length / 2);
-    travelled += length;
+      (from === outpost.watch[0] && to === outpost.watch[1]) ||
+      (from === outpost.watch[1] && to === outpost.watch[0]);
+    if (matches) {
+      const midTick =
+        startTick + travelTicks(Math.floor(length / 2), state.rules, squad.speedMilli);
+      return midTick < state.tick ? null : midTick;
+    }
+    cursor = endTick;
   }
   return null;
-}
-
-function interceptTick(state: SimState, squad: SquadState, outpost: CityState): number | null {
-  if (!outpost.watch) return null;
-  if (squad.to === outpost.id) return null;
-  const distance = watchDistance(state, squad, outpost.watch);
-  if (distance === null) return null;
-  return squad.departTick + travelTicks(distance, state.rules, squad.speedMilli);
 }
 
 function resolveInterceptions(state: SimState, events: SimEvent[]): void {
@@ -221,6 +232,7 @@ export function step(state: SimState, commands: Command[]): StepResult {
   for (const command of commands) applyCommand(next, command, events, rejected);
   growEconomy(next);
   advanceSquads(next, events);
+  starveSquads(next, events);
   decayOutposts(next, events);
   checkFinish(next, events);
 
@@ -253,17 +265,31 @@ function applyCommand(
     const hasGranary = playerHasGranary(state, from.owner);
     const speedMilli = granarySpeedMilli(state.rules, hasGranary);
     const strengthMilli = granaryStrengthMilli(state.rules, hasGranary);
+    const path = route.path.slice();
+    const arrivalTick = state.tick + travelTicks(route.distance, state.rules, speedMilli);
+    const firstLength = state.graph.edgeLength(path[0], path[1]);
+    const firstTicks =
+      path.length === 2
+        ? arrivalTick - state.tick
+        : firstLength === null
+          ? 1
+          : travelTicks(firstLength, state.rules, speedMilli);
     const squad: SquadState = {
       id: `s${String(state.nextSquad).padStart(6, "0")}`,
       owner: from.owner,
       from: from.id,
       to: to.id,
       count,
-      path: route.path.slice(),
+      path,
+      pathIndex: 0,
+      legStartTick: state.tick,
+      legEndTick: state.tick + firstTicks,
       departTick: state.tick,
-      arrivalTick: state.tick + travelTicks(route.distance, state.rules, speedMilli),
+      arrivalTick,
       speedMilli,
       strengthMilli,
+      supplyLeft: state.rules.supply.carryTicks,
+      nextStarveTick: state.tick + state.rules.supply.carryTicks,
       intercepted: [],
     };
     state.nextSquad += 1;
@@ -275,6 +301,34 @@ function applyCommand(
       to: squad.to,
       count: squad.count,
       arrivalTick: squad.arrivalTick,
+    });
+    return;
+  }
+
+  if (command.type === "retarget") {
+    const squad = findSquad(state, command.squad);
+    if (!squad) return reject(rejected, command, "unknown_squad");
+    const to = findCity(state, command.to);
+    if (!to) return reject(rejected, command, "unknown_target");
+    const result = buildRetargetPath(state.graph, squad, to.id, command.via);
+    if (result === "no_anchor") return reject(rejected, command, "squad_arrived");
+    if (result === "invalid_via") return reject(rejected, command, "invalid_via");
+    if (result === "no_route") return reject(rejected, command, "no_route");
+
+    const tailTicks =
+      result.distance === 0
+        ? 0
+        : travelTicks(result.distance, state.rules, squad.speedMilli);
+    const arrivalTick = squad.legEndTick + tailTicks;
+    squad.path = result.path;
+    squad.to = to.id;
+    squad.arrivalTick = arrivalTick;
+    events.push({
+      type: "squadRetargeted",
+      squadId: squad.id,
+      to: squad.to,
+      via: command.via ?? null,
+      arrivalTick,
     });
     return;
   }
@@ -320,12 +374,67 @@ function growEconomy(state: SimState): void {
 function advanceSquads(state: SimState, events: SimEvent[]): void {
   resolveInterceptions(state, events);
   if (state.squads.length === 0) return;
-  const due = state.squads.filter((squad) => squad.arrivalTick <= state.tick).sort(byId);
-  if (due.length === 0) return;
 
-  const dueIds = new Set(due.map((squad) => squad.id));
-  state.squads = state.squads.filter((squad) => !dueIds.has(squad.id));
-  for (const squad of due) resolveSquad(state, squad, events);
+  const removed = new Set<string>();
+  for (const squad of state.squads.slice().sort(byId)) {
+    if (removed.has(squad.id)) continue;
+    while (squad.legEndTick <= state.tick) {
+      const nextIndex = squad.pathIndex + 1;
+      if (nextIndex >= squad.path.length - 1) {
+        removed.add(squad.id);
+        resolveSquad(state, squad, events);
+        break;
+      }
+      squad.pathIndex = nextIndex;
+      squad.legStartTick = squad.legEndTick;
+      if (nextIndex === squad.path.length - 2) {
+        squad.legEndTick = Math.max(squad.legStartTick + 1, squad.arrivalTick);
+        squad.arrivalTick = squad.legEndTick;
+        continue;
+      }
+      const length = state.graph.edgeLength(squad.path[nextIndex], squad.path[nextIndex + 1]);
+      if (length === null) {
+        removed.add(squad.id);
+        break;
+      }
+      squad.legEndTick =
+        squad.legStartTick + travelTicks(length, state.rules, squad.speedMilli);
+    }
+  }
+
+  if (removed.size > 0) {
+    state.squads = state.squads.filter((squad) => !removed.has(squad.id));
+  }
+}
+
+function starveSquads(state: SimState, events: SimEvent[]): void {
+  if (state.squads.length === 0) return;
+  const removed = new Set<string>();
+  for (const squad of state.squads) {
+    if (state.tick > squad.departTick && squad.supplyLeft > 0) squad.supplyLeft -= 1;
+    if (state.tick < squad.nextStarveTick) continue;
+
+    const loss = Math.min(squad.count, state.rules.supply.starveLoss);
+    squad.count -= loss;
+    const destroyed = squad.count <= 0;
+    events.push({
+      type: "squadStarved",
+      squadId: squad.id,
+      owner: squad.owner,
+      loss,
+      count: squad.count,
+      destroyed,
+    });
+    if (destroyed) {
+      removed.add(squad.id);
+      continue;
+    }
+    squad.nextStarveTick = state.tick + state.rules.supply.starveIntervalTicks;
+  }
+
+  if (removed.size > 0) {
+    state.squads = state.squads.filter((squad) => !removed.has(squad.id));
+  }
 }
 
 function resolveSquad(state: SimState, squad: SquadState, events: SimEvent[]): void {

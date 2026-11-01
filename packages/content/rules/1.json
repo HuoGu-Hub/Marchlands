@@ -43,5 +43,10 @@
     "graceTicks": 600,
     "decayIntervalTicks": 200,
     "decayPerInterval": 2
+  },
+  "supply": {
+    "carryTicks": 600,
+    "starveIntervalTicks": 200,
+    "starveLoss": 1
   }
 }

@@ -209,3 +209,21 @@ export const AI_OUTPOST_MAP: MapDef = {
     { from: "b", to: "o1", length: 100 },
   ],
 };
+
+export const JUNCTION_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "junction",
+  cities: [
+    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-200, 0], layer: 0 },
+    { id: "b", kind: "town", owner: 0, level: 1, pop: 5, pos: [0, 100], layer: 0 },
+    { id: "c", kind: "town", owner: 0, level: 1, pop: 5, pos: [0, -100], layer: 0 },
+    { id: "d", kind: "town", owner: 2, level: 1, pop: 5, pos: [200, 0], layer: 0 },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 224 },
+    { from: "a", to: "c", length: 224 },
+    { from: "b", to: "c", length: 200 },
+    { from: "b", to: "d", length: 224 },
+    { from: "c", to: "d", length: 224 },
+  ],
+};

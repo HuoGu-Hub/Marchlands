@@ -7,8 +7,10 @@ import type {
   MapDef,
   Ruleset,
   SimState,
+  SquadState,
 } from "@marchlands/sim";
 import { audio } from "../audio";
+import { RouteOverlay } from "./route-overlay";
 import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
@@ -24,6 +26,9 @@ const REASONS: Record<string, string> = {
   not_upgradable: "该据点不能升级",
   not_outpost: "只有临时驻兵点可以切换状态",
   invalid_stance: "无效的驻守状态",
+  unknown_squad: "兵团不存在",
+  squad_arrived: "兵团已经抵达",
+  invalid_via: "该路线无法从下一个路口接入",
   game_finished: "对局已结束",
 };
 
@@ -42,8 +47,10 @@ export class GameSession {
   private readonly timeScale: number;
   private readonly ai: AiController;
   private scene: BattleScene;
+  private routeOverlay: RouteOverlay;
   private state: SimState;
   private selected: CityId | null = null;
+  private selectedSquad: string | null = null;
   private commands: Command[] = [];
   private accumulator = 0;
   private lastTime = 0;
@@ -59,6 +66,11 @@ export class GameSession {
     this.ai = createAi(2);
     this.state = createGame(options.map, Math.floor(Math.random() * 1_000_000_000), options.rules);
     this.scene = new BattleScene(options.canvas, options.map);
+    this.routeOverlay = new RouteOverlay({
+      canvas: options.canvas,
+      scene: this.scene,
+      map: options.map,
+    });
     this.bindInput();
     this.select("c1");
     this.updateHud();
@@ -85,10 +97,17 @@ export class GameSession {
   }
 
   restart(): void {
+    this.routeOverlay.dispose();
     this.scene.dispose();
     this.state = createGame(this.options.map, Math.floor(Math.random() * 1_000_000_000), this.options.rules);
     this.scene = new BattleScene(this.options.canvas, this.options.map);
+    this.routeOverlay = new RouteOverlay({
+      canvas: this.options.canvas,
+      scene: this.scene,
+      map: this.options.map,
+    });
     this.selected = null;
+    this.selectedSquad = null;
     this.commands = [];
     this.accumulator = 0;
     this.lastTime = performance.now();
@@ -102,9 +121,14 @@ export class GameSession {
     return this.state.cities.find((city) => city.id === id);
   }
 
+  getSquad(id: string): SquadState | undefined {
+    return this.state.squads.find((squad) => squad.id === id);
+  }
+
   select(id: CityId): void {
     const city = this.getCity(id);
     if (!city || city.owner !== 1) return;
+    this.selectedSquad = null;
     this.selected = id;
     this.scene.setSelected(id);
     this.options.onSelect(id);
@@ -117,8 +141,18 @@ export class GameSession {
     }
   }
 
+  selectSquad(id: string): void {
+    const squad = this.getSquad(id);
+    if (!squad || squad.owner !== 1) return;
+    this.selected = null;
+    this.selectedSquad = squad.id;
+    this.scene.setSelected(null);
+    this.options.onSelect(null);
+  }
+
   clearSelection(): void {
     this.selected = null;
+    this.selectedSquad = null;
     this.scene.setSelected(null);
     this.options.onSelect(null);
   }
@@ -161,6 +195,7 @@ export class GameSession {
     this.options.canvas.removeEventListener("click", this.onClick);
     this.options.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.options.canvas.removeEventListener("wheel", this.onWheel);
+    this.routeOverlay.dispose();
     this.scene.dispose();
   }
 
@@ -181,6 +216,7 @@ export class GameSession {
     }
 
     this.scene.update(this.state, delta);
+    this.routeOverlay.render(this.state, this.selectedSquad);
     this.raf = requestAnimationFrame(this.frame);
   };
 
@@ -195,6 +231,9 @@ export class GameSession {
     this.state = result.state;
     if (result.rejected.length > 0) {
       this.options.onToast(REASONS[result.rejected[0].reason] ?? "指令无效");
+    }
+    if (this.selectedSquad && !this.getSquad(this.selectedSquad)) {
+      this.clearSelection();
     }
     this.handleEvents();
     this.updateHud();
@@ -235,6 +274,12 @@ export class GameSession {
       } else if (event.type === "stanceChanged") {
         this.options.onToast(
           `${event.cityId} ${event.stance === "engage" ? "迎战" : "避战"}`,
+        );
+      } else if (event.type === "squadStarved" && event.owner === 1) {
+        this.options.onToast(
+          event.destroyed
+            ? `${event.squadId} 断粮溃散`
+            : `${event.squadId} 断粮 - ${event.loss} 兵`,
         );
       }
     }
@@ -283,27 +328,86 @@ export class GameSession {
     window.addEventListener("keydown", this.onKeyDown);
   }
 
-  private readonly onClick = (event: MouseEvent): void => {
-    if (this.paused || this.finished) return;
-    const cityId = this.scene.pickCity(event.clientX, event.clientY, this.state);
-    if (!cityId) {
+  private retargetSquad(to: CityId, via?: CityId): void {
+    if (!this.selectedSquad) return;
+    const squad = this.getSquad(this.selectedSquad);
+    if (!squad) {
       this.clearSelection();
       return;
     }
-    const city = this.getCity(cityId);
-    if (!city) return;
+    this.commands.push({ type: "retarget", squad: squad.id, to, via });
+    this.options.onToast(via ? `${squad.id} 改走 ${via}` : `${squad.id} 改道 ${to}`);
+  }
 
-    if (!this.selected) {
-      if (city.owner === 1) this.select(cityId);
-      else this.options.onToast("先选择己方城镇");
+  private readonly onClick = (event: MouseEvent): void => {
+    if (this.paused || this.finished) return;
+    if (this.selectedSquad) {
+      const otherId = this.routeOverlay.pickSquad(this.state, event.clientX, event.clientY);
+      if (otherId && otherId !== this.selectedSquad) {
+        const other = this.getSquad(otherId);
+        if (other?.owner === 1) {
+          this.selectSquad(other.id);
+          return;
+        }
+        this.options.onToast("只能指挥己方兵团");
+        return;
+      }
+    }
+    if (!this.selectedSquad) {
+      const squadId = this.routeOverlay.pickSquad(this.state, event.clientX, event.clientY);
+      if (squadId) {
+        const squad = this.getSquad(squadId);
+        if (squad?.owner === 1) {
+          this.selectSquad(squad.id);
+          return;
+        }
+        this.options.onToast("只能指挥己方兵团");
+        return;
+      }
+    }
+    const cityId = this.scene.pickCity(event.clientX, event.clientY, this.state);
+
+    if (this.selectedSquad) {
+      const squad = this.getSquad(this.selectedSquad);
+      if (!squad) {
+        this.clearSelection();
+        return;
+      }
+      if (cityId) {
+        if (cityId === squad.to) {
+          this.options.onToast("兵团已在该目的地");
+          return;
+        }
+        this.retargetSquad(cityId);
+        return;
+      }
+      const via = this.routeOverlay.pickBranch(this.state, squad, event.clientX, event.clientY);
+      if (via) {
+        this.retargetSquad(squad.to, via);
+        return;
+      }
+      this.clearSelection();
       return;
     }
-    if (cityId === this.selected) return;
-    if (city.owner === 1) {
-      this.select(cityId);
+
+    if (cityId) {
+      const city = this.getCity(cityId);
+      if (!city) return;
+      if (!this.selected) {
+        if (city.owner === 1) this.select(cityId);
+        else this.options.onToast("先选择己方城镇");
+        return;
+      }
+      if (cityId === this.selected) return;
+      if (city.owner === 1) {
+        this.select(cityId);
+        return;
+      }
+      this.commands.push({ type: "send", from: this.selected, to: cityId });
       return;
     }
-    this.commands.push({ type: "send", from: this.selected, to: cityId });
+
+    this.clearSelection();
   };
 
   private readonly onContextMenu = (event: MouseEvent): void => {

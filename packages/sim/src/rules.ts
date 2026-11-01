@@ -25,6 +25,11 @@ export const DEFAULT_RULESET: Ruleset = {
     decayIntervalTicks: 200,
     decayPerInterval: 2,
   },
+  supply: {
+    carryTicks: 600,
+    starveIntervalTicks: 200,
+    starveLoss: 1,
+  },
 };
 
 export function levelRule(rules: Ruleset, level: number): LevelRule {

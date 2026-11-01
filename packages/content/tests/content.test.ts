@@ -162,6 +162,17 @@ describe("validation", () => {
     expect(() => validateRules(withoutOutpost)).toThrow(/outpost required/);
   });
 
+  it("rejects a missing or broken supply rule", () => {
+    const { supply: _supply, ...withoutSupply } = rules;
+    expect(() => validateRules(withoutSupply)).toThrow(/supply required/);
+    expect(() =>
+      validateRules({ ...rules, supply: { ...rules.supply, starveIntervalTicks: 0 } }),
+    ).toThrow(/starveIntervalTicks/);
+    expect(() =>
+      validateRules({ ...rules, supply: { ...rules.supply, carryTicks: -1 } }),
+    ).toThrow(/carryTicks/);
+  });
+
   it("rejects negative granary bonuses and zero decay intervals", () => {
     expect(() =>
       validateRules({ ...rules, granary: { ...rules.granary, speedBonusMilli: -1 } }),
