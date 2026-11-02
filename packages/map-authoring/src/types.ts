@@ -3,6 +3,7 @@ import type {
   Level,
   MapObjective,
   MapPlayer,
+  NavigationMode,
   Owner,
   SiteKind,
   Stance,
@@ -41,6 +42,29 @@ export interface PropDraft {
   /** 朝向，单位为度。 */
   rotation: number;
   scale: number;
+  /** 是否参与导航阻挡。 */
+  blocker?: boolean;
+  /** 阻挡占地直径，分米。 */
+  footprintDm?: number;
+}
+
+export interface GridDraft {
+  /** 格子边长，分米；10 表示 1 米。 */
+  cellSizeDm: number;
+  width: number;
+  height: number;
+  /** 每格高度，厘米，行优先。 */
+  heightCm: number[];
+  /** 每格地表枚举，行优先。 */
+  surface: number[];
+  /** Base64 阻挡位图，1 表示阻挡。 */
+  blocked: string;
+  /** Base64 可走覆盖位图，1 表示强制可走。 */
+  walkableOverride: string;
+}
+
+export interface VisionDraft {
+  enabled: boolean;
 }
 
 export interface UnitVisualDraft {
@@ -71,15 +95,27 @@ export interface SiteDraft {
   /** 外观自带朝向，单位为度。 */
   visualRotation?: number;
   visualScale?: number;
+  /** 城镇占地直径，分米。 */
+  footprintDm?: number;
+  /** 占领判定半径，分米。 */
+  captureRadiusDm?: number;
 }
 
 export interface RoadDraft {
   from: CityId;
   to: CityId;
+  /** 网格地图上的道路样条，分米。 */
+  path?: [number, number][];
+  /** 道路宽度，分米。 */
+  widthDm?: number;
 }
 
 export interface MapDocument {
-  schema: 2;
+  schema: 3;
+  navigation: NavigationMode;
+  /** 仅网格地图使用。 */
+  grid?: GridDraft;
+  vision: VisionDraft;
   slug: string;
   name: string;
   size: [number, number];

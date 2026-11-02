@@ -1,4 +1,4 @@
-import type { SimState } from "./types";
+import type { MapDef, SimState } from "./types";
 
 const FNV_PRIME = 0x01000193;
 const FNV_OFFSET = 0x811c9dc5;
@@ -16,6 +16,28 @@ function fnv1a(text: string, seed: number): number {
     value = Math.imul(value, FNV_PRIME) >>> 0;
   }
   return value >>> 0;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "number") return Number.isFinite(value) ? JSON.stringify(value) : "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(canonicalJson).join(",") + "]";
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort();
+    return "{" + keys.map((key) => JSON.stringify(key) + ":" + canonicalJson(record[key])).join(",") + "}";
+  }
+  return "null";
+}
+
+/** 地图内容哈希，排除 mapHash 字段本身。 */
+export function mapHashOf(map: MapDef): string {
+  const rest: Record<string, unknown> = { ...map };
+  delete rest.mapHash;
+  return hashText(canonicalJson(rest));
 }
 
 function byId(a: { id: string }, b: { id: string }): number {

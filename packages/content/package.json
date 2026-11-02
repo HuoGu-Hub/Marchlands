@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@marchlands/nav": "workspace:*",
     "@marchlands/sim": "workspace:*"
   },
   "devDependencies": {

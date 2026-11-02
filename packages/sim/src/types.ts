@@ -2,6 +2,7 @@ import type { MapGraph } from "./path";
 
 export type CityId = string;
 export type SiteId = CityId;
+export type NavigationMode = "graph" | "grid";
 export type PlayerId = 1 | 2;
 export type Owner = 0 | PlayerId;
 export type Level = 1 | 2 | 3;
@@ -29,6 +30,25 @@ export interface MapCity {
   stance?: Stance;
   /** 仅临时驻兵点使用；它监视的公路边，用于迎战拦截。 */
   watch?: [CityId, CityId];
+  /** 网格模式下城镇占地直径，厘米。 */
+  footprintCm?: number;
+  /** 网格模式下占领判定半径，厘米。 */
+  captureRadiusCm?: number;
+}
+
+/** 网格地图的烘焙高度、地表与阻挡位图。 */
+export interface MapGridDef {
+  cellSizeCm: number;
+  width: number;
+  height: number;
+  /** Base64 Int16LE，长度 width × height。 */
+  heightCm: string;
+  /** Base64 Uint8 地表枚举，长度 width × height。 */
+  surface: string;
+  /** Base64 位图，行优先，低位在前。 */
+  blocked: string;
+  /** Base64 位图，1 表示强制可走。 */
+  walkableOverride: string;
 }
 
 export interface MapEdge {
@@ -46,6 +66,12 @@ export interface MapObjective {
 
 export interface MapDef {
   schema: number;
+  /** graph: 据点图寻路；grid: 自由网格寻路。缺省按 graph 处理。 */
+  navigation?: NavigationMode;
+  /** 仅 grid 模式使用。 */
+  grid?: MapGridDef;
+  /** 编译产物哈希，供回放与地图校验使用。 */
+  mapHash?: string;
   slug: string;
   name: string;
   biome: string;

@@ -1,8 +1,10 @@
 import { ContentError, validateMap } from "@marchlands/content";
-import type { MapDef, MapPlayer } from "@marchlands/sim";
+import { decodeBitmapBase64 } from "@marchlands/nav";
+import { mapHashOf, type MapDef, type MapGridDef, type MapPlayer, type NavigationMode } from "@marchlands/sim";
 import type {
   CompileResult,
   EditorDiagnostic,
+  GridDraft,
   MapDocument,
   MapVisual,
   ParsedDocument,
@@ -14,6 +16,14 @@ import type {
 } from "./types";
 import { TERRAIN_STYLE_IDS } from "./types";
 import { createHeightField, edgeGrade } from "./height";
+import {
+  DEFAULT_CAPTURE_RADIUS_DM,
+  DEFAULT_FOOTPRINT_DM,
+  createGridDraft,
+  gridIssues,
+  packGridDraft,
+  unpackGridDef,
+} from "./grid";
 import {
   cloneVisual,
   compileVisual,
@@ -53,7 +63,9 @@ function starterRoads(): RoadDraft[] {
 
 export function createStarterDocument(): MapDocument {
   const document: MapDocument = {
-    schema: 2,
+    schema: 3,
+    navigation: "graph",
+    vision: { enabled: false },
     slug: "custom",
     name: "新地图",
     size: [700, 700],
@@ -69,6 +81,45 @@ export function createStarterDocument(): MapDocument {
   return document;
 }
 
+export function createGridDocument(): MapDocument {
+  const document: MapDocument = {
+    schema: 3,
+    navigation: "grid",
+    grid: createGridDraft([700, 700]),
+    vision: { enabled: false },
+    slug: "custom-grid",
+    name: "新网格地图",
+    size: [700, 700],
+    biome: "frontier",
+    players: DEFAULT_PLAYERS.map((player) => ({ ...player })),
+    sites: [
+      { id: "c1", kind: "town", owner: 1, level: 3, pop: 30, pos: [-200, -150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c2", kind: "town", owner: 2, level: 3, pop: 30, pos: [200, 150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c3", kind: "town", owner: 0, level: 1, pop: 10, pos: [-200, 150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c4", kind: "town", owner: 0, level: 1, pop: 10, pos: [200, -150], footprintDm: 80, captureRadiusDm: 40 },
+    ],
+    roads: [],
+    objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
+    transit: "open",
+    visual: createDefaultVisual(),
+  };
+  document.visual = createStarterVisual(document);
+  return document;
+}
+
+export function convertToGrid(document: MapDocument): MapDocument {
+  const next = cloneDocument(document);
+  next.schema = 3;
+  next.navigation = "grid";
+  next.vision = { enabled: false };
+  if (!next.grid) next.grid = createGridDraft(next.size);
+  for (const site of next.sites) {
+    if (site.footprintDm === undefined) site.footprintDm = DEFAULT_FOOTPRINT_DM;
+    if (site.captureRadiusDm === undefined) site.captureRadiusDm = DEFAULT_CAPTURE_RADIUS_DM;
+  }
+  return next;
+}
+
 export function cloneDocument(document: MapDocument): MapDocument {
   return {
     ...document,
@@ -79,8 +130,21 @@ export function cloneDocument(document: MapDocument): MapDocument {
       pos: [site.pos[0], site.pos[1]],
       ...(site.watch ? { watch: [site.watch[0], site.watch[1]] as [string, string] } : {}),
     })),
-    roads: document.roads.map((road) => ({ ...road })),
+    roads: document.roads.map((road) => ({
+      ...road,
+      ...(road.path ? { path: road.path.map((point) => [point[0], point[1]] as [number, number]) } : {}),
+    })),
     objectives: document.objectives.map((objective) => ({ ...objective })),
+    vision: { enabled: document.vision.enabled },
+    ...(document.grid
+      ? {
+          grid: {
+            ...document.grid,
+            heightCm: document.grid.heightCm.slice(),
+            surface: document.grid.surface.slice(),
+          },
+        }
+      : {}),
     visual: cloneVisual(document.visual),
   };
 }
@@ -138,13 +202,39 @@ function siteFromUnknown(value: unknown): SiteDraft | null {
     if (scale === null || scale < 0.1 || scale > 10) throw new Error(`据点 ${site.id} 的外观缩放无效`);
     site.visualScale = scale;
   }
+  if (value.footprintDm !== undefined) {
+    const footprint = finiteNumber(value.footprintDm);
+    if (footprint === null || footprint <= 0) throw new Error(`据点 ${site.id} 的占地直径无效`);
+    site.footprintDm = footprint;
+  }
+  if (value.captureRadiusDm !== undefined) {
+    const capture = finiteNumber(value.captureRadiusDm);
+    if (capture === null || capture <= 0) throw new Error(`据点 ${site.id} 的占领半径无效`);
+    site.captureRadiusDm = capture;
+  }
   return site;
 }
 
 function roadFromUnknown(value: unknown): RoadDraft | null {
   if (!asRecord(value)) return null;
   if (typeof value.from !== "string" || typeof value.to !== "string") return null;
-  return { from: value.from, to: value.to };
+  const road: RoadDraft = { from: value.from, to: value.to };
+  if (value.path !== undefined) {
+    if (!Array.isArray(value.path)) throw new Error("道路样条必须是点数组");
+    const path: Array<[number, number]> = [];
+    for (const entry of value.path) {
+      const point = numberPair(entry);
+      if (!point) throw new Error("道路样条包含无效点");
+      path.push(point);
+    }
+    road.path = path;
+  }
+  if (value.widthDm !== undefined) {
+    const width = finiteNumber(value.widthDm);
+    if (width === null || width <= 0) throw new Error("道路宽度无效");
+    road.widthDm = width;
+  }
+  return road;
 }
 
 function propFromUnknown(value: unknown): PropDraft | null {
@@ -156,13 +246,76 @@ function propFromUnknown(value: unknown): PropDraft | null {
   const rotation = finiteNumber(value.rotation);
   const scale = finiteNumber(value.scale);
   if (rotation === null || scale === null || scale < 0.1 || scale > 10) return null;
-  return {
+  const prop: PropDraft = {
     id: value.id,
     assetId: value.assetId,
     pos,
     rotation: ((rotation % 360) + 360) % 360,
     scale,
   };
+  if (typeof value.blocker === "boolean") prop.blocker = value.blocker;
+  if (value.footprintDm !== undefined) {
+    const footprint = finiteNumber(value.footprintDm);
+    if (footprint === null || footprint <= 0) throw new Error(`装饰 ${prop.id} 的占地直径无效`);
+    prop.footprintDm = footprint;
+  }
+  return prop;
+}
+
+function integerArray(value: unknown, label: string, length?: number): number[] {
+  if (!Array.isArray(value)) throw new Error(`${label} 必须是数组`);
+  if (length !== undefined && value.length !== length) {
+    throw new Error(`${label} 数量与格子数不一致`);
+  }
+  const output: number[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "number" || !Number.isInteger(entry)) throw new Error(`${label} 必须是整数`);
+    output.push(entry);
+  }
+  return output;
+}
+
+function gridFromUnknown(value: unknown): GridDraft {
+  if (!asRecord(value)) throw new Error("地图网格数据必须是对象");
+  const cellSizeDm = finiteNumber(value.cellSizeDm);
+  if (cellSizeDm === null || !Number.isInteger(cellSizeDm) || cellSizeDm <= 0) {
+    throw new Error("网格尺寸必须是正整数分米");
+  }
+  const width = finiteNumber(value.width);
+  const height = finiteNumber(value.height);
+  if (width === null || !Number.isInteger(width) || width <= 0) throw new Error("网格宽度无效");
+  if (height === null || !Number.isInteger(height) || height <= 0) throw new Error("网格高度无效");
+  const cells = width * height;
+  const heightCm = integerArray(value.heightCm, "网格高度", cells);
+  for (const entry of heightCm) {
+    if (entry < -32768 || entry > 32767) throw new Error("网格高度必须是 -32768 到 32767 的整数厘米");
+  }
+  const surface = integerArray(value.surface, "网格地表", cells);
+  for (const entry of surface) {
+    if (entry < 0 || entry > 9) throw new Error("网格地表必须是 0 到 9");
+  }
+  if (typeof value.blocked !== "string") throw new Error("网格阻挡位图必须是 Base64 字符串");
+  if (typeof value.walkableOverride !== "string") throw new Error("网格可走覆盖位图必须是 Base64 字符串");
+  try {
+    decodeBitmapBase64(value.blocked, cells);
+  } catch {
+    throw new Error("网格阻挡位图无效");
+  }
+  try {
+    decodeBitmapBase64(value.walkableOverride, cells);
+  } catch {
+    throw new Error("网格可走覆盖位图无效");
+  }
+  return { cellSizeDm, width, height, heightCm, surface, blocked: value.blocked, walkableOverride: value.walkableOverride };
+}
+
+function navigationFromUnknown(value: unknown, schema: number): NavigationMode {
+  if (value === "grid") {
+    if (schema !== 3) throw new Error("旧版地图不支持网格导航");
+    return "grid";
+  }
+  if (value !== undefined && value !== "graph") throw new Error(`不支持的导航模式：${String(value)}`);
+  return "graph";
 }
 
 function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
@@ -215,7 +368,10 @@ export function fromMapDef(map: MapDef): MapDocument {
   visual.terrain.style = map.biome === "forest" ? "meadow" : "frontier";
   visual.roads.style = map.biome === "forest" ? "dirt" : "cobble";
   return {
-    schema: 2,
+    schema: 3,
+    navigation: map.navigation ?? "graph",
+    ...(map.grid ? { grid: unpackGridDef(map.grid) } : {}),
+    vision: { enabled: false },
     slug: map.slug,
     name: map.name,
     size: [map.size[0], map.size[1]],
@@ -234,6 +390,8 @@ export function fromMapDef(map: MapDef): MapDocument {
             ...(city.watch ? { watch: [city.watch[0], city.watch[1]] as [string, string] } : {}),
           }
         : {}),
+      ...(city.footprintCm !== undefined ? { footprintDm: city.footprintCm / 10 } : {}),
+      ...(city.captureRadiusCm !== undefined ? { captureRadiusDm: city.captureRadiusCm / 10 } : {}),
     })),
     roads: map.edges.map((edge) => ({ from: edge.from, to: edge.to })),
     objectives: map.objectives.map((objective) => ({ ...objective })),
@@ -245,7 +403,10 @@ export function fromMapDef(map: MapDef): MapDocument {
 export function parseDocument(input: unknown): ParsedDocument {
   if (!asRecord(input)) throw new Error("地图文件必须是 JSON 对象");
   if (Array.isArray(input.sites) && Array.isArray(input.roads)) {
-    if (input.schema !== 1 && input.schema !== 2) throw new Error("不支持的地图文档版本");
+    if (input.schema !== 1 && input.schema !== 2 && input.schema !== 3) {
+      throw new Error("不支持的地图文档版本");
+    }
+    const schema = input.schema;
     const size = numberPair(input.size);
     if (!size) throw new Error("地图尺寸必须是两个整数");
     const players = Array.isArray(input.players)
@@ -277,8 +438,19 @@ export function parseDocument(input: unknown): ParsedDocument {
           })
           .filter((entry): entry is { type: string; ticks?: number } => entry !== null)
       : [];
+    const navigation = navigationFromUnknown(input.navigation, schema);
+    const grid = schema === 3 && input.grid !== undefined ? gridFromUnknown(input.grid) : undefined;
+    if (schema === 3 && navigation === "grid" && !grid) throw new Error("网格地图缺少网格数据");
+    if (schema !== 3 && input.grid !== undefined) throw new Error("旧版地图不支持网格数据");
+    const vision =
+      asRecord(input.vision) && typeof input.vision.enabled === "boolean"
+        ? { enabled: input.vision.enabled }
+        : { enabled: false };
     const document: MapDocument = {
-      schema: 2,
+      schema: 3,
+      navigation,
+      ...(grid ? { grid } : {}),
+      vision,
       slug: typeof input.slug === "string" && input.slug.length > 0 ? input.slug : "custom",
       name: typeof input.name === "string" && input.name.length > 0 ? input.name : "新地图",
       size,
@@ -288,7 +460,7 @@ export function parseDocument(input: unknown): ParsedDocument {
       roads,
       objectives,
       transit: input.transit === "open" ? "open" : "friendly",
-      visual: visualFromUnknown(input.visual, input.schema === 1 ? 20261102 : 20261102),
+      visual: visualFromUnknown(input.visual, 20261102),
     };
     return { document, diagnostics: compileDocument(document).diagnostics };
   }
@@ -333,6 +505,13 @@ export function compileDocument(document: MapDocument): CompileResult {
 
   if (document.players.length !== 2) error("players", "地图必须恰好有两名玩家");
   if (document.size[0] < 100 || document.size[1] < 100) error("size", "地图尺寸至少为 100 x 100");
+
+  const gridProblems = document.grid ? gridIssues(document.grid, document.size) : [];
+  if (document.navigation === "grid" && !document.grid) error("grid", "网格地图缺少网格数据");
+  for (const issue of gridProblems) error("grid", issue);
+  if (document.navigation === "graph" && document.grid) {
+    warning("grid-unused", "当前为据点图模式，网格数据不会参与导航");
+  }
 
   const ids = new Set<string>();
   const siteById = new Map<string, SiteDraft>();
@@ -392,7 +571,7 @@ export function compileDocument(document: MapDocument): CompileResult {
       from: road.from,
       to: road.to,
       length,
-      ...(grade > 0.01 ? { grade: Math.round(grade * 1000) / 1000 } : {}),
+      ...(document.navigation === "graph" && grade > 0.01 ? { grade: Math.round(grade * 1000) / 1000 } : {}),
     });
     adjacency.get(road.from)?.push(road.to);
     adjacency.get(road.to)?.push(road.from);
@@ -400,7 +579,7 @@ export function compileDocument(document: MapDocument): CompileResult {
 
   for (const site of document.sites) {
     const degree = adjacency.get(site.id)?.length ?? 0;
-    if (site.kind !== "town" && degree !== 1) {
+    if (document.navigation === "graph" && site.kind !== "town" && degree !== 1) {
       error("leaf-site", `${site.id} 是${site.kind === "granary" ? "粮仓" : "驻兵点"}，只能连接一条道路`, site.id);
     }
     if (site.kind !== "outpost") continue;
@@ -419,7 +598,7 @@ export function compileDocument(document: MapDocument): CompileResult {
     }
   }
 
-  if (document.sites.length > 0) {
+  if (document.navigation === "graph" && document.sites.length > 0) {
     const first = document.sites[0].id;
     const seen = new Set<string>();
     const queue = [first];
@@ -439,8 +618,19 @@ export function compileDocument(document: MapDocument): CompileResult {
   const visualErrors = validateVisual(document);
   for (const issue of visualErrors) error(issue.code, issue.message, undefined, undefined, issue.propId);
 
+  let packedGrid: MapGridDef | undefined;
+  if (document.navigation === "grid" && document.grid && gridProblems.length === 0) {
+    try {
+      packedGrid = packGridDraft(document.grid);
+    } catch (caught) {
+      error("grid", caught instanceof Error ? caught.message : "网格数据打包失败");
+    }
+  }
+
   const map: MapDef = {
-    schema: 1,
+    schema: 2,
+    navigation: document.navigation,
+    ...(packedGrid ? { grid: packedGrid } : {}),
     slug: document.slug,
     name: document.name,
     biome: document.biome,
@@ -448,25 +638,40 @@ export function compileDocument(document: MapDocument): CompileResult {
     scale: 0.1,
     ruleset: "1",
     players: document.players.map((player) => ({ ...player })),
-    cities: document.sites.map((site) => ({
-      id: site.id,
-      kind: site.kind,
-      owner: site.owner,
-      level: site.kind === "town" ? site.level : 1,
-      pop: site.pop,
-      pos: [site.pos[0], site.pos[1]],
-      layer: 0,
-      ...(site.kind === "outpost"
-        ? {
-            stance: site.stance ?? "evade",
-            ...(site.watch ? { watch: [site.watch[0], site.watch[1]] as [string, string] } : {}),
-          }
-        : {}),
-    })),
+    cities: document.sites.map((site) => {
+      const footprintCm = site.footprintDm !== undefined
+        ? Math.round(site.footprintDm * 10)
+        : document.navigation === "grid"
+          ? DEFAULT_FOOTPRINT_DM * 10
+          : undefined;
+      const captureRadiusCm = site.captureRadiusDm !== undefined
+        ? Math.round(site.captureRadiusDm * 10)
+        : document.navigation === "grid"
+          ? DEFAULT_CAPTURE_RADIUS_DM * 10
+          : undefined;
+      return {
+        id: site.id,
+        kind: site.kind,
+        owner: site.owner,
+        level: site.kind === "town" ? site.level : 1,
+        pop: site.pop,
+        pos: [site.pos[0], site.pos[1]],
+        layer: 0,
+        ...(site.kind === "outpost"
+          ? {
+              stance: site.stance ?? "evade",
+              ...(site.watch ? { watch: [site.watch[0], site.watch[1]] as [string, string] } : {}),
+            }
+          : {}),
+        ...(footprintCm !== undefined ? { footprintCm } : {}),
+        ...(captureRadiusCm !== undefined ? { captureRadiusCm } : {}),
+      };
+    }),
     edges,
     objectives: document.objectives.map((objective) => ({ ...objective })),
     transit: document.transit,
   };
+  map.mapHash = mapHashOf(map);
 
   try {
     validateMap(map);

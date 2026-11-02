@@ -10,7 +10,9 @@ export type {
   MapCity,
   MapDef,
   MapEdge,
+  MapGridDef,
   MapObjective,
+  NavigationMode,
   MapPlayer,
   MatchStatus,
   OutpostRule,
@@ -30,7 +32,7 @@ export type {
 } from "./types";
 
 export { createGame, step } from "./game";
-export { canonicalState, hash, hashText } from "./hash";
+export { canonicalState, hash, hashText, mapHashOf } from "./hash";
 export { createAi } from "./ai";
 export type { AiController } from "./ai";
 export {

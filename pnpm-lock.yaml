@@ -69,6 +69,9 @@ importers:
 
   packages/content:
     dependencies:
+      '@marchlands/nav':
+        specifier: workspace:*
+        version: link:../nav
       '@marchlands/sim':
         specifier: workspace:*
         version: link:../sim
@@ -91,6 +94,9 @@ importers:
       '@marchlands/content':
         specifier: workspace:*
         version: link:../content
+      '@marchlands/nav':
+        specifier: workspace:*
+        version: link:../nav
       '@marchlands/sim':
         specifier: workspace:*
         version: link:../sim

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { validateMap } from "@marchlands/content";
+import { createGame } from "@marchlands/sim";
 import {
   addProp,
   addSite,
   compileDocument,
   connect,
+  convertToGrid,
+  createGridDocument,
   createStarterDocument,
   disconnect,
   fromMapDef,
@@ -99,14 +102,14 @@ describe("map authoring", () => {
     expect(imported.sites).toEqual(starter.sites);
     expect(imported.roads).toEqual(starter.roads);
     expect(imported.visual.props).toEqual([]);
-    expect(parseDocument(JSON.parse(JSON.stringify(map))).document.schema).toBe(2);
+    expect(parseDocument(JSON.parse(JSON.stringify(map))).document.schema).toBe(3);
   });
 
   it("upgrades a schema 1 document with default visual settings", () => {
     const legacy = { ...createStarterDocument(), schema: 1 } as Record<string, unknown>;
     delete legacy.visual;
     const parsed = parseDocument(legacy);
-    expect(parsed.document.schema).toBe(2);
+    expect(parsed.document.schema).toBe(3);
     expect(parsed.document.visual.props).toEqual([]);
     expect(parsed.document.visual.terrain.style).toBe("frontier");
   });
@@ -177,5 +180,86 @@ describe("map authoring", () => {
     const disconnected = { ...starter, roads: [] };
     const disconnectedResult = compileDocument(disconnected);
     expect(disconnectedResult.diagnostics.some((entry) => entry.code === "disconnected")).toBe(true);
+  });
+
+  it("compiles a grid document with packed heights, footprints and a map hash", () => {
+    const document = createGridDocument();
+    const result = compileDocument(document);
+    expect(result.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
+    expect(result.map.schema).toBe(2);
+    expect(result.map.navigation).toBe("grid");
+    expect(result.map.grid?.cellSizeCm).toBe(100);
+    expect(result.map.grid?.width).toBe(70);
+    expect(result.map.grid?.height).toBe(70);
+    expect(result.map.cities[0].footprintCm).toBe(800);
+    expect(result.map.cities[0].captureRadiusCm).toBe(400);
+    expect(result.map.mapHash).toMatch(/^[0-9a-f]{16}$/);
+    expect(() => validateMap(result.map)).not.toThrow();
+    const state = createGame(result.map, 1);
+    expect(state.map.navigation).toBe("grid");
+    expect(state.cities).toHaveLength(4);
+    expect(state.squads).toHaveLength(0);
+  });
+
+  it("round-trips a grid document through JSON and MapDef", () => {
+    const document = createGridDocument();
+    document.grid!.heightCm[0] = 125;
+    document.grid!.surface[0] = 3;
+    const parsed = parseDocument(JSON.parse(serializeDocument(document)));
+    expect(parsed.document.navigation).toBe("grid");
+    expect(parsed.document.grid).toEqual(document.grid);
+    const compiled = compileDocument(parsed.document);
+    const imported = fromMapDef(compiled.map);
+    expect(imported.navigation).toBe("grid");
+    expect(imported.grid?.heightCm[0]).toBe(125);
+    expect(imported.grid?.surface[0]).toBe(3);
+  });
+
+  it("upgrades a schema 2 document to graph navigation", () => {
+    const legacy = { ...createStarterDocument(), schema: 2 } as Record<string, unknown>;
+    delete legacy.grid;
+    delete legacy.navigation;
+    delete legacy.vision;
+    const parsed = parseDocument(legacy);
+    expect(parsed.document.schema).toBe(3);
+    expect(parsed.document.navigation).toBe("graph");
+    expect(parsed.document.grid).toBeUndefined();
+    expect(parsed.document.vision).toEqual({ enabled: false });
+  });
+
+  it("changes the map hash when baked heights change", () => {
+    const document = createGridDocument();
+    const first = compileDocument(document).map.mapHash;
+    document.grid!.heightCm[10] += 30;
+    const second = compileDocument(document).map.mapHash;
+    expect(second).not.toBe(first);
+  });
+
+  it("converts a graph document to a flat grid and keeps sites and roads", () => {
+    const starter = createStarterDocument();
+    const converted = convertToGrid(starter);
+    expect(converted.navigation).toBe("grid");
+    expect(converted.grid?.width).toBe(70);
+    expect(converted.grid?.heightCm.every((value) => value === 0)).toBe(true);
+    expect(converted.sites.map((site) => site.id)).toEqual(starter.sites.map((site) => site.id));
+    expect(converted.roads).toEqual(starter.roads);
+    expect(converted.sites.every((site) => site.footprintDm === 80)).toBe(true);
+    expect(converted.sites.every((site) => site.captureRadiusDm === 40)).toBe(true);
+  });
+
+  it("reports grid sizes that do not match the map", () => {
+    const document = createGridDocument();
+    document.grid!.width = 69;
+    const result = compileDocument(document);
+    expect(
+      result.diagnostics.some((entry) => entry.code === "grid" && entry.message.includes("网格宽度")),
+    ).toBe(true);
+  });
+
+  it("reports a grid map without grid data", () => {
+    const document = createGridDocument();
+    delete document.grid;
+    const result = compileDocument(document);
+    expect(result.diagnostics.some((entry) => entry.code === "grid")).toBe(true);
   });
 });

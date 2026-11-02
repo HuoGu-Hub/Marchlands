@@ -1,6 +1,8 @@
 export {
   cloneDocument,
   compileDocument,
+  convertToGrid,
+  createGridDocument,
   createStarterDocument,
   documentLabel,
   fromMapDef,
@@ -41,6 +43,18 @@ export {
   roadDraft,
   terrainDraft,
 } from "./visual";
+export {
+  DEFAULT_CAPTURE_RADIUS_DM,
+  DEFAULT_CELL_SIZE_DM,
+  DEFAULT_FOOTPRINT_DM,
+  createGridDraft,
+  emptyBitmap,
+  gridCellAt,
+  gridIssues,
+  packGridDraft,
+  unpackGridDef,
+} from "./grid";
+export type { GridDraftOptions } from "./grid";
 export { createHeightField, edgeGrade } from "./height";
 export type { HeightField, HeightFieldOptions } from "./height";
 export { TERRAIN_STYLE_IDS, TERRAIN_STYLES } from "./types";
@@ -48,6 +62,7 @@ export type {
   CompileResult,
   DiagnosticSeverity,
   EditorDiagnostic,
+  GridDraft,
   MapDocument,
   MapVisual,
   ParsedDocument,
@@ -60,5 +75,6 @@ export type {
   TerrainDraft,
   TerrainStyle,
   UnitVisualDraft,
+  VisionDraft,
   VisualDraft,
 } from "./types";

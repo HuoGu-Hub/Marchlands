@@ -9,4 +9,12 @@ export { planPath } from "./plan";
 export type { PlannedPath, PlanOptions } from "./plan";
 export { sampleHeightCm } from "./height";
 export { buildClearanceMask } from "./clearance";
+export {
+  decodeBitmapBase64,
+  decodeInt16Base64,
+  decodeUint8Base64,
+  encodeBitmapBase64,
+  encodeInt16Base64,
+  encodeUint8Base64,
+} from "./pack";
 export { clampInt, divRound, divTrunc, isqrt } from "./math";

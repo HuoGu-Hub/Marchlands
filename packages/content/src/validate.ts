@@ -1,3 +1,8 @@
+import {
+  decodeBitmapBase64,
+  decodeInt16Base64,
+  decodeUint8Base64,
+} from "@marchlands/nav";
 import type {
   Level,
   MapCity,
@@ -9,6 +14,7 @@ import type {
   SiteKind,
   Stance,
 } from "@marchlands/sim";
+import { mapHashOf } from "@marchlands/sim";
 
 export class ContentError extends Error {
   readonly issues: string[];
@@ -45,11 +51,59 @@ function edgeKey(from: string, to: string): string {
   return from < to ? `${from}|${to}` : `${to}|${from}`;
 }
 
+function requireBase64<T>(
+  value: unknown,
+  label: string,
+  issues: string[],
+  decode: (text: string) => T,
+): T | null {
+  if (typeof value !== "string") {
+    issues.push(`${label} must be a base64 string`);
+    return null;
+  }
+  try {
+    return decode(value);
+  } catch (error) {
+    issues.push(`${label} invalid: ${error instanceof Error ? error.message : "base64 error"}`);
+    return null;
+  }
+}
+
+function validateGrid(grid: Record<string, unknown>, width: number, height: number, issues: string[]): void {
+  const cellSize = requireInt(grid.cellSizeCm, "grid.cellSizeCm", issues, 1);
+  if (cellSize !== 100) issues.push("grid.cellSizeCm must be 100");
+  const gridWidth = requireInt(grid.width, "grid.width", issues, 1);
+  const gridHeight = requireInt(grid.height, "grid.height", issues, 1);
+  if (gridWidth > 0 && cellSize > 0 && width > 0 && gridWidth * cellSize !== width * 10) {
+    issues.push(`grid.width * grid.cellSizeCm must equal map width in cm (${width * 10})`);
+  }
+  if (gridHeight > 0 && cellSize > 0 && height > 0 && gridHeight * cellSize !== height * 10) {
+    issues.push(`grid.height * grid.cellSizeCm must equal map height in cm (${height * 10})`);
+  }
+  const cells = gridWidth * gridHeight;
+  if (cells <= 0) return;
+
+  requireBase64(grid.heightCm, "grid.heightCm", issues, (text) => decodeInt16Base64(text, cells));
+  const surfaces = requireBase64(grid.surface, "grid.surface", issues, (text) => decodeUint8Base64(text, cells));
+  if (surfaces) {
+    for (let index = 0; index < surfaces.length; index += 1) {
+      if (surfaces[index] > 9) {
+        issues.push(`grid.surface[${index}] must be 0..9`);
+        break;
+      }
+    }
+  }
+  requireBase64(grid.blocked, "grid.blocked", issues, (text) => decodeBitmapBase64(text, cells));
+  requireBase64(grid.walkableOverride, "grid.walkableOverride", issues, (text) =>
+    decodeBitmapBase64(text, cells),
+  );
+}
+
 export function validateMap(input: unknown): MapDef {
   if (!isRecord(input)) throw new ContentError("map", ["root must be an object"]);
   const issues: string[] = [];
 
-  if (input.schema !== 1) issues.push("schema must be 1");
+  if (input.schema !== 1 && input.schema !== 2) issues.push("schema must be 1 or 2");
   if (typeof input.slug !== "string" || input.slug.length === 0) issues.push("slug required");
   if (typeof input.name !== "string" || input.name.length === 0) issues.push("name required");
   if (typeof input.biome !== "string" || input.biome.length === 0) issues.push("biome required");
@@ -60,6 +114,25 @@ export function validateMap(input: unknown): MapDef {
   const width = requireInt(size[0], "size[0]", issues, 1);
   const height = requireInt(size[1], "size[1]", issues, 1);
   requireNumber(input.scale, "scale", issues);
+
+  const schema = input.schema;
+  const navigation = input.navigation;
+  if (schema === 2) {
+    if (navigation !== "graph" && navigation !== "grid") issues.push("navigation must be graph or grid");
+    if (typeof input.mapHash !== "string" || !/^[0-9a-f]{16}$/.test(input.mapHash)) {
+      issues.push("mapHash must be 16 lowercase hex characters");
+    }
+  } else if (schema === 1) {
+    if (navigation !== undefined && navigation !== "graph") issues.push("schema 1 maps are graph navigation");
+    if (input.grid !== undefined) issues.push("schema 1 maps cannot carry a grid");
+  }
+  const gridMode = navigation === "grid";
+  if (gridMode) {
+    if (!isRecord(input.grid)) issues.push("grid required for grid navigation");
+    else validateGrid(input.grid, width, height, issues);
+  } else if (input.grid !== undefined) {
+    issues.push("grid only allowed for grid navigation");
+  }
 
   const players = Array.isArray(input.players) ? input.players : [];
   if (players.length !== 2) issues.push("players must contain exactly 2 entries");
@@ -111,6 +184,12 @@ export function validateMap(input: unknown): MapDef {
     }
     requireInt(entry.pop, `cities[${id}].pop`, issues, 0);
     requireInt(entry.layer, `cities[${id}].layer`, issues, 0);
+    if (entry.footprintCm !== undefined) {
+      requireInt(entry.footprintCm, `cities[${id}].footprintCm`, issues, 1);
+    }
+    if (entry.captureRadiusCm !== undefined) {
+      requireInt(entry.captureRadiusCm, `cities[${id}].captureRadiusCm`, issues, 1);
+    }
     const pos = Array.isArray(entry.pos) ? entry.pos : [];
     if (pos.length !== 2) {
       issues.push(`cities[${id}].pos must be [x, z]`);
@@ -185,7 +264,7 @@ export function validateMap(input: unknown): MapDef {
   if (townCount < 2) issues.push("map must contain at least 2 towns");
 
   for (const [id, kind] of cityKinds) {
-    if (kind === "granary" || kind === "outpost") {
+    if (!gridMode && (kind === "granary" || kind === "outpost")) {
       const degree = adjacency.get(id)?.length ?? 0;
       if (degree !== 1) issues.push(`cities[${id}] ${kind} must be a leaf site`);
     }
@@ -208,7 +287,7 @@ export function validateMap(input: unknown): MapDef {
     }
   }
 
-  if (issues.length === 0) {
+  if (issues.length === 0 && !gridMode) {
     const first = [...cityIds].sort()[0];
     const seen = new Set<string>();
     const queue = first ? [first] : [];
@@ -224,6 +303,14 @@ export function validateMap(input: unknown): MapDef {
   const objectives = Array.isArray(input.objectives) ? input.objectives : [];
   if (!objectives.some((objective) => isRecord(objective) && objective.type === "capture_all")) {
     issues.push("objectives must include capture_all");
+  }
+
+  if (schema === 2 && typeof input.mapHash === "string" && /^[0-9a-f]{16}$/.test(input.mapHash)) {
+    try {
+      if (mapHashOf(input as unknown as MapDef) !== input.mapHash) issues.push("mapHash does not match map content");
+    } catch {
+      issues.push("mapHash could not be computed");
+    }
   }
 
   if (issues.length > 0) throw new ContentError("map", issues);
