@@ -3,6 +3,8 @@ import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@ma
 import { art } from "./assets";
 import { buildBuilding, buildTown, buildWall, paletteFor, townBuildingKind } from "./buildings";
 import { UnitActor } from "./unit-actor";
+import { buildTerrain } from "./terrain";
+import type { Terrain } from "./terrain";
 import type { UnitKind } from "./unit-models";
 
 const PLAYER_COLORS: Record<Owner, number> = {
@@ -53,6 +55,7 @@ export class BattleScene {
   private readonly ring: THREE.Mesh;
   private readonly resizeObserver: ResizeObserver;
   private readonly positions = new Map<CityId, THREE.Vector3>();
+  private terrain!: Terrain;
   private lastSquadUpdate = 0;
 
   private yawIndex = 0;
@@ -463,8 +466,9 @@ export class BattleScene {
 
   private buildLights(): void {
     const hemisphere = new THREE.HemisphereLight(0xe4edcf, 0x1b2618, 1.5);
+    this.scene.add(new THREE.AmbientLight(0xcfc6ad, 0.35));
     this.scene.add(hemisphere);
-    const sun = new THREE.DirectionalLight(0xffd39c, 2.7);
+    const sun = new THREE.DirectionalLight(0xffd39c, 2.2);
     sun.position.set(26, 42, 18);
     this.scene.add(sun);
     const rim = new THREE.DirectionalLight(0x6d9bff, 0.65);
@@ -473,29 +477,8 @@ export class BattleScene {
   }
 
   private buildGround(): void {
-    const width = this.bounds.maxX - this.bounds.minX + 8;
-    const depth = this.bounds.maxZ - this.bounds.minZ + 8;
-    const centerX = (this.bounds.minX + this.bounds.maxX) / 2;
-    const centerZ = (this.bounds.minZ + this.bounds.maxZ) / 2;
-    const side = new THREE.MeshStandardMaterial({ color: 0x3f4b2f, roughness: 1 });
-    const top = new THREE.MeshStandardMaterial({ map: makeGroundTexture(), roughness: 1 });
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(width, 1.2, depth), [side, side, top, side, side, side]);
-    ground.position.set(centerX, -0.6, centerZ);
-    this.scene.add(ground);
-
-    const rim = new THREE.Mesh(
-      new THREE.BoxGeometry(width + 2.4, 0.7, depth + 2.4),
-      new THREE.MeshStandardMaterial({ color: 0x1b261a, roughness: 1 }),
-    );
-    rim.position.set(centerX, -0.75, centerZ);
-    this.scene.add(rim);
-
-    const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) / 2), 0x6d8a5c, 0x4b6440);
-    grid.position.set(centerX, 0.015, centerZ);
-    const gridMaterial = grid.material as THREE.Material;
-    gridMaterial.transparent = true;
-    gridMaterial.opacity = 0.1;
-    this.scene.add(grid);
+    this.terrain = buildTerrain(this.map, this.positions);
+    this.scene.add(this.terrain.group);
   }
 
   private buildRoads(): void {
@@ -675,9 +658,9 @@ export class BattleScene {
 
   private buildScenery(): void {
     const random = seededRandom(20261101);
-    const treePlacements: Array<{ x: number; z: number; rotation: number; scale: number }> = [];
-    const rockPlacements: Array<{ x: number; z: number; rotation: number; scale: number }> = [];
-    const plantPlacements: Array<{ x: number; z: number; rotation: number; scale: number }> = [];
+    const treePlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
+    const rockPlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
+    const plantPlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
 
     let guard = 0;
     while (treePlacements.length < 120 && guard < 16000) {
@@ -686,7 +669,7 @@ export class BattleScene {
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 6.2)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
-      treePlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 2.6 + random() * 1.1 });
+      treePlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 2.6 + random() * 1.1 });
     }
 
     guard = 0;
@@ -696,7 +679,7 @@ export class BattleScene {
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 5.3)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.5)) continue;
-      rockPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.6 + random() * 1.2 });
+      rockPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.6 + random() * 1.2 });
     }
 
     guard = 0;
@@ -706,7 +689,7 @@ export class BattleScene {
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 3.45)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
-      plantPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
+      plantPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
     }
 
     this.instanceSpecies(TREE_SPECIES, treePlacements, 0);
@@ -716,7 +699,7 @@ export class BattleScene {
 
   private instanceSpecies(
     names: string[],
-    placements: Array<{ x: number; z: number; rotation: number; scale: number }>,
+    placements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }>,
     variantOffset: number,
   ): void {
     if (placements.length === 0) return;
@@ -747,7 +730,7 @@ export class BattleScene {
         const instanced = new THREE.InstancedMesh(part.geometry, part.material, bucket.length);
         instanced.frustumCulled = false;
         bucket.forEach((placement, index) => {
-          dummy.position.set(placement.x, 0, placement.z);
+          dummy.position.set(placement.x, placement.y, placement.z);
           dummy.rotation.set(0, placement.rotation, 0);
           dummy.scale.setScalar(placement.scale);
           dummy.updateMatrix();
