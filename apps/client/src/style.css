@@ -328,7 +328,8 @@ input {
 #building-canvas,
 #town-canvas,
 #switch-canvas,
-#road-canvas {
+#road-canvas,
+#unit-canvas {
   display: block;
   width: 100%;
   height: 100%;

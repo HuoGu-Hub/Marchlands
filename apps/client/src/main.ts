@@ -6,6 +6,7 @@ import { runHeightTest } from "./game/height-test";
 import { runPieceViewer } from "./game/piece-viewer";
 import { runRoadShowcase } from "./game/road-showcase";
 import { runSwitchDemo } from "./game/switch-demo";
+import { runUnitGallery } from "./game/unit-gallery";
 import { runTownShowcase } from "./game/town-showcase";
 
 const host = document.getElementById("app");
@@ -26,6 +27,8 @@ if (scene === "height") {
   runSwitchDemo(host);
 } else if (scene === "roads") {
   runRoadShowcase(host);
+} else if (scene === "units") {
+  runUnitGallery(host);
 } else {
   new App(host).start();
 }

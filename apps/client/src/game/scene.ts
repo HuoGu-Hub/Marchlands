@@ -2,6 +2,8 @@ import * as THREE from "three";
 import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
 import { art } from "./assets";
 import { buildTown, buildWall, paletteFor } from "./buildings";
+import { UnitActor } from "./unit-actor";
+import type { UnitKind } from "./unit-models";
 
 const PLAYER_COLORS: Record<Owner, number> = {
   0: 0x97917f,
@@ -32,7 +34,7 @@ interface CityView {
 
 interface SquadView {
   group: THREE.Group;
-  units: THREE.Mesh[];
+  units: UnitActor[];
   label: THREE.Sprite;
   canvas: HTMLCanvasElement;
   texture: THREE.CanvasTexture;
@@ -50,6 +52,7 @@ export class BattleScene {
   private readonly ring: THREE.Mesh;
   private readonly resizeObserver: ResizeObserver;
   private readonly positions = new Map<CityId, THREE.Vector3>();
+  private lastSquadUpdate = 0;
 
   private yawIndex = 0;
   private yaw = Math.PI / 4;
@@ -205,6 +208,9 @@ export class BattleScene {
   }
 
   private updateSquads(state: SimState): void {
+    const now = performance.now();
+    const delta = Math.min(50, now - this.lastSquadUpdate || 16);
+    this.lastSquadUpdate = now;
     const seen = new Set<string>();
     for (const squad of state.squads) {
       seen.add(squad.id);
@@ -214,21 +220,27 @@ export class BattleScene {
         this.squadViews.set(squad.id, view);
       }
       const point = this.squadPoint(squad, state.tick);
-      view.group.position.set(point.x, 0.42, point.z);
-      view.units.forEach((unit, index) => {
-        unit.position.y = Math.sin(this.elapsed / 170 + index * 1.7) * 0.05;
-      });
+      view.group.position.set(point.x, 0.06, point.z);
+      const from = this.positions.get(squad.path[squad.pathIndex] ?? squad.from);
+      const to = this.positions.get(squad.path[squad.pathIndex + 1] ?? squad.to);
+      if (from && to) {
+        const direction = new THREE.Vector3().subVectors(to, from);
+        if (direction.lengthSq() > 0.0001) {
+          view.group.rotation.y = Math.atan2(direction.x, direction.z);
+        }
+      }
+      const moving = squad.pathIndex < squad.path.length - 1;
+      for (const unit of view.units) {
+        unit.setMoving(moving);
+        unit.update(delta);
+      }
     }
     for (const [id, view] of this.squadViews) {
       if (seen.has(id)) continue;
-      this.scene.remove(view.group);
+      for (const unit of view.units) unit.dispose();
+      view.label.material.dispose();
       view.texture.dispose();
-      view.group.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        const material = mesh.material as THREE.Material | undefined;
-        material?.dispose();
-      });
+      this.scene.remove(view.group);
       this.squadViews.delete(id);
     }
   }
@@ -338,30 +350,26 @@ export class BattleScene {
   private createSquadView(squad: SquadState): SquadView {
     const group = new THREE.Group();
     const color = PLAYER_COLORS[squad.owner];
-    const bodyMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true });
-    const headMaterial = new THREE.MeshStandardMaterial({ color: 0xe8dcc2, roughness: 0.8 });
-    const units: THREE.Mesh[] = [];
+    const explicit = (squad as SquadState & { unitKind?: UnitKind }).unitKind;
+    const fallback: UnitKind[] = ["shield", "infantry", "archer"];
+    const kinds: UnitKind[] = explicit ? [explicit, explicit, explicit] : fallback;
+    const units: UnitActor[] = [];
 
-    const offsets: Array<[number, number]> = [
-      [-0.3, -0.16],
-      [0.3, -0.12],
-      [0, 0.34],
-    ];
-    for (const [x, z] of offsets) {
-      const unit = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.6, 6), bodyMaterial);
-      unit.position.set(x, 0.3, z);
+    const offsets: Array<[number, number]> = explicit === "cavalry"
+      ? [[-0.5, -0.2], [0.5, -0.2], [0, 0.55]]
+      : [[-0.3, -0.16], [0.3, -0.12], [0, 0.35]];
+    kinds.forEach((kind, index) => {
+      const [x, z] = offsets[index];
+      const unit = new UnitActor({
+        kind,
+        palette: paletteFor(squad.owner),
+        variant: index,
+        phase: index * 2.1 + 0.4,
+      });
+      unit.position.set(x, 0, z);
       group.add(unit);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), headMaterial);
-      head.position.set(x, 0.68, z);
-      group.add(head);
-      const spear = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.02, 0.02, 1.1, 4),
-        new THREE.MeshStandardMaterial({ color: 0x6b4a2f }),
-      );
-      spear.position.set(x + 0.16, 0.55, z);
-      group.add(spear);
       units.push(unit);
-    }
+    });
 
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -373,7 +381,7 @@ export class BattleScene {
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
     label.scale.set(2.2, 1.1, 1);
-    label.position.y = 1.5;
+    label.position.y = 1.75;
     group.add(label);
 
     this.scene.add(group);
