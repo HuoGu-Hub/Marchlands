@@ -551,7 +551,11 @@ export class EditorController {
       this.notice("已经是网格地图");
       return;
     }
-    this.commit(convertToGrid(this.doc), "已启用网格导航");
+    try {
+      this.commit(convertToGrid(this.doc), "已启用网格导航");
+    } catch {
+      this.notice("地图尺寸必须能被网格边长整除");
+    }
   }
 
   private toggleNavPreview(): void {
