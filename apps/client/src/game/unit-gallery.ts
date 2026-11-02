@@ -4,12 +4,12 @@ import { UNIT_DESCRIPTIONS, UNIT_KINDS, UNIT_NAMES } from "./unit-models";
 import type { UnitKind } from "./unit-models";
 import { UnitActor } from "./unit-actor";
 
-const PITCH = (20 * Math.PI) / 180;
+const PITCH = (30 * Math.PI) / 180;
 const DISTANCE = 55;
-const VIEW_HEIGHT = 9.5;
+const VIEW_HEIGHT = 9.2;
 const TARGET = new THREE.Vector3(0, 0.55, 0);
-const COLUMNS = [-2.4, 0, 2.4];
-const ROWS = [-3.4, -1.7, 0, 1.7, 3.4];
+const COLUMNS = [-4.8, -2.4, 0, 2.4, 4.8];
+const ROWS = [-3.5, 0, 3.5];
 
 const TEAMS = [
   { owner: 0, name: "中立", color: "#c2bcaa" },
@@ -62,8 +62,8 @@ class UnitGallery {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.OrthographicCamera;
   private readonly actors: UnitActor[] = [];
-  private yaw = 0.52;
-  private targetYaw = 0.52;
+  private yaw = 0;
+  private targetYaw = 0;
   private zoom = 1;
   private raf = 0;
   private last = 0;
@@ -95,42 +95,42 @@ class UnitGallery {
 
   private build(): void {
     const ground = new THREE.Mesh(
-      new THREE.BoxGeometry(16, 0.5, 12),
+      new THREE.BoxGeometry(20, 0.5, 14),
       new THREE.MeshStandardMaterial({ color: 0x3c4a34, roughness: 1 }),
     );
     ground.position.set(0, -0.25, 0);
     this.scene.add(ground);
 
-    const grid = new THREE.GridHelper(16, 16, 0x6d8a5c, 0x4b6440);
+    const grid = new THREE.GridHelper(20, 20, 0x6d8a5c, 0x4b6440);
     grid.position.y = 0.01;
     const gridMaterial = grid.material as THREE.Material;
     gridMaterial.transparent = true;
     gridMaterial.opacity = 0.1;
     this.scene.add(grid);
 
-    TEAMS.forEach((team, column) => {
+    TEAMS.forEach((team, row) => {
       const heading = label(team.name, team.color, 0.95);
-      heading.position.set(COLUMNS[column], 1.75, -4.9);
+      heading.position.set(-7.0, 0.95, ROWS[row]);
       this.scene.add(heading);
     });
 
-    UNIT_KINDS.forEach((kind, row) => {
-      const rowLabel = label(UNIT_NAMES[kind], "#f0dfb8", 0.9);
-      rowLabel.position.set(-6.2, 0.95, ROWS[row]);
-      this.scene.add(rowLabel);
+    UNIT_KINDS.forEach((kind, column) => {
+      const heading = label(UNIT_NAMES[kind], "#f0dfb8", 0.9);
+      heading.position.set(COLUMNS[column], 2.0, -5.1);
+      this.scene.add(heading);
       const desc = label(UNIT_DESCRIPTIONS[kind], "#b9c6a6", 0.65);
-      desc.position.set(-6.2, 0.6, ROWS[row]);
+      desc.position.set(COLUMNS[column], 1.65, -5.1);
       this.scene.add(desc);
 
-      TEAMS.forEach((team, column) => {
+      TEAMS.forEach((team, row) => {
         const actor = new UnitActor({
           kind,
           palette: paletteFor(team.owner),
-          variant: row + column,
-          phase: (row * 0.7 + column * 0.4) % (Math.PI * 2),
+          variant: column + row,
+          phase: (column * 0.7 + row * 0.4) % (Math.PI * 2),
         });
         actor.position.set(COLUMNS[column], 0.02, ROWS[row]);
-        actor.rotation.y = 0.2;
+        actor.rotation.y = 0.16;
         actor.setMoving(true);
         this.scene.add(actor);
         this.actors.push(actor);
