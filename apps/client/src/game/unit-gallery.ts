@@ -4,7 +4,7 @@ import { UNIT_DESCRIPTIONS, UNIT_KINDS, UNIT_NAMES } from "./unit-models";
 import type { UnitKind } from "./unit-models";
 import { UnitActor } from "./unit-actor";
 
-const PITCH = (30 * Math.PI) / 180;
+const PITCH = (27 * Math.PI) / 180;
 const DISTANCE = 55;
 const VIEW_HEIGHT = 9.2;
 const TARGET = new THREE.Vector3(0, 0.55, 0);
@@ -25,7 +25,7 @@ export function runUnitGallery(host: HTMLElement): void {
     '    <div class="chip">单位库 <b>5 类 × 3 阵营</b></div>',
     '    <div class="chip">阵营色 <b>披风 / 盾面 / 旗帜</b></div>',
     '    <div class="chip">动作 <b>行走循环</b></div>',
-    '    <div class="chip">造型 <b>圆润 v4</b></div>',
+    '    <div class="chip">造型 <b>边军 v5</b></div>',
     '  </div>',
     '  <div class="hint">Q / E 旋转 · 滚轮缩放</div>',
     '</div>',
@@ -74,15 +74,18 @@ class UnitGallery {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.3;
-    this.scene.background = new THREE.Color(0x0b110d);
+    this.renderer.toneMappingExposure = 1.42;
+    this.scene.background = new THREE.Color(0x121110);
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 140);
-    this.scene.add(new THREE.HemisphereLight(0xe6efd2, 0x172116, 1.55));
-    const sun = new THREE.DirectionalLight(0xffd9a6, 2.8);
-    sun.position.set(14, 28, 18);
-    this.scene.add(sun);
-    const rim = new THREE.DirectionalLight(0x7ea2ff, 0.7);
-    rim.position.set(-18, 10, -16);
+    this.scene.add(new THREE.HemisphereLight(0xf0e4d0, 0x2a211a, 1.9));
+    const key = new THREE.DirectionalLight(0xfff1d8, 3.2);
+    key.position.set(-10, 18, 14);
+    this.scene.add(key);
+    const fill = new THREE.DirectionalLight(0x9fb7d8, 0.9);
+    fill.position.set(12, 8, 10);
+    this.scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffd6a0, 2.0);
+    rim.position.set(2, 10, -14);
     this.scene.add(rim);
 
     this.build();
@@ -97,17 +100,17 @@ class UnitGallery {
   private build(): void {
     const ground = new THREE.Mesh(
       new THREE.BoxGeometry(20, 0.5, 14),
-      new THREE.MeshStandardMaterial({ color: 0x3c4a34, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0x2d2823, roughness: 1 }),
     );
     ground.position.set(0, -0.25, 0);
     this.scene.add(ground);
 
-    const grid = new THREE.GridHelper(20, 20, 0x6d8a5c, 0x4b6440);
-    grid.position.y = 0.01;
-    const gridMaterial = grid.material as THREE.Material;
-    gridMaterial.transparent = true;
-    gridMaterial.opacity = 0.1;
-    this.scene.add(grid);
+    const platform = new THREE.Mesh(
+      new THREE.CylinderGeometry(6.8, 7.0, 0.18, 64),
+      new THREE.MeshStandardMaterial({ color: 0x37302a, roughness: 1 }),
+    );
+    platform.position.y = -0.04;
+    this.scene.add(platform);
 
     TEAMS.forEach((team, row) => {
       const heading = label(team.name, team.color, 0.95);
@@ -117,10 +120,10 @@ class UnitGallery {
 
     UNIT_KINDS.forEach((kind, column) => {
       const heading = label(UNIT_NAMES[kind], "#f0dfb8", 0.9);
-      heading.position.set(COLUMNS[column], 2.0, -5.1);
+      heading.position.set(COLUMNS[column], 1.9, -5.0);
       this.scene.add(heading);
       const desc = label(UNIT_DESCRIPTIONS[kind], "#b9c6a6", 0.65);
-      desc.position.set(COLUMNS[column], 1.65, -5.1);
+      desc.position.set(COLUMNS[column], 1.55, -5.0);
       this.scene.add(desc);
 
       TEAMS.forEach((team, row) => {
@@ -136,12 +139,19 @@ class UnitGallery {
         this.scene.add(actor);
         this.actors.push(actor);
         const base = new THREE.Mesh(
-          new THREE.CircleGeometry(0.55, 20),
-          new THREE.MeshStandardMaterial({ color: 0x4a4b40, roughness: 1 }),
+          new THREE.CircleGeometry(0.55, 24),
+          new THREE.MeshStandardMaterial({ color: 0x40382f, roughness: 1 }),
         );
         base.rotation.x = -Math.PI / 2;
-        base.position.set(COLUMNS[column], 0.015, ROWS[row]);
+        base.position.set(COLUMNS[column], 0.012, ROWS[row]);
         this.scene.add(base);
+        const shadow = new THREE.Mesh(
+          new THREE.CircleGeometry(0.42, 24),
+          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false }),
+        );
+        shadow.rotation.x = -Math.PI / 2;
+        shadow.position.set(COLUMNS[column] + 0.06, 0.02, ROWS[row] + 0.04);
+        this.scene.add(shadow);
       });
     });
   }
