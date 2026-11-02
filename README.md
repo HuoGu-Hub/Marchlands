@@ -10,6 +10,7 @@
 - 地图编辑器数据层：packages/map-authoring
 - 资产包格式与校验：packages/asset-pack
 - 资产包说明：docs/Marchlands-资产包.md
+- 模型转换：tools/asset-convert
 - 客户端：apps/client
 - 自对弈与回放：tools/harness
 
@@ -45,6 +46,7 @@ release/Marchlands-win32-x64/Marchlands.exe
 - 地图编辑器：图结构草稿、拖放城镇/粮仓/驻兵点、连路、属性编辑、撤销、实时校验、试玩、保存/载入、自定义地图进入简报并持久化。地形风格、程序化地形块、树木/岩石/城镇装饰、建筑外观、自由摆放、导入 .mlpack 资产包与导出内置 GLB 资产包已接入；地图视觉不影响模拟。
 - 客户端：八个页面、四向镜头、大地图拖动、选中、派兵、升级、AI、音效、设置持久化、行军路线叠加与改道。
 - 表现：Kenney CC0 模型（城堡塔楼、木石城墙、屋顶、树木、岩石、道具）、程序化地面与瓦片纹理、石板路网与中央环岛、Q 版三兵单位、八类建筑模型、战斗飘字、程序化音效。地图视觉层支持地形风格、程序化草丘/岩脊/台地/池塘/农田/树林/废墟/营地、装饰自由摆放与资产包模型。
+- 模型格式：城堡 17 个 OBJ 已转 GLB 并切换运行时；建筑、城墙、城镇、单位、地形与 Kenney 资源已生成 105 个 GLB 的统一转换包，见 release/Marchlands-models-converted.mlpack。
 - HUD：资源卡、等级刻度、人口条、城镇归属色条。
 - 美术许可：ASSETS.md。
 - PC：Electron 打包，启动、菜单、开局 smoke 通过。

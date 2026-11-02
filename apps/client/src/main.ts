@@ -29,6 +29,8 @@ if (scene === "height") {
   runRoadShowcase(host);
 } else if (scene === "units") {
   runUnitGallery(host);
+} else if (scene === "convert") {
+  void import("./game/convert-scene").then((module) => module.runModelConvert(host));
 } else {
   new App(host).start();
 }

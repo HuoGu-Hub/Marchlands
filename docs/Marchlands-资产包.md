@@ -116,9 +116,38 @@ models/tower.glb
 - `builtin:prop.*`：Kenney 城镇、自然与城堡构件。
 - 内置资产是玩家资产缺失时的回退，不依赖资产包。
 
+## 全模型转换
+
+仓库提供一条可重复执行的转换管线，把当前所有模型族统一导出为 glTF 2.0 二进制：
+
+~~~bash
+pnpm --filter @marchlands/client dev
+node tools/asset-convert/run.mjs
+~~~
+
+输出：
+
+- §release/Marchlands-models-converted.mlpack§：105 个资产的完整快照。
+- §release/converted-models/§：逐个 GLB 与 §manifest.json§。
+- §apps/client/src/assets/kenney/castle-glb/§：城堡运行时使用的 17 个 GLB。
+
+覆盖范围：
+
+| 来源 | 数量 | 说明 |
+|---|---|---|
+| 城堡 OBJ | 17 | 已转 GLB，运行时已切换 |
+| 程序化建筑 | 8 类 × 3 级 | 单建筑 GLB |
+| 城墙 / 城镇组合 | 3 + 3 | 含墙体的城镇快照 |
+| 单位 | 5 | 保留 §torso/head/leftArm/rightArm/leftLeg/rightLeg/mount§ 节点名 |
+| 地形块 | 8 | 边境风格快照 |
+| Kenney GLB | 45 | 原样复制 |
+
+转换场景入口是 §/?scene=convert§。它只用于开发和资产生产，不参与正常对局。
+
+运行时现状：城堡已直接读取 GLB；建筑、单位、地形仍使用程序化构建，转换产物用于后续切换到统一 GLB 加载。单位 GLB 的节点名已经保留，下一阶段可以直接接入部件动画或骨骼动画。
+
 ## 当前限制
 
-- 内置城堡仍是 OBJ，由客户端旧解析器加载；玩家资产包只接受 GLB。
-- 程序化建筑还没有导出为 GLB，仍作为内置建筑存在。
-- 单位模型尚未接入战斗渲染。
+- 内置建筑、单位、地形仍走程序化构建；转换后的 GLB 快照在 §release§ 中，尚未全部替换运行时。
+- 单位 GLB 保留命名部件，但战斗渲染仍使用程序化 §UnitActor§。
 - 地形资产不改变地面高度、碰撞或寻路。

@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-const CASTLE_SOURCES = import.meta.glob("../assets/kenney/castle/*.obj", {
-  query: "?raw",
+const CASTLE_URLS = import.meta.glob("../assets/kenney/castle-glb/*.glb", {
+  query: "?inline",
   import: "default",
   eager: true,
 }) as Record<string, string>;
@@ -49,54 +49,6 @@ function baseName(path: string): string {
   return file.replace(/\.(obj|glb)$/i, "");
 }
 
-function parseObjByMaterial(source: string): Map<string, THREE.BufferGeometry> {
-  const vertices: number[] = [];
-  const faces = new Map<string, number[]>();
-  let material = "default";
-
-  for (const rawLine of source.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line.startsWith("v ")) {
-      const parts = line.split(/\s+/);
-      vertices.push(Number(parts[1]), Number(parts[2]), Number(parts[3]));
-      continue;
-    }
-    if (line.startsWith("usemtl ")) {
-      material = line.slice(7).trim() || "default";
-      continue;
-    }
-    if (!line.startsWith("f ")) continue;
-
-    const tokens = line.split(/\s+/).slice(1);
-    const indices = tokens.map((token) => {
-      const value = Number(token.split("/")[0]);
-      return value < 0 ? vertices.length / 3 + value : value - 1;
-    });
-    if (indices.length < 3) continue;
-
-    const bucket = faces.get(material) ?? [];
-    for (let index = 1; index < indices.length - 1; index += 1) {
-      for (const vertexIndex of [indices[0], indices[index], indices[index + 1]]) {
-        bucket.push(
-          vertices[vertexIndex * 3] ?? 0,
-          vertices[vertexIndex * 3 + 1] ?? 0,
-          vertices[vertexIndex * 3 + 2] ?? 0,
-        );
-      }
-    }
-    faces.set(material, bucket);
-  }
-
-  const geometries = new Map<string, THREE.BufferGeometry>();
-  for (const [role, positions] of faces) {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geometry.computeVertexNormals();
-    geometries.set(role, geometry);
-  }
-  return geometries;
-}
-
 export class ArtLibrary {
   private readonly castlePrototypes = new Map<string, THREE.Group>();
   private readonly modelPrototypes = new Map<string, THREE.Object3D>();
@@ -110,33 +62,32 @@ export class ArtLibrary {
   }
 
   async load(onProgress?: (done: number, total: number) => void): Promise<void> {
-    const total =
-      Object.keys(CASTLE_SOURCES).length + Object.keys(TOWN_URLS).length + Object.keys(NATURE_URLS).length;
+    const total = Object.keys(CASTLE_URLS).length + Object.keys(TOWN_URLS).length + Object.keys(NATURE_URLS).length;
     let done = 0;
     const tick = () => {
       done += 1;
       onProgress?.(done, total);
     };
 
-    for (const [path, source] of Object.entries(CASTLE_SOURCES)) {
-      try {
-        const geometryByRole = parseObjByMaterial(source);
-        const group = new THREE.Group();
-        for (const [role, geometry] of geometryByRole) {
-          geometry.userData.shared = true;
-          const mesh = new THREE.Mesh(geometry);
-          mesh.userData.role = role;
-          group.add(mesh);
-        }
-        this.castlePrototypes.set(baseName(path), group);
-      } catch {
-        this.failed += 1;
-      }
-      tick();
-    }
-
     const gltfLoader = new GLTFLoader();
     const jobs: Array<Promise<void>> = [];
+    for (const [path, url] of Object.entries(CASTLE_URLS)) {
+      jobs.push(
+        gltfLoader
+          .loadAsync(url)
+          .then((gltf) => {
+            gltf.scene.traverse((object) => {
+              const mesh = object as THREE.Mesh;
+              if (mesh.isMesh && mesh.geometry) mesh.geometry.userData.shared = true;
+            });
+            this.castlePrototypes.set(baseName(path), gltf.scene);
+          })
+          .catch(() => {
+            this.failed += 1;
+          })
+          .finally(tick),
+      );
+    }
     for (const [path, url] of Object.entries({ ...TOWN_URLS, ...NATURE_URLS })) {
       jobs.push(
         gltfLoader
@@ -186,7 +137,9 @@ export class ArtLibrary {
     clone.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
-      mesh.material = this.material(mesh.userData.role as string, tint);
+      const original = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      const role = original?.name || "_defaultMat";
+      mesh.material = this.material(role, tint);
       mesh.castShadow = false;
       mesh.receiveShadow = false;
     });
