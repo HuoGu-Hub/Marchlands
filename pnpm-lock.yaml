@@ -26,6 +26,9 @@ importers:
       '@marchlands/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@marchlands/map-authoring':
+        specifier: workspace:*
+        version: link:../../packages/map-authoring
       '@marchlands/sim':
         specifier: workspace:*
         version: link:../../packages/sim
@@ -61,6 +64,25 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.23.15
+      typescript:
+        specifier: ^5.7.2
+        version: 5.7.2
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.8(@types/node@22.20.5)
+
+  packages/map-authoring:
+    dependencies:
+      '@marchlands/content':
+        specifier: workspace:*
+        version: link:../content
+      '@marchlands/sim':
+        specifier: workspace:*
+        version: link:../sim
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.5
       typescript:
         specifier: ^5.7.2
         version: 5.7.2
