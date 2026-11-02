@@ -20,6 +20,30 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
 });
 
+test("creates a map in the editor and returns from playtest", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#page-editor")).toBeVisible();
+  await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+  const box = await page.locator("#ml-ed-canvas").boundingBox();
+  if (!box) throw new Error("editor canvas has no box");
+  await page.click('[data-tool="town"]');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator("#ml-ed-map-label")).toContainText("5 据点");
+  await expect(page.locator("#ml-ed-status")).toContainText("错误");
+  await page.click("#ml-ed-undo");
+  await expect(page.locator("#ml-ed-map-label")).toContainText("4 据点");
+  await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+  await page.click("#ml-ed-play");
+  await expect(page.locator("#page-game")).toBeVisible();
+  await page.click("#btn-pause");
+  await expect(page.locator("#btn-editor-return")).toBeVisible();
+  await page.click("#btn-editor-return");
+  await expect(page.locator("#page-editor")).toBeVisible();
+  await expect(page.locator("#ml-ed-map-label")).toContainText("4 据点");
+});
+
 test("pauses and resumes without losing the match", async ({ page }) => {
   await openGame(page);
   const timer = page.locator("#hud-timer");

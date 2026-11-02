@@ -35,6 +35,12 @@ interface CityView {
   level: number;
 }
 
+export interface SceneViewState {
+  focus: [number, number];
+  zoom: number;
+  yawIndex: number;
+}
+
 interface SquadView {
   group: THREE.Group;
   units: UnitActor[];
@@ -156,6 +162,43 @@ export class BattleScene {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
     };
+  }
+
+  getViewState(): SceneViewState {
+    return { focus: [this.focus.x, this.focus.z], zoom: this.zoom, yawIndex: this.yawIndex };
+  }
+
+  setViewState(state: SceneViewState): void {
+    this.focus.set(state.focus[0], 0, state.focus[1]);
+    this.zoom = THREE.MathUtils.clamp(state.zoom, ZOOM_MIN, ZOOM_MAX);
+    this.yawIndex = state.yawIndex;
+    this.targetYaw = Math.PI / 4 + (state.yawIndex * Math.PI) / 2;
+    this.yaw = this.targetYaw;
+    this.clampFocus();
+    this.resize();
+  }
+
+  projectGround(x: number, z: number, height = 0): { x: number; y: number } | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const point = new THREE.Vector3(x / 10, height, z / 10).project(this.camera);
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+    return {
+      x: rect.left + ((point.x + 1) / 2) * rect.width,
+      y: rect.top + ((1 - point.y) / 2) * rect.height,
+    };
+  }
+
+  screenToGround(clientX: number, clientY: number): [number, number] | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const point = new THREE.Vector3();
+    if (!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), point)) return null;
+    return [point.x * 10, point.z * 10];
   }
 
   pickCity(clientX: number, clientY: number, state: SimState): CityId | null {

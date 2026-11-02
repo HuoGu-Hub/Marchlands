@@ -5,6 +5,8 @@ declare global {
     marchlandsHost?: {
       setSize(width: number, height: number): Promise<void>;
       setFullscreen(enabled: boolean): Promise<void>;
+      saveMapFile(text: string, name: string): Promise<string | null>;
+      openMapFile(): Promise<{ name: string; text: string } | null>;
       quit(): void;
     };
   }

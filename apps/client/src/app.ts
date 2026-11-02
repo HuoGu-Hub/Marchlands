@@ -3,15 +3,19 @@ import frontierMapJson from "@marchlands/content/maps/frontier01.json";
 import forestMapJson from "@marchlands/content/maps/forest01.json";
 import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
+import { compileDocument, parseDocument } from "@marchlands/map-authoring";
+import type { MapDocument } from "@marchlands/map-authoring";
 import { defenseMilliFor } from "@marchlands/sim";
-import type { SimState } from "@marchlands/sim";
+import type { MapDef, SimState } from "@marchlands/sim";
 import { audio } from "./audio";
+import { EditorController } from "./editor/editor";
+import { openMapText } from "./editor/map-io";
 import { art } from "./game/assets";
 import { GameSession } from "./game/session";
 import { loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
 
-type PageId = "boot" | "menu" | "briefing" | "game" | "result" | "settings";
+type PageId = "boot" | "menu" | "briefing" | "editor" | "game" | "result" | "settings";
 
 const TEMPLATE = `
 <section id="page-boot" class="page active">
@@ -34,6 +38,7 @@ const TEMPLATE = `
     </div>
     <div class="menu-actions">
       <button class="btn primary" id="btn-start">开始游戏</button>
+      <button class="btn" id="btn-editor">地图编辑器</button>
       <button class="btn" id="btn-settings">设置</button>
       <button class="btn ghost" id="btn-exit">退出</button>
       <div class="menu-foot" id="menu-version">M1 灰盒 · v0.1.0</div>
@@ -63,10 +68,15 @@ const TEMPLATE = `
       <p>点击己方据点选中，再点击目标据点派出一半守军。点击行军中的兵团可改道或更换目的地；经过岔路口前可以改路，兵团断粮后会掉兵。</p>
       <div class="panel-actions">
         <button class="btn primary" id="btn-brief-start">开始</button>
+        <button class="btn" id="btn-brief-load">载入地图文件</button>
         <button class="btn" id="btn-brief-back">返回</button>
       </div>
     </div>
   </div>
+</section>
+
+<section id="page-editor" class="page">
+  <div id="editor-root"></div>
 </section>
 
 <section id="page-game" class="page">
@@ -121,6 +131,7 @@ const TEMPLATE = `
       <p>模拟与计时已停止，继续后从当前 tick 恢复。</p>
       <div class="panel-actions">
         <button class="btn primary" id="btn-resume">继续</button>
+        <button class="btn" id="btn-editor-return" style="display:none">返回编辑器</button>
         <button class="btn" id="btn-restart">重开</button>
         <button class="btn ghost" id="btn-menu">返回主菜单</button>
       </div>
@@ -225,9 +236,19 @@ interface ResultStats {
 
 interface MapEntry {
   id: string;
+  label: string;
   content: ReturnType<typeof validateContent>;
   description: string;
+  custom?: boolean;
+  document?: MapDocument;
 }
+
+interface StoredCustomMap {
+  id: string;
+  document: MapDocument;
+}
+
+const CUSTOM_MAPS_KEY = "marchlands.customMaps.v1";
 
 export class App {
   private readonly root: HTMLElement;
@@ -236,6 +257,8 @@ export class App {
   private currentMapId: string;
   private settings: Settings = loadSettings();
   private session: GameSession | null = null;
+  private editor: EditorController | null = null;
+  private playtestMap: MapDef | null = null;
   private page: PageId = "boot";
   private toastTimer = 0;
 
@@ -249,6 +272,7 @@ export class App {
         "forest01",
         {
           id: "forest01",
+          label: "Forest 01",
           content: forest,
           description: "你的旗帜插在西侧。东侧的红旗正在集结，五座中立城镇在等待第一个到达的人。",
         },
@@ -257,6 +281,7 @@ export class App {
         "crossroads01",
         {
           id: "crossroads01",
+          label: "Crossroads 01",
           content: crossroads,
           description:
             "十二座城镇沿河谷铺开，四条粮道与四个路边驻兵点卡在岔路口。先拿下路口和粮仓的人，才能让兵团走得更远。",
@@ -266,18 +291,21 @@ export class App {
         "frontier01",
         {
           id: "frontier01",
+          label: "Frontier 01 · 40 据点",
           content: frontier,
           description:
             "三十二座城镇铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
         },
       ],
     ]);
+    this.loadStoredMaps();
     const requested = new URLSearchParams(window.location.search).get("map");
     this.currentMapId = requested && this.mapEntries.has(requested) ? requested : "frontier01";
     this.content = this.mapEntries.get(this.currentMapId)!.content;
     this.root.innerHTML = TEMPLATE;
     this.bind();
     this.syncSettingsForm();
+    this.syncMapOptions();
     this.syncBriefing();
     audio.setVolume(this.settings.volume);
   }
@@ -301,12 +329,17 @@ export class App {
 
   private bind(): void {
     this.on("btn-start", "click", () => this.openBriefing());
+    this.on("btn-editor", "click", () => this.openEditor());
     this.on("btn-settings", "click", () => this.openSettings());
     this.on("btn-exit", "click", () => this.showOverlay("exit-overlay"));
     this.on("btn-brief-start", "click", () => this.startGame());
+    this.on("btn-brief-load", "click", () => {
+      void this.importMap();
+    });
     this.on("btn-brief-back", "click", () => this.show("menu"));
     this.on("btn-pause", "click", () => this.pauseGame());
     this.on("btn-resume", "click", () => this.resumeGame());
+    this.on("btn-editor-return", "click", () => this.returnToEditor());
     this.on("btn-restart", "click", () => this.showOverlay("confirm-overlay"));
     this.on("btn-confirm-no", "click", () => this.hideOverlay("confirm-overlay"));
     this.on("btn-confirm-yes", "click", () => this.restartGame());
@@ -320,8 +353,14 @@ export class App {
     });
     this.on("btn-exit-cancel", "click", () => this.hideOverlay("exit-overlay"));
     this.on("btn-exit-confirm", "click", () => this.exitApp());
-    this.on("btn-replay", "click", () => this.startGame());
-    this.on("btn-result-menu", "click", () => this.show("menu"));
+    this.on("btn-replay", "click", () => {
+      if (this.playtestMap) this.startEditorPlaytest(this.playtestMap);
+      else this.startGame();
+    });
+    this.on("btn-result-menu", "click", () => {
+      this.playtestMap = null;
+      this.show("menu");
+    });
 
     const volume = this.el("set-volume") as HTMLInputElement;
     volume.addEventListener("input", () => {
@@ -368,8 +407,74 @@ export class App {
     }
   }
 
+  private openEditor(): void {
+    this.session?.dispose();
+    this.session = null;
+    this.playtestMap = null;
+    this.hideOverlay("pause-overlay");
+    this.hideOverlay("confirm-overlay");
+    this.updateCityPanel(null);
+    this.editor ??= new EditorController({
+      root: this.el("editor-root"),
+      rules: this.content.rules,
+      onPlaytest: (map) => this.startEditorPlaytest(map),
+      onExit: () => this.closeEditor(),
+    });
+    this.show("editor");
+    this.editor.open();
+  }
+
+  private closeEditor(): void {
+    this.editor?.suspend();
+    this.show("menu");
+  }
+
+  private startEditorPlaytest(map: MapDef): void {
+    this.session?.dispose();
+    this.editor?.suspend();
+    this.playtestMap = map;
+    this.show("game");
+    this.hideOverlay("pause-overlay");
+    this.hideOverlay("confirm-overlay");
+    const canvas = this.el("game-canvas") as HTMLCanvasElement;
+    this.session = new GameSession({
+      canvas,
+      hud: this.root,
+      map,
+      rules: this.content.rules,
+      onFinish: (state) => this.finish(state),
+      onToast: (text) => this.toast(text),
+      onSelect: (cityId) => this.updateCityPanel(cityId),
+    });
+    this.session.start();
+    this.showEditorReturn();
+  }
+
+  private returnToEditor(): void {
+    this.session?.dispose();
+    this.session = null;
+    this.hideOverlay("pause-overlay");
+    this.hideOverlay("confirm-overlay");
+    this.updateCityPanel(null);
+    this.playtestMap = null;
+    this.hideEditorReturn();
+    this.show("editor");
+    this.editor?.resume();
+  }
+
+  private showEditorReturn(): void {
+    this.el("btn-editor-return").style.display = "inline-flex";
+  }
+
+  private hideEditorReturn(): void {
+    this.el("btn-editor-return").style.display = "none";
+  }
+
   private startGame(): void {
     this.session?.dispose();
+    this.editor?.suspend();
+    this.playtestMap = null;
+    this.hideEditorReturn();
     this.show("game");
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
@@ -421,6 +526,8 @@ export class App {
   private pauseGame(): void {
     if (!this.session || this.session.isPaused()) return;
     this.session.pause();
+    if (this.playtestMap) this.showEditorReturn();
+    else this.hideEditorReturn();
     this.showOverlay("pause-overlay");
   }
 
@@ -440,6 +547,9 @@ export class App {
   private backToMenu(): void {
     this.session?.dispose();
     this.session = null;
+    this.editor?.suspend();
+    this.playtestMap = null;
+    this.hideEditorReturn();
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
     this.updateCityPanel(null);
@@ -463,6 +573,91 @@ export class App {
       window.history.replaceState(null, "", url);
     } catch {
       // file:// pages can reject history updates
+    }
+  }
+
+  private syncMapOptions(): void {
+    const select = this.el("map-select") as HTMLSelectElement;
+    select.replaceChildren(
+      ...Array.from(this.mapEntries.values()).map((entry) => {
+        const option = document.createElement("option");
+        option.value = entry.id;
+        option.textContent = entry.label;
+        return option;
+      }),
+    );
+  }
+
+  private loadStoredMaps(): void {
+    const rules = this.mapEntries.get("forest01")?.content.rules;
+    if (!rules) return;
+    try {
+      const raw = localStorage.getItem(CUSTOM_MAPS_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw) as StoredCustomMap[];
+      if (!Array.isArray(stored)) return;
+      for (const entry of stored) {
+        if (!entry || typeof entry.id !== "string" || !entry.document) continue;
+        try {
+          const parsed = parseDocument(entry.document);
+          const compiled = compileDocument(parsed.document);
+          if (compiled.diagnostics.some((item) => item.severity === "error")) continue;
+          this.mapEntries.set(entry.id, {
+            id: entry.id,
+            label: `${parsed.document.name} · 玩家`,
+            content: validateContent(compiled.map, rules),
+            description: `玩家地图 · ${parsed.document.sites.length} 个据点`,
+            custom: true,
+            document: parsed.document,
+          });
+        } catch {
+          // ignore a broken saved map
+        }
+      }
+    } catch {
+      // localStorage can be unavailable in a locked profile
+    }
+  }
+
+  private saveCustomMaps(): void {
+    try {
+      const stored: StoredCustomMap[] = Array.from(this.mapEntries.values())
+        .filter((entry) => entry.custom && entry.document)
+        .map((entry) => ({ id: entry.id, document: entry.document as MapDocument }));
+      localStorage.setItem(CUSTOM_MAPS_KEY, JSON.stringify(stored));
+    } catch {
+      // localStorage can be unavailable in a locked profile
+    }
+  }
+
+  private addCustomMap(document: MapDocument): void {
+    const compiled = compileDocument(document);
+    const error = compiled.diagnostics.find((entry) => entry.severity === "error");
+    if (error) throw new Error(error.message);
+    const id = `custom-${Date.now().toString(36)}`;
+    const content = validateContent(compiled.map, this.content.rules);
+    this.mapEntries.set(id, {
+      id,
+      label: `${document.name || "未命名地图"} · 玩家`,
+      content,
+      description: `玩家地图 · ${document.sites.length} 个据点`,
+      custom: true,
+      document,
+    });
+    this.syncMapOptions();
+    this.selectMap(id);
+    this.saveCustomMaps();
+  }
+
+  private async importMap(): Promise<void> {
+    try {
+      const opened = await openMapText();
+      if (!opened) return;
+      const parsed = parseDocument(JSON.parse(opened.text));
+      this.addCustomMap(parsed.document);
+      this.toast(`已载入 ${parsed.document.name}`);
+    } catch (error) {
+      this.toast(error instanceof Error ? error.message : "地图文件无法读取");
     }
   }
 

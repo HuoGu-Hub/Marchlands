@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 
@@ -137,6 +137,33 @@ ipcMain.handle("window:set-fullscreen", (_event, enabled) => {
 
 ipcMain.on("app:quit", () => {
   app.quit();
+});
+
+ipcMain.handle("map:save", async (_event, text, suggestedName) => {
+  if (!win || typeof text !== "string" || text.length > 4_000_000) return null;
+  const safeName = typeof suggestedName === "string" ? suggestedName.replace(/[\\/:*?"<>|]/g, "-") : "map.mlmap.json";
+  const result = await dialog.showSaveDialog(win, {
+    title: "保存地图",
+    defaultPath: safeName,
+    filters: [{ name: "Marchlands 地图", extensions: ["json"] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  fs.writeFileSync(result.filePath, text, "utf8");
+  return result.filePath;
+});
+
+ipcMain.handle("map:open", async () => {
+  if (!win) return null;
+  const result = await dialog.showOpenDialog(win, {
+    title: "载入地图",
+    properties: ["openFile"],
+    filters: [{ name: "Marchlands 地图", extensions: ["json"] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const filePath = result.filePaths[0];
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile() || stat.size > 4_000_000) return null;
+  return { name: path.basename(filePath), text: fs.readFileSync(filePath, "utf8") };
 });
 
 const gotLock = app.requestSingleInstanceLock();
