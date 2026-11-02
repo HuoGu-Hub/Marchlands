@@ -85,6 +85,7 @@ export class BattleScene {
   private readonly missingAssets = new Set<string>();
   private readonly roadGroup = new THREE.Group();
   private readonly propGroup = new THREE.Group();
+  private readonly sceneryGroup = new THREE.Group();
 
   constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
     this.canvas = canvas;
@@ -111,6 +112,7 @@ export class BattleScene {
     this.buildLights();
     this.scene.add(this.roadGroup);
     this.scene.add(this.propGroup);
+    this.scene.add(this.sceneryGroup);
     this.buildGround();
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
@@ -410,6 +412,7 @@ export class BattleScene {
 
   private createCityView(city: CityState): CityView {
     const group = new THREE.Group();
+    group.userData.cityId = city.id;
     const position = this.positions.get(city.id) ?? new THREE.Vector3();
     group.position.copy(position);
     group.position.y = this.terrain.heightAt(position.x, position.z);
@@ -666,6 +669,29 @@ export class BattleScene {
     this.scene.fog = new THREE.Fog(atmosphere.fog, 125, 195);
   }
 
+  updateTerrain(map: MapDef, visual: MapVisual | null): void {
+    this.map = map;
+    this.visual = visual;
+    this.scene.remove(this.terrain.group);
+    disposeObject(this.terrain.group);
+    this.buildGround();
+    for (const position of this.positions.values()) {
+      position.y = this.terrain.heightAt(position.x, position.z);
+    }
+    for (const view of this.cityViews.values()) {
+      const position = this.positions.get(view.group.userData.cityId as CityId);
+      if (!position) continue;
+      view.group.position.set(position.x, position.y, position.z);
+    }
+    this.buildRoads();
+    this.buildScenery();
+    this.buildExplicitProps();
+    if (this.selected) {
+      const position = this.positions.get(this.selected);
+      if (position) this.ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
+    }
+  }
+
   updateRoads(map: MapDef, visual: MapVisual | null): void {
     this.map = map;
     this.visual = visual;
@@ -906,6 +932,7 @@ export class BattleScene {
   }
 
   private buildScenery(): void {
+    this.clearGroup(this.sceneryGroup);
     if (this.visual?.scatter === false) return;
     this.propPoints = (this.visual?.props ?? []).map((prop) => {
       const info = assetRegistry.info(prop.assetId);
@@ -1000,7 +1027,7 @@ export class BattleScene {
           instanced.setMatrixAt(index, new THREE.Matrix4().multiplyMatrices(dummy.matrix, part.matrix));
         });
         instanced.instanceMatrix.needsUpdate = true;
-        this.scene.add(instanced);
+        this.sceneryGroup.add(instanced);
       }
     });
   }

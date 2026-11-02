@@ -561,16 +561,24 @@ export class EditorController {
     }
   }
 
-  private commit(next: MapDocument, message: string, options: { roadOnly?: boolean; propsOnly?: boolean } = {}): void {
+  private commit(
+    next: MapDocument,
+    message: string,
+    options: { roadOnly?: boolean; propsOnly?: boolean; terrainOnly?: boolean } = {},
+  ): void {
     if (serializeDocument(next) === serializeDocument(this.doc)) return;
     this.undoStack.push(cloneDocument(this.doc));
     if (this.undoStack.length > 50) this.undoStack.shift();
     this.redoStack = [];
     this.doc = next;
     this.dirty = true;
-    if ((options.roadOnly || options.propsOnly) && this.scene) {
+    if ((options.roadOnly || options.propsOnly || options.terrainOnly) && this.scene) {
       this.compiled = compileDocument(next, { validateNavigation: false });
       if (options.roadOnly) this.scene.updateRoads(this.compiled.map, this.compiled.visual);
+      else if (options.terrainOnly) {
+        this.scene.updateTerrain(this.compiled.map, this.compiled.visual);
+        this.scene.setNavPreview(this.navPreview);
+      }
       else this.scene.updateProps(this.compiled.visual);
       this.autosave();
       this.renderInspector();
@@ -1267,7 +1275,7 @@ export class EditorController {
       const stroke = this.gridStroke;
       this.gridStroke = null;
       if (stroke.changed) {
-        this.commit(stroke.document, "已修改网格地形");
+        this.commit(stroke.document, "已修改网格地形", { terrainOnly: true });
         this.suppressClick = true;
       }
       return;
@@ -1795,23 +1803,23 @@ export class EditorController {
       return;
     }
     if (field === "terrainStyle") {
-      this.commit(updateTerrain(this.doc, { style: value as TerrainStyle }), "已修改地貌风格");
+      this.commit(updateTerrain(this.doc, { style: value as TerrainStyle }), "已修改地貌风格", { terrainOnly: true });
       return;
     }
     if (field === "terrainAmplitude") {
-      this.commit(updateTerrain(this.doc, { amplitude: Number(value) || 1 }), "已修改地形起伏");
+      this.commit(updateTerrain(this.doc, { amplitude: Number(value) || 1 }), "已修改地形起伏", { terrainOnly: true });
       return;
     }
     if (field === "terrainSeed") {
-      this.commit(updateTerrain(this.doc, { seed: Math.round(Number(value) || 0) }), "已修改地形种子");
+      this.commit(updateTerrain(this.doc, { seed: Math.round(Number(value) || 0) }), "已修改地形种子", { terrainOnly: true });
       return;
     }
     if (field === "roadStyle") {
-      this.commit(updateRoadVisual(this.doc, { style: value as RoadStyle }), "已修改道路风格");
+      this.commit(updateRoadVisual(this.doc, { style: value as RoadStyle }), "已修改道路风格", { roadOnly: true });
       return;
     }
     if (field === "roadWidth") {
-      this.commit(updateRoadVisual(this.doc, { width: Number(value) || 1.6 }), "已修改道路宽度");
+      this.commit(updateRoadVisual(this.doc, { width: Number(value) || 1.6 }), "已修改道路宽度", { roadOnly: true });
       return;
     }
     if (field === "scatter") {
