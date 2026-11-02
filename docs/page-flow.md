@@ -37,7 +37,7 @@ stateDiagram-v2
 | Boot | Logo、加载条、版本号；失败时错误码与重试 | Menu |
 | Menu | 标题、开始游戏、地图编辑器、设置、退出 | Briefing、Editor、Settings、ExitConfirm |
 | Briefing | 地图名、地图选择、载入地图文件、三行目标、开始、返回 | Game、Menu |
-| Editor | 调色板、3D 视口、地图设置、据点属性、诊断、保存/载入、试玩 | Menu、Game |
+| Editor | 调色板、3D 视口、地形/装饰资产、地图设置、据点与装饰属性、诊断、资产包导入、保存/载入、试玩 | Menu、Game |
 | Game | 顶部资源条、计时、暂停；底部选中城面板；场景内城与队伍 | Pause、Result |
 | Pause | 继续、重开、返回主菜单；重开二次确认 | Game、RestartConfirm、Menu |
 | Result | 胜利或失败、城市数、人口、金币、用时、重玩、主菜单 | Game、Menu |
@@ -65,6 +65,7 @@ stateDiagram-v2
 - 从 Pause 返回 Menu 前必须停止模拟并清空计时。
 - 编辑器草稿自动保存；试玩暂停后返回编辑器，草稿与镜头保留。
 - 自定义地图保存为 MapDocument，可在简报中载入并进入对局。
+- 地图视觉层与资产包只影响画面；缺失资产不阻止开始对局。
 - Result 出现后模拟停止，只允许重玩或回主菜单。
 - 设置写入本地存储，重开游戏不丢。
 - 任何页面都禁止出现无响应按钮。
