@@ -45,7 +45,7 @@ export {
 } from "./rules";
 export { MapGraph } from "./path";
 export type { Route } from "./path";
-export { buildRetargetPath, nextAnchor, pathTicks, routeOptions } from "./routes";
+export { blockedTransit, buildRetargetPath, nextAnchor, pathTicks, routeOptions } from "./routes";
 export type { RetargetFailure, RetargetPath, RouteOption } from "./routes";
 export {
   attackValue,

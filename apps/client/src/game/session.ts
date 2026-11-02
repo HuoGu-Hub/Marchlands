@@ -20,7 +20,7 @@ const REASONS: Record<string, string> = {
   same_city: "不能派往本城",
   not_owned: "不是你的城镇",
   too_few_troops: "守军不足两人",
-  no_route: "没有可行路线",
+  no_route: "没有可行路线：中立或敌方据点阻断了道路",
   max_level: "已达最高等级",
   insufficient_pop: "人口不足",
   not_upgradable: "该据点不能升级",
@@ -58,6 +58,11 @@ export class GameSession {
   private paused = false;
   private finished = false;
   private disposed = false;
+  private dragging = false;
+  private dragMoved = false;
+  private suppressClick = false;
+  private dragX = 0;
+  private dragY = 0;
 
   constructor(options: GameSessionOptions) {
     this.options = options;
@@ -203,6 +208,10 @@ export class GameSession {
     this.options.canvas.removeEventListener("click", this.onClick);
     this.options.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.options.canvas.removeEventListener("wheel", this.onWheel);
+    this.options.canvas.removeEventListener("pointerdown", this.onPointerDown);
+    window.removeEventListener("pointermove", this.onPointerMove);
+    window.removeEventListener("pointerup", this.onPointerUp);
+    window.removeEventListener("pointercancel", this.onPointerUp);
     this.routeOverlay.dispose();
     this.scene.dispose();
   }
@@ -330,9 +339,14 @@ export class GameSession {
   }
 
   private bindInput(): void {
+    this.options.canvas.style.cursor = "grab";
     this.options.canvas.addEventListener("click", this.onClick);
     this.options.canvas.addEventListener("contextmenu", this.onContextMenu);
     this.options.canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    this.options.canvas.addEventListener("pointerdown", this.onPointerDown);
+    window.addEventListener("pointermove", this.onPointerMove);
+    window.addEventListener("pointerup", this.onPointerUp);
+    window.addEventListener("pointercancel", this.onPointerUp);
     window.addEventListener("keydown", this.onKeyDown);
   }
 
@@ -347,7 +361,38 @@ export class GameSession {
     this.options.onToast(via ? `${squad.id} 改走 ${via}` : `${squad.id} 改道 ${to}`);
   }
 
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    this.dragging = true;
+    this.dragMoved = false;
+    this.dragX = event.clientX;
+    this.dragY = event.clientY;
+    this.options.canvas.style.cursor = "grabbing";
+  };
+
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    if (!this.dragging || (event.buttons & 1) === 0) return;
+    const dx = event.clientX - this.dragX;
+    const dy = event.clientY - this.dragY;
+    if (!this.dragMoved && Math.hypot(dx, dy) < 5) return;
+    this.dragMoved = true;
+    this.dragX = event.clientX;
+    this.dragY = event.clientY;
+    this.scene.panBy(dx, dy);
+  };
+
+  private readonly onPointerUp = (): void => {
+    if (!this.dragging) return;
+    this.dragging = false;
+    this.options.canvas.style.cursor = "grab";
+    if (this.dragMoved) {
+      this.suppressClick = true;
+      window.setTimeout(() => { this.suppressClick = false; }, 0);
+    }
+  };
+
   private readonly onClick = (event: MouseEvent): void => {
+    if (this.suppressClick) { this.suppressClick = false; return; }
     if (this.paused || this.finished) return;
     if (this.selectedSquad) {
       const otherId = this.routeOverlay.pickSquad(this.state, event.clientX, event.clientY);

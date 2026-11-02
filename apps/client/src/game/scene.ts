@@ -59,6 +59,8 @@ export class BattleScene {
   private yaw = Math.PI / 4;
   private targetYaw = Math.PI / 4;
   private zoom = 1.12;
+  private readonly focus = new THREE.Vector3();
+  private bounds = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
   private elapsed = 0;
   private selected: CityId | null = null;
   private disposed = false;
@@ -82,6 +84,7 @@ export class BattleScene {
     for (const city of map.cities) {
       this.positions.set(city.id, new THREE.Vector3(city.pos[0] / 10, 0, city.pos[1] / 10));
     }
+    this.computeBounds();
 
     this.buildLights();
     this.buildGround();
@@ -105,6 +108,40 @@ export class BattleScene {
   zoomBy(delta: number): void {
     this.zoom = THREE.MathUtils.clamp(this.zoom + delta, ZOOM_MIN, ZOOM_MAX);
     this.resize();
+  }
+
+  panBy(dx: number, dy: number): void {
+    const viewHeight = VIEW_HEIGHT / this.zoom;
+    const scale = viewHeight / Math.max(1, this.canvas.clientHeight);
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    this.focus.addScaledVector(right, -dx * scale);
+    this.focus.addScaledVector(forward, dy * scale);
+    this.clampFocus();
+  }
+
+  private computeBounds(): void {
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minZ = Number.POSITIVE_INFINITY;
+    let maxZ = Number.NEGATIVE_INFINITY;
+    for (const position of this.positions.values()) {
+      minX = Math.min(minX, position.x);
+      maxX = Math.max(maxX, position.x);
+      minZ = Math.min(minZ, position.z);
+      maxZ = Math.max(maxZ, position.z);
+    }
+    this.bounds = { minX: minX - 8, maxX: maxX + 8, minZ: minZ - 8, maxZ: maxZ + 8 };
+    this.focus.set((this.bounds.minX + this.bounds.maxX) / 2, 0, (this.bounds.minZ + this.bounds.maxZ) / 2);
+  }
+
+  private clampFocus(): void {
+    const viewHeight = VIEW_HEIGHT / this.zoom;
+    const viewWidth = viewHeight * (this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight));
+    const padX = Math.max(0, (viewWidth - (this.bounds.maxX - this.bounds.minX)) / 2);
+    const padZ = Math.max(0, (viewHeight - (this.bounds.maxZ - this.bounds.minZ)) / 2);
+    this.focus.x = THREE.MathUtils.clamp(this.focus.x, this.bounds.minX - padX, this.bounds.maxX + padX);
+    this.focus.z = THREE.MathUtils.clamp(this.focus.z, this.bounds.minZ - padZ, this.bounds.maxZ + padZ);
   }
 
   projectCity(cityId: CityId): { x: number; y: number } | null {
@@ -180,11 +217,11 @@ export class BattleScene {
 
     const horizontal = Math.cos(PITCH) * CAMERA_DISTANCE;
     this.camera.position.set(
-      Math.sin(this.yaw) * horizontal,
+      this.focus.x + Math.sin(this.yaw) * horizontal,
       Math.sin(PITCH) * CAMERA_DISTANCE,
-      Math.cos(this.yaw) * horizontal,
+      this.focus.z + Math.cos(this.yaw) * horizontal,
     );
-    this.camera.lookAt(0, 2.2, 0);
+    this.camera.lookAt(this.focus.x, 2.2, this.focus.z);
   }
 
   private updateCities(state: SimState): void {
@@ -436,28 +473,25 @@ export class BattleScene {
   }
 
   private buildGround(): void {
-    const side = new THREE.MeshStandardMaterial({ color: 0x2a3524, roughness: 1, flatShading: true });
+    const width = this.bounds.maxX - this.bounds.minX + 8;
+    const depth = this.bounds.maxZ - this.bounds.minZ + 8;
+    const centerX = (this.bounds.minX + this.bounds.maxX) / 2;
+    const centerZ = (this.bounds.minZ + this.bounds.maxZ) / 2;
+    const side = new THREE.MeshStandardMaterial({ color: 0x3f4b2f, roughness: 1 });
     const top = new THREE.MeshStandardMaterial({ map: makeGroundTexture(), roughness: 1 });
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(60, 1.2, 60), [
-      side,
-      side,
-      top,
-      side,
-      side,
-      side,
-    ]);
-    ground.position.y = -0.6;
+    const ground = new THREE.Mesh(new THREE.BoxGeometry(width, 1.2, depth), [side, side, top, side, side, side]);
+    ground.position.set(centerX, -0.6, centerZ);
     this.scene.add(ground);
 
     const rim = new THREE.Mesh(
-      new THREE.BoxGeometry(62.4, 0.7, 62.4),
+      new THREE.BoxGeometry(width + 2.4, 0.7, depth + 2.4),
       new THREE.MeshStandardMaterial({ color: 0x1b261a, roughness: 1 }),
     );
-    rim.position.y = -0.75;
+    rim.position.set(centerX, -0.75, centerZ);
     this.scene.add(rim);
 
-    const grid = new THREE.GridHelper(60, 30, 0x6d8a5c, 0x4b6440);
-    grid.position.y = 0.015;
+    const grid = new THREE.GridHelper(Math.max(width, depth), Math.round(Math.max(width, depth) / 2), 0x6d8a5c, 0x4b6440);
+    grid.position.set(centerX, 0.015, centerZ);
     const gridMaterial = grid.material as THREE.Material;
     gridMaterial.transparent = true;
     gridMaterial.opacity = 0.1;
@@ -484,7 +518,7 @@ export class BattleScene {
       this.addRoad(start, end, length, width, roadMaterial, curbMaterial, edge.from !== centerId, edge.to !== centerId, plazaMaterial);
     }
 
-    this.addRoundabout(centerId, width, plazaMaterial, curbMaterial);
+    if (this.map.slug === "crossroads01") this.addRoundabout(centerId, width, plazaMaterial, curbMaterial);
   }
 
   private addRoad(
@@ -500,45 +534,78 @@ export class BattleScene {
   ): void {
     const dx = end.x - start.x;
     const dz = end.z - start.z;
-    const angle = Math.atan2(dz, dx);
-    const middleX = (start.x + end.x) / 2;
-    const middleZ = (start.z + end.z) / 2;
-    const geometry = new THREE.PlaneGeometry(length, width);
-    geometry.rotateX(-Math.PI / 2);
-    const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
-    for (let index = 0; index < uv.count; index += 1) {
-      uv.setXY(index, uv.getX(index) * (length / 3.2), uv.getY(index));
-    }
-    const shoulderGeometry = new THREE.PlaneGeometry(length + 0.5, width + 0.55);
-    shoulderGeometry.rotateX(-Math.PI / 2);
+    const direction = new THREE.Vector3(dx, 0, dz).normalize();
+    const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x);
+    const bend = Math.sin(start.x * 0.73 + start.z * 0.41 + end.x * 0.29 + end.z * 0.17) * Math.min(2.8, length * 0.2);
+    const curve = new THREE.CatmullRomCurve3([
+      start.clone(),
+      start.clone().addScaledVector(direction, length / 3).addScaledVector(perpendicular, bend),
+      start.clone().addScaledVector(direction, (length * 2) / 3).addScaledVector(perpendicular, bend),
+      end.clone(),
+    ], false, "catmullrom", 0.18);
+    const points = curve.getSpacedPoints(28);
+
     const shoulder = new THREE.Mesh(
-      shoulderGeometry,
+      this.ribbonGeometry(points, width + 0.55),
       new THREE.MeshStandardMaterial({ color: 0x4b4a36, roughness: 1 }),
     );
-    shoulder.position.set(middleX, 0.035, middleZ);
-    shoulder.rotation.y = -angle;
+    shoulder.position.y = 0.035;
     this.scene.add(shoulder);
 
-    const road = new THREE.Mesh(geometry, material);
-    road.position.set(middleX, 0.05, middleZ);
-    road.rotation.y = -angle;
+    const road = new THREE.Mesh(this.ribbonGeometry(points, width), material);
+    road.position.y = 0.05;
     this.scene.add(road);
 
-    const perpX = -Math.sin(angle);
-    const perpZ = Math.cos(angle);
     for (const side of [-1, 1]) {
-      const curb = new THREE.Mesh(new THREE.BoxGeometry(length, 0.14, 0.16), curbMaterial);
-      curb.position.set(
-        middleX + perpX * side * (width / 2 + 0.08),
-        0.07,
-        middleZ + perpZ * side * (width / 2 + 0.08),
-      );
-      curb.rotation.y = -angle;
+      const offset = this.offsetPoints(points, side * (width / 2 + 0.08));
+      const curb = new THREE.Mesh(this.ribbonGeometry(offset, 0.16), curbMaterial);
+      curb.position.y = 0.07;
       this.scene.add(curb);
     }
 
     if (startPlaza) this.addPlaza(start, plazaMaterial);
     if (endPlaza) this.addPlaza(end, plazaMaterial);
+  }
+
+  private offsetPoints(points: THREE.Vector3[], offset: number): THREE.Vector3[] {
+    return points.map((point, index) => {
+      const previous = points[Math.max(0, index - 1)];
+      const next = points[Math.min(points.length - 1, index + 1)];
+      const tangent = new THREE.Vector3().subVectors(next, previous).normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      return point.clone().addScaledVector(normal, offset);
+    });
+  }
+
+  private ribbonGeometry(points: THREE.Vector3[], width: number): THREE.BufferGeometry {
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+    let distance = 0;
+    for (let index = 0; index < points.length; index += 1) {
+      const point = points[index];
+      const previous = points[Math.max(0, index - 1)];
+      const next = points[Math.min(points.length - 1, index + 1)];
+      const tangent = new THREE.Vector3().subVectors(next, previous);
+      if (tangent.lengthSq() === 0) tangent.set(1, 0, 0);
+      tangent.normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      if (index > 0) distance += point.distanceTo(points[index - 1]);
+      for (const side of [-1, 1]) {
+        positions.push(point.x + normal.x * side * width / 2, 0, point.z + normal.z * side * width / 2);
+        uvs.push(distance / 3.2, side < 0 ? 0 : 1);
+      }
+      if (index > 0) {
+        const base = (index - 1) * 2;
+        indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
   }
 
   private addPlaza(position: THREE.Vector3, material: THREE.Material): void {
@@ -613,36 +680,30 @@ export class BattleScene {
     const plantPlacements: Array<{ x: number; z: number; rotation: number; scale: number }> = [];
 
     let guard = 0;
-    while (treePlacements.length < 64 && guard < 3000) {
+    while (treePlacements.length < 120 && guard < 16000) {
       guard += 1;
-      const angle = random() * Math.PI * 2;
-      const radius = 17 + random() * 12;
-      const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
+      const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
+      const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 6.2)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
       treePlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 2.6 + random() * 1.1 });
     }
 
     guard = 0;
-    while (rockPlacements.length < 22 && guard < 2000) {
+    while (rockPlacements.length < 56 && guard < 10000) {
       guard += 1;
-      const angle = random() * Math.PI * 2;
-      const radius = 16 + random() * 13;
-      const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
+      const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
+      const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 5.3)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.5)) continue;
       rockPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.6 + random() * 1.2 });
     }
 
     guard = 0;
-    while (plantPlacements.length < 46 && guard < 2000) {
+    while (plantPlacements.length < 110 && guard < 16000) {
       guard += 1;
-      const angle = random() * Math.PI * 2;
-      const radius = 15 + random() * 14;
-      const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
+      const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
+      const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 3.45)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
       plantPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });

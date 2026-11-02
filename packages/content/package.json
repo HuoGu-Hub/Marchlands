@@ -10,7 +10,8 @@
     "./node": "./src/node.ts",
     "./maps/forest01.json": "./maps/forest01.json",
     "./maps/crossroads01.json": "./maps/crossroads01.json",
-    "./rules/1.json": "./rules/1.json"
+    "./rules/1.json": "./rules/1.json",
+    "./maps/frontier01.json": "./maps/frontier01.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -1,5 +1,6 @@
 import { attackValue, defenseValue } from "./combat";
 import { granaryStrengthMilli, levelRule, sendPercent } from "./rules";
+import { blockedTransit } from "./routes";
 import type { CityState, Command, Owner, PlayerId, SimState } from "./types";
 
 export interface AiController {
@@ -40,7 +41,7 @@ function pickTarget(
   for (const target of state.cities) {
     if (target.owner === player) continue;
     if (target.kind === "outpost") continue;
-    const route = state.graph.route(origin.id, target.id);
+    const route = state.graph.route(origin.id, target.id, blockedTransit(state, origin.owner, target.id));
     if (!route) continue;
     const defense = defenseValue(target, state.rules, strengthFor(state, target.owner));
     let score = route.distance * 1000 + defense;

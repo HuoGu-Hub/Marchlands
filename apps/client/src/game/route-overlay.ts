@@ -1,4 +1,4 @@
-import { routeOptions } from "@marchlands/sim";
+import { blockedTransit, routeOptions } from "@marchlands/sim";
 import type { CityId, MapDef, SimState, SquadState } from "@marchlands/sim";
 
 interface CityProjection {
@@ -252,7 +252,7 @@ export class RouteOverlay {
     const y = clientY - this.rect.top;
     let best: CityId | null = null;
     let bestDistance = 14;
-    for (const option of routeOptions(state.graph, squad)) {
+    for (const option of routeOptions(state.graph, squad, blockedTransit(state, squad.owner, squad.to))) {
       if (option.current) continue;
       const points = option.path
         .map((id) => this.sitePoint(id, GROUND_Y))
@@ -338,7 +338,7 @@ export class RouteOverlay {
       this.diamond(end, "rgba(133,226,157,.95)");
     }
 
-    for (const option of routeOptions(state.graph, squad)) {
+    for (const option of routeOptions(state.graph, squad, blockedTransit(state, squad.owner, squad.to))) {
       if (option.current) continue;
       const points = option.path
         .map((id) => this.sitePoint(id, GROUND_Y))

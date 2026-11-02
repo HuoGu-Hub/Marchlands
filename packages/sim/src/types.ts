@@ -54,6 +54,8 @@ export interface MapDef {
   cities: MapCity[];
   edges: MapEdge[];
   objectives: MapObjective[];
+  /** friendly: 兵团只能穿过己方据点；open: 旧地图，不限制。 */
+  transit?: "open" | "friendly";
 }
 
 export interface LevelRule {

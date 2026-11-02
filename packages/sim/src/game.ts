@@ -1,7 +1,7 @@
 import { resolveAttack, resolveFieldCombat } from "./combat";
 import { applyUpgrade, growCity, growGold } from "./economy";
 import { MapGraph } from "./path";
-import { buildRetargetPath } from "./routes";
+import { blockedTransit, buildRetargetPath } from "./routes";
 import {
   DEFAULT_RULESET,
   granarySpeedMilli,
@@ -256,7 +256,7 @@ function applyCommand(
     if (from.owner === 0) return reject(rejected, command, "not_owned");
     if (from.pop < 2) return reject(rejected, command, "too_few_troops");
 
-    const route = state.graph.route(from.id, to.id);
+    const route = state.graph.route(from.id, to.id, blockedTransit(state, from.owner, to.id));
     if (!route) return reject(rejected, command, "no_route");
 
     const count = Math.max(1, Math.floor((from.pop * sendPercent(state.rules)) / 100));
@@ -310,7 +310,7 @@ function applyCommand(
     if (!squad) return reject(rejected, command, "unknown_squad");
     const to = findCity(state, command.to);
     if (!to) return reject(rejected, command, "unknown_target");
-    const result = buildRetargetPath(state.graph, squad, to.id, command.via);
+    const result = buildRetargetPath(state.graph, squad, to.id, command.via, blockedTransit(state, squad.owner, to.id));
     if (result === "no_anchor") return reject(rejected, command, "squad_arrived");
     if (result === "invalid_via") return reject(rejected, command, "invalid_via");
     if (result === "no_route") return reject(rejected, command, "no_route");

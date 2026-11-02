@@ -1,6 +1,6 @@
 import type { MapGraph } from "./path";
 import { travelTicks } from "./rules";
-import type { CityId, Ruleset, SquadState } from "./types";
+import type { CityId, Ruleset, SimState, SquadState } from "./types";
 
 export interface RouteOption {
   /** 在下一个节点要走的下一跳。 */
@@ -18,6 +18,16 @@ export type RetargetFailure = "no_anchor" | "invalid_via" | "no_route";
 export interface RetargetPath {
   path: CityId[];
   distance: number;
+}
+
+export function blockedTransit(state: SimState, owner: number, destination?: CityId): Set<CityId> {
+  const blocked = new Set<CityId>();
+  if (state.map.transit !== "friendly") return blocked;
+  for (const city of state.cities) {
+    if (city.id === destination) continue;
+    if (city.owner !== owner) blocked.add(city.id);
+  }
+  return blocked;
 }
 
 export function nextAnchor(squad: SquadState): CityId | null {
@@ -40,7 +50,7 @@ export function pathTicks(
   return total;
 }
 
-export function routeOptions(graph: MapGraph, squad: SquadState): RouteOption[] {
+export function routeOptions(graph: MapGraph, squad: SquadState, blocked?: ReadonlySet<CityId>): RouteOption[] {
   const anchorIndex = squad.pathIndex + 1;
   const anchor = squad.path[anchorIndex];
   if (!anchor || anchor === squad.to) return [];
@@ -59,7 +69,7 @@ export function routeOptions(graph: MapGraph, squad: SquadState): RouteOption[] 
       path = [anchor, via];
       distance = edge;
     } else {
-      const route = graph.route(via, squad.to);
+      const route = graph.route(via, squad.to, blocked);
       if (!route) continue;
       path = [anchor, via, ...route.path.slice(1)];
       distance = edge + route.distance;
@@ -100,6 +110,7 @@ export function buildRetargetPath(
   squad: SquadState,
   to: CityId,
   via?: CityId,
+  blocked?: ReadonlySet<CityId>,
 ): RetargetPath | RetargetFailure {
   const anchorIndex = squad.pathIndex + 1;
   const anchor = squad.path[anchorIndex];
@@ -115,7 +126,7 @@ export function buildRetargetPath(
     if (via === anchor) return "invalid_via";
     const edge = graph.edgeLength(anchor, via);
     if (edge === null) return "invalid_via";
-    const route = graph.route(via, to);
+    const route = graph.route(via, to, blocked);
     if (!route) return "no_route";
     return {
       path: prefix.concat([via, ...route.path.slice(1)]),
@@ -123,7 +134,7 @@ export function buildRetargetPath(
     };
   }
 
-  const route = graph.route(anchor, to);
+  const route = graph.route(anchor, to, blocked);
   if (!route) return "no_route";
   return {
     path: prefix.concat(route.path.slice(1)),

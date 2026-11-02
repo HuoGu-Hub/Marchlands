@@ -1,4 +1,5 @@
 import crossroadsMapJson from "@marchlands/content/maps/crossroads01.json";
+import frontierMapJson from "@marchlands/content/maps/frontier01.json";
 import forestMapJson from "@marchlands/content/maps/forest01.json";
 import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
@@ -51,6 +52,7 @@ const TEMPLATE = `
         <select id="map-select">
           <option value="forest01">Forest 01</option>
           <option value="crossroads01">Crossroads 01</option>
+          <option value="frontier01">Frontier 01 · 40 据点</option>
         </select>
       </div>
       <ul class="brief-list">
@@ -109,7 +111,7 @@ const TEMPLATE = `
       </div>
     </div>
     <div class="toast" id="toast"></div>
-    <div class="hint">左键选择与派兵 · 点击行军兵团改道 · 右键取消 · Q / E 旋转 · 滚轮缩放</div>
+    <div class="hint">拖动地图 · 左键选择与派兵 · 点击行军兵团改道 · 右键取消 · Q / E 旋转 · 滚轮缩放</div>
   </div>
 
   <div class="overlay" id="pause-overlay">
@@ -241,6 +243,7 @@ export class App {
     this.root = root;
     const forest = validateContent(forestMapJson, rulesJson);
     const crossroads = validateContent(crossroadsMapJson, rulesJson);
+    const frontier = validateContent(frontierMapJson, rulesJson);
     this.mapEntries = new Map<string, MapEntry>([
       [
         "forest01",
@@ -259,9 +262,18 @@ export class App {
             "十二座城镇沿河谷铺开，四条粮道与四个路边驻兵点卡在岔路口。先拿下路口和粮仓的人，才能让兵团走得更远。",
         },
       ],
+      [
+        "frontier01",
+        {
+          id: "frontier01",
+          content: frontier,
+          description:
+            "三十二座城镇铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
+        },
+      ],
     ]);
     const requested = new URLSearchParams(window.location.search).get("map");
-    this.currentMapId = requested && this.mapEntries.has(requested) ? requested : "forest01";
+    this.currentMapId = requested && this.mapEntries.has(requested) ? requested : "frontier01";
     this.content = this.mapEntries.get(this.currentMapId)!.content;
     this.root.innerHTML = TEMPLATE;
     this.bind();

@@ -228,3 +228,19 @@ describe("validation", () => {
     expect(() => validateContent(broken, rules)).toThrow(/granary capacity/);
   });
 });
+
+describe("frontier01", () => {
+  const { map } = loadContent("maps/frontier01.json");
+
+  it("builds a forty-site frontier with thirty-two towns", () => {
+    expect(map.cities).toHaveLength(40);
+    expect(map.cities.filter((city) => city.kind === "town")).toHaveLength(32);
+    expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
+    expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
+    expect(map.edges).toHaveLength(75);
+  });
+
+  it("requires friendly transit", () => {
+    expect(map.transit).toBe("friendly");
+  });
+});

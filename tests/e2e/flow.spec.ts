@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 async function openGame(page: import("@playwright/test").Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/?map=forest01");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-start");
   await expect(page.locator("#page-briefing")).toBeVisible();
@@ -83,7 +83,7 @@ test("loads the crossroads01 map and selector", async ({ page }) => {
 
 test("result screen appears at the time limit", async ({ page }) => {
   test.setTimeout(90_000);
-  await page.goto("/?speed=20");
+  await page.goto("/?map=forest01&speed=20");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-start");
   await page.click("#btn-brief-start");
