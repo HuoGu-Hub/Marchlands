@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld("marchlandsHost", {
   saveMapFile: (text, name) => ipcRenderer.invoke("map:save", text, name),
   openMapFile: () => ipcRenderer.invoke("map:open"),
   openAssetPack: () => ipcRenderer.invoke("pack:open"),
+  saveAssetPackFile: (bytes, name) => ipcRenderer.invoke("pack:save", bytes, name),
   quit: () => ipcRenderer.send("app:quit"),
 });

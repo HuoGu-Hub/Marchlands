@@ -355,6 +355,8 @@
 }
 
 .ml-ed-btn.wide { width: 100%; }
+.ml-ed-pack-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ml-ed-pack-actions .ml-ed-btn { padding: 0 4px; font-size: 9px; height: 28px; }
 
 .ml-ed-pack-status {
   margin-top: 6px;

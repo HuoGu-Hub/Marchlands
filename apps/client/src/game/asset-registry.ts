@@ -34,6 +34,7 @@ export interface AssetInfo {
   height: number;
   source: "builtin" | "pack";
   packId?: string;
+  sourceFile?: string;
 }
 
 interface BuiltinAsset extends AssetInfo {
@@ -241,6 +242,7 @@ export class AssetRegistry {
         kind: "prop",
         rotation: 0,
         source: "builtin",
+        sourceFile: spec.file,
         build: () => {
           const model = art.model(spec.file);
           if (!model) throw new Error(`资产模型缺失：${spec.file}`);

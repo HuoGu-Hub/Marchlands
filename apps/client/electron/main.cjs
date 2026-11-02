@@ -180,6 +180,21 @@ ipcMain.handle("pack:open", async () => {
   return { name: path.basename(filePath), bytes: new Uint8Array(fs.readFileSync(filePath)) };
 });
 
+ipcMain.handle("pack:save", async (_event, bytes, suggestedName) => {
+  if (!win || !bytes) return null;
+  const data = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  if (data.byteLength === 0 || data.byteLength > 64 * 1024 * 1024) return null;
+  const safeName = typeof suggestedName === "string" ? suggestedName.replace(/[\\/:*?"<>|]/g, "-") : "assets.mlpack";
+  const result = await dialog.showSaveDialog(win, {
+    title: "导出资产包",
+    defaultPath: safeName,
+    filters: [{ name: "Marchlands 资产包", extensions: ["mlpack"] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  fs.writeFileSync(result.filePath, data);
+  return result.filePath;
+});
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();

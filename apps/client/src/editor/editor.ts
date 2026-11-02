@@ -33,10 +33,11 @@ import type {
   SiteDraft,
   TerrainStyle,
 } from "@marchlands/map-authoring";
+import { buildBuiltinAssetPack } from "../game/asset-pack-export";
 import { assetRegistry } from "../game/asset-registry";
 import { BattleScene } from "../game/scene";
 import type { SceneViewState } from "../game/scene";
-import { openAssetPackFile, openMapText, saveMapText } from "./map-io";
+import { openAssetPackFile, openMapText, saveAssetPackFile, saveMapText } from "./map-io";
 import "./editor.css";
 
 type Tool = "select" | SiteKind | "road" | "erase" | "asset";
@@ -115,7 +116,10 @@ const TEMPLATE = `
       <div class="ml-ed-section-label">装饰</div>
       <div id="ml-ed-prop-groups"></div>
       <div class="ml-ed-section-label">资产包</div>
-      <button class="ml-ed-btn wide" id="ml-ed-import-pack">导入 .mlpack</button>
+      <div class="ml-ed-pack-actions">
+        <button class="ml-ed-btn" id="ml-ed-import-pack">导入 .mlpack</button>
+        <button class="ml-ed-btn" id="ml-ed-export-pack">导出内置包</button>
+      </div>
       <div class="ml-ed-pack-status" id="ml-ed-pack-status"></div>
     </aside>
     <main class="ml-ed-stage">
@@ -265,6 +269,9 @@ export class EditorController {
     this.playButton.addEventListener("click", () => this.playtest());
     this.options.root.querySelector("#ml-ed-import-pack")?.addEventListener("click", () => {
       void this.importAssetPack();
+    });
+    this.options.root.querySelector("#ml-ed-export-pack")?.addEventListener("click", () => {
+      void this.exportBuiltinPack();
     });
 
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
@@ -502,6 +509,17 @@ export class EditorController {
       this.notice(`已导入 ${result.manifest.name} · ${result.count} 个资产`);
     } catch (error) {
       this.notice(error instanceof Error ? error.message : "资产包无法读取");
+    }
+  }
+
+  private async exportBuiltinPack(): Promise<void> {
+    this.notice("正在打包内置模型…");
+    try {
+      const pack = await buildBuiltinAssetPack();
+      const saved = await saveAssetPackFile(pack.bytes, `Marchlands-Builtin-${pack.count}.mlpack`);
+      this.notice(saved ? `已导出 ${pack.count} 个内置模型` : "已取消导出");
+    } catch (error) {
+      this.notice(error instanceof Error ? error.message : "内置资产包导出失败");
     }
   }
 

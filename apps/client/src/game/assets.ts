@@ -100,6 +100,7 @@ function parseObjByMaterial(source: string): Map<string, THREE.BufferGeometry> {
 export class ArtLibrary {
   private readonly castlePrototypes = new Map<string, THREE.Group>();
   private readonly modelPrototypes = new Map<string, THREE.Object3D>();
+  private readonly modelUrls = new Map<string, string>();
   private readonly materials = new Map<string, THREE.MeshStandardMaterial>();
   private failed = 0;
   ready = false;
@@ -141,6 +142,7 @@ export class ArtLibrary {
         gltfLoader
           .loadAsync(url)
           .then((gltf) => {
+            this.modelUrls.set(baseName(path), url);
             gltf.scene.traverse((object) => {
               const mesh = object as THREE.Mesh;
               if (mesh.isMesh && mesh.geometry) mesh.geometry.userData.shared = true;
@@ -159,6 +161,10 @@ export class ArtLibrary {
 
   get modelNames(): string[] {
     return [...this.modelPrototypes.keys()].sort();
+  }
+
+  modelSource(name: string): string | null {
+    return this.modelUrls.get(name) ?? null;
   }
 
   get castleNames(): string[] {

@@ -89,3 +89,24 @@ export async function openAssetPackFile(): Promise<OpenedAssetPack | null> {
     input.click();
   });
 }
+function normalizePackName(name: string): string {
+  const trimmed = name.trim() || "assets";
+  return /\.mlpack$/i.test(trimmed) ? trimmed : `${trimmed}.mlpack`;
+}
+
+export async function saveAssetPackFile(bytes: Uint8Array, name: string): Promise<string | null> {
+  const fileName = normalizePackName(name);
+  if (window.marchlandsHost?.saveAssetPackFile) {
+    return window.marchlandsHost.saveAssetPackFile(bytes, fileName);
+  }
+  const blob = new Blob([bytes.slice().buffer], { type: "application/zip" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return anchor.download;
+}
