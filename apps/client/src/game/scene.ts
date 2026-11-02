@@ -20,8 +20,9 @@ const PLAYER_COLORS: Record<Owner, number> = {
   2: 0xe06a4a,
 };
 
-const PITCH = (68 * Math.PI) / 180;
-const CAMERA_DISTANCE = 96;
+const PITCH = (42 * Math.PI) / 180;
+const FIELD_OF_VIEW = 26;
+const CAMERA_DISTANCE = 260;
 const VIEW_HEIGHT = 58;
 const ZOOM_MIN = 0.34;
 const ZOOM_MAX = 2.4;
@@ -78,7 +79,7 @@ export class BattleScene {
   private visual: MapVisual | null;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
-  private readonly camera: THREE.OrthographicCamera;
+  private readonly camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
   private readonly cityViews = new Map<CityId, CityView>();
   private readonly squadViews = new Map<string, SquadView>();
   private readonly ring: THREE.Mesh;
@@ -118,7 +119,12 @@ export class BattleScene {
   } | null = null;
   private atmosphere: Atmosphere | null = null;
 
-  constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    map: MapDef,
+    visual: MapVisual | null = null,
+    options: { orthographic?: boolean } = {},
+  ) {
     this.canvas = canvas;
     this.map = map;
     this.visual = visual;
@@ -132,7 +138,9 @@ export class BattleScene {
     this.scene.background = new THREE.Color(0x0c120e);
     this.scene.fog = new THREE.Fog(0x0c120e, 125, 195);
 
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 380);
+    this.camera = options.orthographic
+      ? new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1400)
+      : new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.6, 2400);
 
     for (const city of map.cities) {
       this.positions.set(city.id, new THREE.Vector3(city.pos[0] / 10, 0, city.pos[1] / 10));
@@ -334,13 +342,21 @@ export class BattleScene {
     this.yaw += delta * step;
     if (Math.abs(delta) < 0.002) this.yaw = this.targetYaw;
 
-    const horizontal = Math.cos(PITCH) * CAMERA_DISTANCE;
+    const distance =
+      this.camera instanceof THREE.PerspectiveCamera ? this.cameraDistance() : CAMERA_DISTANCE;
+    const horizontal = Math.cos(PITCH) * distance;
     this.camera.position.set(
       this.focus.x + Math.sin(this.yaw) * horizontal,
-      this.frameY + Math.sin(PITCH) * CAMERA_DISTANCE,
+      this.frameY + Math.sin(PITCH) * distance,
       this.focus.z + Math.cos(this.yaw) * horizontal,
     );
     this.camera.lookAt(this.focus.x, this.frameY, this.focus.z);
+    const radius = Math.max(this.terrain.island.radiusX, this.terrain.island.radiusZ);
+    const fog = this.scene.fog as THREE.Fog | null;
+    if (fog) {
+      fog.near = distance + radius * 0.55;
+      fog.far = distance + radius * 2.8;
+    }
   }
 
   private updateCities(state: SimState): void {
@@ -727,7 +743,7 @@ export class BattleScene {
       this.atmosphere = null;
     }
     const island = this.terrain.island;
-    this.frameY = -island.depth * 0.22;
+    this.frameY = -island.depth * 0.12;
     const atmosphere = buildAtmosphere({
       centerX: island.centerX,
       centerZ: island.centerZ,
@@ -1250,17 +1266,25 @@ export class BattleScene {
     return THREE.MathUtils.clamp(Math.min(DEFAULT_ZOOM, fit), ZOOM_MIN, ZOOM_MAX);
   }
 
+  private cameraDistance(): number {
+    return VIEW_HEIGHT / this.zoom / (2 * Math.tan((FIELD_OF_VIEW * Math.PI) / 360));
+  }
+
   private resize(): void {
     const parent = this.canvas.parentElement;
     const width = Math.max(1, parent?.clientWidth ?? window.innerWidth);
     const height = Math.max(1, parent?.clientHeight ?? window.innerHeight);
     this.renderer.setSize(width, height, false);
-    const aspect = width / height;
-    const viewHeight = VIEW_HEIGHT / this.zoom;
-    this.camera.left = (-viewHeight * aspect) / 2;
-    this.camera.right = (viewHeight * aspect) / 2;
-    this.camera.top = viewHeight / 2;
-    this.camera.bottom = -viewHeight / 2;
+    if (this.camera instanceof THREE.PerspectiveCamera) {
+      this.camera.aspect = width / height;
+      this.camera.fov = FIELD_OF_VIEW;
+    } else {
+      const viewHeight = VIEW_HEIGHT / this.zoom;
+      this.camera.left = (-viewHeight * (width / height)) / 2;
+      this.camera.right = (viewHeight * (width / height)) / 2;
+      this.camera.top = viewHeight / 2;
+      this.camera.bottom = -viewHeight / 2;
+    }
     this.camera.updateProjectionMatrix();
   }
 }

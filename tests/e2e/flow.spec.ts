@@ -15,7 +15,7 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   await expect(page.locator("#city-panel")).toHaveClass(/on/);
 
   await page.waitForTimeout(400);
-  await page.mouse.click(522, 333);
+  await page.mouse.click(519, 322);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 20_000 });
   await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
 });
@@ -104,18 +104,26 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
   await page.mouse.up();
   await expect(page.locator("#ml-ed-inspector")).toContainText("道路 r1");
   await expect(page.locator("#ml-ed-toast")).toContainText("已绘制道路");
-  await page.mouse.dblclick(487, 316);
-  await expect(page.locator("#ml-ed-inspector")).toContainText("5 个控制点");
-  await page.mouse.click(487, 316, { button: "right" });
-  await expect(page.locator("#ml-ed-inspector")).toContainText("4 个控制点");
+
+  const countOf = async (): Promise<number> => {
+    const text = await page.locator("#ml-ed-inspector").innerText();
+    return Number(/(\d+) 个控制点/.exec(text)?.[1] ?? "0");
+  };
+  const drawn = await countOf();
+  expect(drawn).toBeGreaterThan(2);
+
+  await page.mouse.dblclick(650, 330);
+  await expect(page.locator("#ml-ed-inspector")).toContainText(`${drawn + 1} 个控制点`);
+  await page.mouse.click(650, 330, { button: "right" });
+  await expect(page.locator("#ml-ed-inspector")).toContainText(`${drawn} 个控制点`);
 
   const before = await page.locator("#ml-ed-inspector").innerText();
   const beforeLength = /长度 ([\d.]+) 米/.exec(before)?.[1];
   expect(beforeLength).toBeTruthy();
 
-  await page.mouse.move(520, 302);
+  await page.mouse.move(650, 330);
   await page.mouse.down();
-  await page.mouse.move(520, 380, { steps: 10 });
+  await page.mouse.move(650, 420, { steps: 10 });
   await page.mouse.up();
   await expect(page.locator("#ml-ed-toast")).toContainText("已调整道路");
   const after = await page.locator("#ml-ed-inspector").innerText();
