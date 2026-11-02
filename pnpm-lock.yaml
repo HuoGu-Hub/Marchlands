@@ -52,6 +52,18 @@ importers:
         specifier: ^6.0.7
         version: 6.4.5(@types/node@22.20.5)(tsx@4.23.15)
 
+  packages/asset-pack:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.7.2
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.8(@types/node@22.20.5)
+
   packages/content:
     dependencies:
       '@marchlands/sim':
