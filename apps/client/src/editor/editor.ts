@@ -4,12 +4,17 @@ import {
   TERRAIN_STYLES,
   addProp,
   addSite,
+  applyGridBrush,
   cloneDocument,
   compileDocument,
   connect,
+  convertToGrid,
+  createGridDocument,
   createStarterDocument,
   disconnect,
   documentLabel,
+  gridCellCenter,
+  gridCellFromGround,
   moveProp,
   moveSite,
   parseDocument,
@@ -34,6 +39,13 @@ import type {
   SiteDraft,
   TerrainStyle,
 } from "@marchlands/map-authoring";
+import {
+  NavGrid,
+  decodeBitmapBase64,
+  decodeInt16Base64,
+  decodeUint8Base64,
+  planPath,
+} from "@marchlands/nav";
 import { buildBuiltinAssetPack } from "../game/asset-pack-export";
 import { assetRegistry } from "../game/asset-registry";
 import { BattleScene } from "../game/scene";
@@ -41,7 +53,25 @@ import type { SceneViewState } from "../game/scene";
 import { openAssetPackFile, openMapText, saveAssetPackFile, saveMapText } from "./map-io";
 import "./editor.css";
 
-type Tool = "select" | SiteKind | "road" | "erase" | "asset";
+type GridTool = "raise" | "lower" | "smooth" | "ramp" | "cliff" | "water" | "surface" | "blocker" | "passable";
+
+type Tool = "select" | SiteKind | "road" | "erase" | "asset" | GridTool;
+
+const GRID_TOOL_SET: ReadonlySet<string> = new Set<GridTool>([
+  "raise",
+  "lower",
+  "smooth",
+  "ramp",
+  "cliff",
+  "water",
+  "surface",
+  "blocker",
+  "passable",
+]);
+
+function isGridTool(tool: Tool): tool is GridTool {
+  return GRID_TOOL_SET.has(tool);
+}
 
 type Selection = { kind: "site"; id: CityId } | { kind: "prop"; id: string } | null;
 
@@ -74,6 +104,13 @@ interface PropDragState {
   ground: [number, number] | null;
 }
 
+interface GridStrokeState {
+  document: MapDocument;
+  start: [number, number];
+  lastCell: [number, number];
+  changed: boolean;
+}
+
 const TOOL_LABEL: Record<Tool, string> = {
   select: "选择 / 移动",
   town: "城镇",
@@ -82,6 +119,15 @@ const TOOL_LABEL: Record<Tool, string> = {
   road: "道路",
   erase: "删除",
   asset: "放置装饰",
+  raise: "抬高地形",
+  lower: "降低地形",
+  smooth: "平滑地形",
+  ramp: "坡道",
+  cliff: "悬崖",
+  water: "水面",
+  surface: "地表",
+  blocker: "阻挡",
+  passable: "可通行覆盖",
 };
 
 const AUTOSAVE_KEY = "marchlands.editor.autosave.v1";
@@ -108,6 +154,24 @@ const TEMPLATE = `
       <button class="ml-ed-piece tool active" data-tool="select" draggable="false"><i></i><b>选择 / 移动</b><span>拖动据点或装饰</span></button>
       <button class="ml-ed-piece tool" data-tool="road" draggable="false"><i></i><b>道路</b><span>连两个据点</span></button>
       <button class="ml-ed-piece tool" data-tool="erase" draggable="false"><i></i><b>删除</b><span>点据点、道路或装饰</span></button>
+      <div class="ml-ed-section-label">网格地形</div>
+      <div class="ml-ed-grid-tools">
+        <button class="ml-ed-grid-tool" data-grid-tool="raise">抬高</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="lower">降低</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="smooth">平滑</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="ramp">坡道</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="cliff">悬崖</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="water">水面</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="surface">地表</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="blocker">阻挡</button>
+        <button class="ml-ed-grid-tool" data-grid-tool="passable">可走</button>
+      </div>
+      <div class="ml-ed-grid-actions">
+        <button class="ml-ed-btn" id="ml-ed-new-grid">新建网格</button>
+        <button class="ml-ed-btn" id="ml-ed-grid-enable">启用网格</button>
+        <button class="ml-ed-btn" id="ml-ed-nav-preview">导航预览</button>
+        <button class="ml-ed-btn" id="ml-ed-path-test">路径测试</button>
+      </div>
       <div class="ml-ed-section-label">据点</div>
       <button class="ml-ed-piece" data-tool="town" draggable="true"><i class="town"></i><b>城镇</b><span>产兵 · 可升级</span></button>
       <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>增幅 · 叶子据点</span></button>
@@ -127,7 +191,7 @@ const TEMPLATE = `
       <canvas id="ml-ed-canvas"></canvas>
       <canvas id="ml-ed-overlay"></canvas>
       <div class="ml-ed-stage-badge" id="ml-ed-badge">选择工具开始</div>
-      <div class="ml-ed-stage-hint">拖拽地形或装饰到地图 · R 旋转 · [ ] 缩放 · 右键拖动 · 滚轮缩放 · Q/E 旋转</div>
+      <div class="ml-ed-stage-hint">拖拽地形或装饰到地图 · 网格工具拖动刷地形 · R 旋转 · [ ] 缩放 · 右键拖动 · 滚轮缩放 · Q/E 旋转</div>
       <div class="ml-ed-toast" id="ml-ed-toast"></div>
     </main>
     <aside class="ml-ed-inspector" id="ml-ed-inspector"></aside>
@@ -161,6 +225,15 @@ function toolColor(tool: Tool): string {
   if (tool === "outpost") return "#d07a58";
   if (tool === "road") return "#9cae9c";
   if (tool === "erase") return "#b95332";
+  if (tool === "raise") return "#8fd18f";
+  if (tool === "lower") return "#d18f8f";
+  if (tool === "smooth") return "#9fb7d1";
+  if (tool === "ramp") return "#d1b78f";
+  if (tool === "cliff") return "#d18f5f";
+  if (tool === "water") return "#6fb7d1";
+  if (tool === "surface") return "#c6a36a";
+  if (tool === "blocker") return "#b95332";
+  if (tool === "passable") return "#53c7bd";
   return "#d8ccb8";
 }
 
@@ -189,6 +262,15 @@ export class EditorController {
   private suppressClick = false;
   private pointerId: number | null = null;
   private toastTimer = 0;
+  private brushRadius = 2;
+  private brushStrength = 20;
+  private surfaceBrush = 0;
+  private navPreview = false;
+  private gridStroke: GridStrokeState | null = null;
+  private pathTest = false;
+  private pathFrom: [number, number] | null = null;
+  private pathPoints: Array<[number, number]> | null = null;
+  private navCache: { hash: string; grid: NavGrid } | null = null;
 
   private canvas!: HTMLCanvasElement;
   private overlay!: HTMLCanvasElement;
@@ -204,6 +286,8 @@ export class EditorController {
   private playButton!: HTMLButtonElement;
   private undoButton!: HTMLButtonElement;
   private redoButton!: HTMLButtonElement;
+  private navButton!: HTMLButtonElement;
+  private pathButton!: HTMLButtonElement;
 
   constructor(options: EditorOptions) {
     this.options = options;
@@ -253,6 +337,8 @@ export class EditorController {
     this.playButton = this.options.root.querySelector("#ml-ed-play") as HTMLButtonElement;
     this.undoButton = this.options.root.querySelector("#ml-ed-undo") as HTMLButtonElement;
     this.redoButton = this.options.root.querySelector("#ml-ed-redo") as HTMLButtonElement;
+    this.navButton = this.options.root.querySelector("#ml-ed-nav-preview") as HTMLButtonElement;
+    this.pathButton = this.options.root.querySelector("#ml-ed-path-test") as HTMLButtonElement;
     const context = this.overlay.getContext("2d");
     if (!context) throw new Error("editor overlay canvas unavailable");
     this.ctx = context;
@@ -274,6 +360,18 @@ export class EditorController {
     this.options.root.querySelector("#ml-ed-export-pack")?.addEventListener("click", () => {
       void this.exportBuiltinPack();
     });
+    this.options.root.querySelector("#ml-ed-new-grid")?.addEventListener("click", () => {
+      this.commit(createGridDocument(), "已新建网格地图");
+    });
+    this.options.root.querySelector("#ml-ed-grid-enable")?.addEventListener("click", () => this.enableGrid());
+    this.navButton.addEventListener("click", () => this.toggleNavPreview());
+    this.pathButton.addEventListener("click", () => this.togglePathTest());
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-grid-tool]")) {
+      button.addEventListener("click", () => {
+        const tool = button.dataset.gridTool as GridTool | undefined;
+        if (tool) this.setTool(tool);
+      });
+    }
 
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.addEventListener("click", () => {
@@ -308,6 +406,7 @@ export class EditorController {
     window.addEventListener("keydown", this.onKeyDown);
     this.badgeEl.textContent = TOOL_LABEL[this.tool];
     this.renderAssetPalette();
+    this.updateGridControls();
   }
 
   private restoreAutosave(): void {
@@ -335,6 +434,9 @@ export class EditorController {
       this.selection = null;
     }
 
+    this.navCache = null;
+    this.pathFrom = null;
+    this.pathPoints = null;
     let preview: SimState | null = null;
     const hasTown = this.compiled.map.cities.some((city) => city.kind === "town");
     if (hasTown && this.compiled.map.players.length === 2) {
@@ -353,6 +455,7 @@ export class EditorController {
       if (view) scene.setViewState(view);
       if (preview) scene.update(preview, 0);
       scene.setSelected(this.selection?.kind === "site" ? this.selection.id : null);
+      scene.setNavPreview(this.navPreview);
       this.scene = scene;
       this.view = scene.getViewState();
     }
@@ -361,6 +464,7 @@ export class EditorController {
     this.renderInspector();
     this.renderStatus();
     this.syncTop();
+    this.updateGridControls();
     this.drawOverlay();
   }
 
@@ -404,17 +508,157 @@ export class EditorController {
   }
 
   private setTool(tool: Tool): void {
+    if (isGridTool(tool)) {
+      if (this.pathTest) {
+        this.pathTest = false;
+        this.pathButton?.classList.remove("active");
+      }
+      if (this.doc.navigation !== "grid" || !this.doc.grid) {
+        this.notice("先启用网格导航或新建网格地图");
+        return;
+      }
+    }
     this.tool = tool;
     if (tool !== "asset") this.activeAsset = null;
     this.roadFrom = null;
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.classList.toggle("active", button.dataset.tool === tool);
     }
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-grid-tool]")) {
+      button.classList.toggle("active", button.dataset.gridTool === tool);
+    }
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-asset-id]")) {
       button.classList.toggle("active", this.tool === "asset" && button.dataset.assetId === this.activeAsset);
     }
     this.canvas.style.cursor = tool === "select" ? "grab" : tool === "erase" ? "not-allowed" : "crosshair";
     this.badgeEl.textContent = TOOL_LABEL[tool];
+    this.drawOverlay();
+  }
+
+  private updateGridControls(): void {
+    const grid = this.doc.navigation === "grid" && Boolean(this.doc.grid);
+    for (const button of this.options.root.querySelectorAll<HTMLButtonElement>("[data-grid-tool]")) {
+      button.disabled = !grid;
+      button.classList.toggle("active", grid && button.dataset.gridTool === this.tool);
+    }
+    const enable = this.options.root.querySelector<HTMLButtonElement>("#ml-ed-grid-enable");
+    if (enable) enable.disabled = grid;
+    this.navButton.classList.toggle("active", this.navPreview);
+  }
+
+  private enableGrid(): void {
+    if (this.doc.navigation === "grid" && this.doc.grid) {
+      this.notice("已经是网格地图");
+      return;
+    }
+    this.commit(convertToGrid(this.doc), "已启用网格导航");
+  }
+
+  private toggleNavPreview(): void {
+    this.navPreview = !this.navPreview;
+    this.scene?.setNavPreview(this.navPreview);
+    this.updateGridControls();
+    this.drawOverlay();
+  }
+
+  private togglePathTest(): void {
+    this.pathTest = !this.pathTest;
+    this.pathFrom = null;
+    this.pathPoints = null;
+    this.pathButton.classList.toggle("active", this.pathTest);
+    this.canvas.style.cursor = this.pathTest ? "crosshair" : this.tool === "select" ? "grab" : "crosshair";
+    this.notice(this.pathTest ? "路径测试：点起点和终点" : "已退出路径测试");
+    this.drawOverlay();
+  }
+
+  private navGridForMap(): NavGrid | null {
+    const map = this.compiled.map;
+    if (!map.grid) return null;
+    const hash = map.mapHash ?? "";
+    if (this.navCache && this.navCache.hash === hash) return this.navCache.grid;
+    const grid = map.grid;
+    const cells = grid.width * grid.height;
+    const nav = new NavGrid({
+      cellSizeCm: grid.cellSizeCm,
+      width: grid.width,
+      height: grid.height,
+      heightCm: decodeInt16Base64(grid.heightCm, cells),
+      surface: decodeUint8Base64(grid.surface, cells),
+      blocked: decodeBitmapBase64(grid.blocked, cells),
+      walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
+    });
+    this.navCache = { hash, grid: nav };
+    return nav;
+  }
+
+  private handlePathClick(ground: [number, number]): void {
+    const nav = this.navGridForMap();
+    if (!nav) {
+      this.notice("当前不是网格地图");
+      return;
+    }
+    const cell = gridCellFromGround(this.doc, ground);
+    if (!cell) return;
+    const goal = nav.index(cell[0], cell[1]);
+    if (!this.pathFrom) {
+      this.pathFrom = cell;
+      this.pathPoints = null;
+      this.notice(`路径起点 ${cell[0]}, ${cell[1]}，再点终点`);
+      this.drawOverlay();
+      return;
+    }
+    const start = nav.index(this.pathFrom[0], this.pathFrom[1]);
+    const from = this.pathFrom;
+    this.pathFrom = null;
+    const path = planPath(nav, nav.centerOf(start), nav.centerOf(goal), { radiusCm: 40, smooth: true });
+    if (!path) {
+      this.pathPoints = null;
+      this.notice(`${from[0]}, ${from[1]} 到 ${cell[0]}, ${cell[1]} 不可达`);
+      this.drawOverlay();
+      return;
+    }
+    this.pathPoints = path.points.map((point) => [point.xCm / 10, point.zCm / 10] as [number, number]);
+    this.notice(`路径 ${path.cells.length} 格 · 代价 ${path.cost} · 终点 ${cell[0]}, ${cell[1]}`);
+    this.drawOverlay();
+  }
+
+  private beginGridStroke(ground: [number, number]): void {
+    const cell = gridCellFromGround(this.doc, ground);
+    if (!cell) return;
+    this.gridStroke = { document: cloneDocument(this.doc), start: cell, lastCell: cell, changed: false };
+    this.applyGridStroke(ground);
+  }
+
+  private extendGridStroke(): void {
+    const stroke = this.gridStroke;
+    if (!stroke || !this.pointer.ground) return;
+    const cell = gridCellFromGround(stroke.document, this.pointer.ground);
+    if (!cell) return;
+    if (cell[0] === stroke.lastCell[0] && cell[1] === stroke.lastCell[1]) return;
+    stroke.lastCell = cell;
+    this.applyGridStroke(this.pointer.ground);
+  }
+
+  private applyGridStroke(ground: [number, number]): void {
+    const stroke = this.gridStroke;
+    if (!stroke || !isGridTool(this.tool)) return;
+    const cell = gridCellFromGround(stroke.document, ground);
+    if (!cell) return;
+    const next = applyGridBrush(stroke.document, {
+      mode: this.tool,
+      cell,
+      startCell: stroke.start,
+      radiusCells: this.brushRadius,
+      strengthCm: this.tool === "cliff" ? 100 : this.brushStrength,
+      surface: this.surfaceBrush,
+    });
+    stroke.document = next;
+    stroke.changed = true;
+    const grid = next.grid;
+    if (grid) {
+      const index = cell[1] * grid.width + cell[0];
+      this.badgeEl.textContent = `${TOOL_LABEL[this.tool]} · 高度 ${grid.heightCm[index]} cm · ${cell[0]}, ${cell[1]}`;
+    }
     this.drawOverlay();
   }
 
@@ -674,6 +918,17 @@ export class EditorController {
     }
     if (event.button !== 0) return;
     this.pointer = { x: event.clientX, y: event.clientY, ground: this.scene.screenToGround(event.clientX, event.clientY) };
+    if (isGridTool(this.tool) && !this.pathTest) {
+      if (this.doc.navigation !== "grid" || !this.doc.grid) {
+        this.notice("先启用网格导航或新建网格地图");
+        return;
+      }
+      if (!this.pointer.ground) return;
+      this.beginGridStroke(this.pointer.ground);
+      this.pointerId = event.pointerId;
+      this.canvas.setPointerCapture(event.pointerId);
+      return;
+    }
     if (this.tool === "select") {
       const siteHit = this.pickSite(event.clientX, event.clientY);
       if (siteHit) {
@@ -715,6 +970,11 @@ export class EditorController {
       y: event.clientY,
       ground: this.scene?.screenToGround(event.clientX, event.clientY) ?? null,
     };
+
+    if (this.gridStroke) {
+      this.extendGridStroke();
+      return;
+    }
 
     if (this.drag) {
       const dx = event.clientX - this.drag.startX;
@@ -763,6 +1023,15 @@ export class EditorController {
       this.canvas.releasePointerCapture(this.pointerId);
     }
     this.pointerId = null;
+    if (this.gridStroke) {
+      const stroke = this.gridStroke;
+      this.gridStroke = null;
+      if (stroke.changed) {
+        this.commit(stroke.document, "已修改网格地形");
+        this.suppressClick = true;
+      }
+      return;
+    }
     if (this.drag) {
       if (this.drag.moved && this.drag.ground) {
         this.commit(moveSite(this.doc, this.drag.id, this.drag.ground), `已移动 ${this.drag.id}`);
@@ -792,6 +1061,11 @@ export class EditorController {
     }
     const ground = this.scene.screenToGround(event.clientX, event.clientY);
     if (!ground) return;
+    if (this.pathTest) {
+      this.handlePathClick(ground);
+      return;
+    }
+    if (isGridTool(this.tool)) return;
 
     if (this.tool === "asset") {
       if (this.activeAsset) this.addAssetAt(this.activeAsset, ground);
@@ -915,8 +1189,16 @@ export class EditorController {
     }
     if (event.key === "Escape") {
       this.roadFrom = null;
+      this.pathFrom = null;
+      this.pathPoints = null;
+      if (this.pathTest) {
+        this.pathTest = false;
+        this.pathButton.classList.remove("active");
+        this.notice("已退出路径测试");
+      }
       this.selectSite(null);
       this.setTool("select");
+      this.drawOverlay();
       return;
     }
     if (event.key.toLowerCase() === "q") this.scene?.rotate(-1);
@@ -1075,6 +1357,26 @@ export class EditorController {
         <label class="ml-ed-field"><span>宽度</span><input data-field="roadWidth" type="number" min="0.6" max="6" step="0.1" value="${this.doc.visual.roads.width}"></label>
       </div>
       <label class="ml-ed-check"><input data-field="scatter" type="checkbox" ${this.doc.visual.scatter ? "checked" : ""}><span>自动补树、石头与草丛</span></label>
+      <div class="ml-ed-section-label">网格笔刷</div>
+      <div class="ml-ed-kind">${this.doc.navigation === "grid" && this.doc.grid ? `${this.doc.grid.width} × ${this.doc.grid.height} 格 · ${this.doc.grid.cellSizeDm / 10} 米` : "据点图模式，未启用网格"}</div>
+      <div class="ml-ed-row">
+        <label class="ml-ed-field"><span>半径</span><input data-field="brushRadius" type="number" min="1" max="8" step="1" value="${this.brushRadius}"></label>
+        <label class="ml-ed-field"><span>强度</span><input data-field="brushStrength" type="number" min="5" max="200" step="5" value="${this.brushStrength}"></label>
+      </div>
+      <label class="ml-ed-field"><span>地表刷</span>
+        <select data-field="surfaceBrush">
+          ${option(0, this.surfaceBrush, "草地")}
+          ${option(1, this.surfaceBrush, "泥土")}
+          ${option(2, this.surfaceBrush, "岩石")}
+          ${option(3, this.surfaceBrush, "道路")}
+          ${option(4, this.surfaceBrush, "浅水")}
+          ${option(6, this.surfaceBrush, "雪地")}
+          ${option(7, this.surfaceBrush, "沙地")}
+          ${option(8, this.surfaceBrush, "桥面")}
+          ${option(9, this.surfaceBrush, "楼梯")}
+        </select>
+      </label>
+      <label class="ml-ed-check"><input data-field="navPreview" type="checkbox" ${this.navPreview ? "checked" : ""}><span>显示可走范围</span></label>
       <div class="ml-ed-section-label">单位外观</div>
       <label class="ml-ed-field"><span>绿方兵团</span>
         <select data-field="unitPlayer1">
@@ -1237,6 +1539,26 @@ export class EditorController {
     }
     if (field === "scatter") {
       this.commit(updateScatter(this.doc, value === "true"), value === "true" ? "已开启自动补景" : "已关闭自动补景");
+      return;
+    }
+    if (field === "brushRadius") {
+      this.brushRadius = Math.max(1, Math.min(8, Math.round(Number(value) || 2)));
+      this.drawOverlay();
+      return;
+    }
+    if (field === "brushStrength") {
+      this.brushStrength = Math.max(5, Math.min(200, Math.round(Number(value) || 20)));
+      return;
+    }
+    if (field === "surfaceBrush") {
+      this.surfaceBrush = Math.max(0, Math.min(9, Math.round(Number(value) || 0)));
+      return;
+    }
+    if (field === "navPreview") {
+      this.navPreview = value === "true";
+      this.scene?.setNavPreview(this.navPreview);
+      this.updateGridControls();
+      this.drawOverlay();
       return;
     }
     if (field === "unitPlayer1" || field === "unitPlayer2") {
@@ -1460,6 +1782,91 @@ export class EditorController {
         this.ctx.stroke();
         this.ctx.restore();
         this.drawPin(point.x, point.y, "#9fc7a4");
+      }
+    }
+
+    if (this.pathPoints && this.pathPoints.length > 1) {
+      this.ctx.save();
+      this.ctx.strokeStyle = "#7fd7e8";
+      this.ctx.lineWidth = 2.5;
+      this.ctx.setLineDash([]);
+      this.ctx.beginPath();
+      let started = false;
+      for (const point of this.pathPoints) {
+        const projected = this.scene.projectGround(point[0], point[1], 0.45);
+        if (!projected) continue;
+        const localPoint = local(projected);
+        if (!started) {
+          this.ctx.moveTo(localPoint.x, localPoint.y);
+          started = true;
+        } else {
+          this.ctx.lineTo(localPoint.x, localPoint.y);
+        }
+      }
+      this.ctx.stroke();
+      const last = this.pathPoints[this.pathPoints.length - 1];
+      const end = this.scene.projectGround(last[0], last[1], 0.45);
+      if (end) this.drawPin(local(end).x, local(end).y, "#7fd7e8");
+      this.ctx.restore();
+    }
+
+    if (this.pathFrom && this.doc.grid) {
+      const centerDm = gridCellCenter(this.doc.grid, this.doc.size, this.pathFrom);
+      const projected = this.scene.projectGround(centerDm[0], centerDm[1], 0.45);
+      if (projected) {
+        const point = local(projected);
+        this.ctx.save();
+        this.ctx.strokeStyle = "#7fd7e8";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+    }
+
+    if (isGridTool(this.tool) && this.pointer.ground && this.doc.grid) {
+      const cell = gridCellFromGround(this.doc, this.pointer.ground);
+      if (cell) {
+        const centerDm = gridCellCenter(this.doc.grid, this.doc.size, cell);
+        const projected = this.scene.projectGround(centerDm[0], centerDm[1], 0.3);
+        const edgeDm: [number, number] = [
+          centerDm[0] + this.brushRadius * this.doc.grid.cellSizeDm,
+          centerDm[1],
+        ];
+        const edge = this.scene.projectGround(edgeDm[0], edgeDm[1], 0.3);
+        if (projected && edge) {
+          const point = local(projected);
+          const edgePoint = local(edge);
+          const radius = Math.max(8, Math.hypot(edgePoint.x - point.x, edgePoint.y - point.y));
+          this.ctx.save();
+          this.ctx.setLineDash([4, 4]);
+          this.ctx.strokeStyle = toolColor(this.tool);
+          this.ctx.fillStyle = "rgba(198,163,106,.10)";
+          this.ctx.lineWidth = 1.5;
+          this.ctx.beginPath();
+          this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+          this.ctx.fill();
+          this.ctx.stroke();
+          this.ctx.restore();
+        }
+        if (this.gridStroke && this.tool === "ramp") {
+          const startDm = gridCellCenter(this.doc.grid, this.doc.size, this.gridStroke.start);
+          const start = this.scene.projectGround(startDm[0], startDm[1], 0.3);
+          if (start) {
+            const a = local(start);
+            const b = local(projected ?? start);
+            this.ctx.save();
+            this.ctx.setLineDash([7, 5]);
+            this.ctx.strokeStyle = "#d1b78f";
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(a.x, a.y);
+            this.ctx.lineTo(b.x, b.y);
+            this.ctx.stroke();
+            this.ctx.restore();
+          }
+        }
       }
     }
 

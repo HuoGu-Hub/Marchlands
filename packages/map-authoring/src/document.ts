@@ -21,6 +21,7 @@ import {
   DEFAULT_FOOTPRINT_DM,
   createGridDraft,
   gridIssues,
+  gridNavigationIssues,
   packGridDraft,
   unpackGridDef,
 } from "./grid";
@@ -511,6 +512,11 @@ export function compileDocument(document: MapDocument): CompileResult {
   for (const issue of gridProblems) error("grid", issue);
   if (document.navigation === "graph" && document.grid) {
     warning("grid-unused", "当前为据点图模式，网格数据不会参与导航");
+  }
+  if (document.navigation === "grid" && document.grid && gridProblems.length === 0) {
+    for (const issue of gridNavigationIssues(document.grid, document.size, document.sites)) {
+      error("grid-nav", issue.message, issue.siteId);
+    }
   }
 
   const ids = new Set<string>();

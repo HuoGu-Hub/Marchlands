@@ -50,11 +50,15 @@ export {
   createGridDraft,
   emptyBitmap,
   gridCellAt,
+  gridCellCenter,
   gridIssues,
+  gridNavigationIssues,
   packGridDraft,
   unpackGridDef,
 } from "./grid";
 export type { GridDraftOptions } from "./grid";
+export { applyGridBrush, gridCellFromGround } from "./grid-ops";
+export type { GridBrushMode, GridBrushOptions } from "./grid-ops";
 export { createHeightField, edgeGrade } from "./height";
 export type { HeightField, HeightFieldOptions } from "./height";
 export { TERRAIN_STYLE_IDS, TERRAIN_STYLES } from "./types";

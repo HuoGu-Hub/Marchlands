@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import type { CityId, MapDef } from "@marchlands/sim";
 import { createHeightField } from "@marchlands/map-authoring";
+import {
+  NavGrid,
+  Surface,
+  decodeBitmapBase64,
+  decodeInt16Base64,
+  decodeUint8Base64,
+} from "@marchlands/nav";
 
 const CITY_PAD = 4.2;
 const CITY_FADE = 7.4;
@@ -169,7 +176,125 @@ export function terrainAtmosphere(style: string | undefined): { background: numb
 export interface Terrain {
   group: THREE.Group;
   mesh: THREE.Mesh;
+  navOverlay: THREE.Group | null;
   heightAt(x: number, z: number): number;
+  setNavPreview(visible: boolean): void;
+}
+
+function isSteepCell(grid: NavGrid, x: number, z: number): boolean {
+  const index = grid.index(x, z);
+  const height = grid.heightCm(index);
+  const limit = grid.rules.maxStepCm;
+  const probes: ReadonlyArray<readonly [number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (const probe of probes) {
+    const nx = x + probe[0];
+    const nz = z + probe[1];
+    if (!grid.inBounds(nx, nz)) continue;
+    if (Math.abs(grid.heightCm(grid.index(nx, nz)) - height) > limit) return true;
+  }
+  return false;
+}
+
+function buildNavOverlay(grid: NavGrid, map: MapDef): THREE.Group {
+  const cellM = grid.cellSizeCm / 100;
+  const halfX = map.size[0] / 20;
+  const halfZ = map.size[1] / 20;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const color = new THREE.Color();
+  for (let z = 0; z < grid.height; z += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      const index = grid.index(x, z);
+      const cx = (x + 0.5) * cellM - halfX;
+      const cz = (z + 0.5) * cellM - halfZ;
+      const y = grid.heightCm(index) / 100 + 0.05;
+      const surface = grid.surface(index);
+      const steep = isSteepCell(grid, x, z);
+      if (
+        surface === Surface.Grass &&
+        grid.baseWalkable(index) &&
+        !grid.isOverridden(index) &&
+        !steep
+      ) {
+        continue;
+      }
+      if (grid.isOverridden(index)) color.setHex(0x53c7bd);
+      else if (!grid.baseWalkable(index)) color.setHex(0xb64a33);
+      else if (surface === Surface.DeepWater) color.setHex(0x2d5d86);
+      else if (surface === Surface.ShallowWater) color.setHex(0x4f8fa8);
+      else if (surface === Surface.Road || surface === Surface.Bridge) color.setHex(0xc6a36a);
+      else if (steep) color.setHex(0xd0a04a);
+      else color.setHex(0x6fbf73);
+      const base = positions.length / 3;
+      positions.push(cx - cellM / 2, y, cz - cellM / 2);
+      positions.push(cx + cellM / 2, y, cz - cellM / 2);
+      positions.push(cx + cellM / 2, y, cz + cellM / 2);
+      positions.push(cx - cellM / 2, y, cz + cellM / 2);
+      for (let vertex = 0; vertex < 4; vertex += 1) colors.push(color.r, color.g, color.b);
+      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  const material = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.renderOrder = 2;
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
+function navGridOf(map: MapDef): NavGrid | null {
+  if (map.navigation !== "grid" || !map.grid) return null;
+  const grid = map.grid;
+  const cells = grid.width * grid.height;
+  return new NavGrid({
+    cellSizeCm: grid.cellSizeCm,
+    width: grid.width,
+    height: grid.height,
+    heightCm: decodeInt16Base64(grid.heightCm, cells),
+    surface: decodeUint8Base64(grid.surface, cells),
+    blocked: decodeBitmapBase64(grid.blocked, cells),
+    walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
+  });
+}
+
+function surfaceColor(surface: number, palette: TerrainStylePalette): number {
+  switch (surface) {
+    case Surface.Road:
+    case Surface.Bridge:
+      return 0x8d8778;
+    case Surface.Dirt:
+    case Surface.Sand:
+      return palette.dirt;
+    case Surface.Rock:
+      return palette.rock;
+    case Surface.ShallowWater:
+      return 0x3f6f7a;
+    case Surface.DeepWater:
+      return 0x2a4e5c;
+    case Surface.Snow:
+      return 0xe2e8e0;
+    case Surface.Stairs:
+      return 0x9a8f7a;
+    default:
+      return palette.grass;
+  }
 }
 
 export function buildTerrain(
@@ -191,24 +316,32 @@ export function buildTerrain(
     })
     .filter((edge): edge is { from: THREE.Vector3; to: THREE.Vector3 } => edge !== null);
 
+  const navGrid = navGridOf(map);
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minZ = Number.POSITIVE_INFINITY;
   let maxZ = Number.NEGATIVE_INFINITY;
-  for (const city of cities) {
-    minX = Math.min(minX, city.x);
-    maxX = Math.max(maxX, city.x);
-    minZ = Math.min(minZ, city.z);
-    maxZ = Math.max(maxZ, city.z);
+  if (navGrid) {
+    minX = -map.size[0] / 20;
+    maxX = map.size[0] / 20;
+    minZ = -map.size[1] / 20;
+    maxZ = map.size[1] / 20;
+  } else {
+    for (const city of cities) {
+      minX = Math.min(minX, city.x);
+      maxX = Math.max(maxX, city.x);
+      minZ = Math.min(minZ, city.z);
+      maxZ = Math.max(maxZ, city.z);
+    }
+    minX -= 17;
+    maxX += 17;
+    minZ -= 17;
+    maxZ += 17;
   }
-  minX -= 17;
-  maxX += 17;
-  minZ -= 17;
-  maxZ += 17;
 
   const width = maxX - minX;
   const depth = maxZ - minZ;
-  const cell = 3.0;
+  const cell = navGrid ? 1.0 : 3.0;
   const segmentsX = Math.max(24, Math.round(width / cell));
   const segmentsZ = Math.max(18, Math.round(depth / cell));
 
@@ -216,7 +349,10 @@ export function buildTerrain(
     cities: [...positions.values()].map((city) => [city.x, city.z] as [number, number]),
     terrain: { seed, amplitude },
   });
-  const heightAt = (x: number, z: number): number => heightField.heightAt(x, z);
+  const heightAt = (x: number, z: number): number => {
+    if (navGrid) return navGrid.heightCmAtXZ(Math.round(x * 100), Math.round(z * 100)) / 100;
+    return heightField.heightAt(x, z);
+  };
 
   const geometry = new THREE.PlaneGeometry(width, depth, segmentsX, segmentsZ);
   geometry.rotateX(-Math.PI / 2);
@@ -255,7 +391,9 @@ export function buildTerrain(
     const y = (ay + by + cy) / 3;
     const z = (az + bz + cz) / 3;
     const dirt = valueNoise(x / 9 + noiseShift, z / 9, 103) > 0.76;
-    if (slope > 0.24 || y > 1.05) {
+    if (navGrid) {
+      color.setHex(surfaceColor(navGrid.surfaceAtXZ(Math.round(x * 100), Math.round(z * 100)), palette));
+    } else if (slope > 0.24 || y > 1.05) {
       color.setHex(dirt ? palette.dirtLight : palette.rock);
     } else if (y > 0.45) {
       color.setHex(dirt ? palette.dirt : palette.grassLight);
@@ -264,7 +402,7 @@ export function buildTerrain(
     } else {
       color.setHex(palette.grass);
     }
-    color.offsetHSL(0, 0, (valueNoise(x / 3.5, z / 3.5, 7) - 0.5) * 0.13 - slope * 0.2);
+    color.offsetHSL(0, 0, (valueNoise(x / 3.5, z / 3.5, 7) - 0.5) * (navGrid ? 0.04 : 0.13) - slope * 0.2);
     for (let vertex = 0; vertex < 3; vertex += 1) colors.push(color.r, color.g, color.b);
   }
   faceted.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -282,6 +420,15 @@ export function buildTerrain(
   const group = new THREE.Group();
   group.add(terrainMesh);
   group.add(buildSkirt(minX, maxX, minZ, maxZ, heightAt, palette));
+  const navOverlay = navGrid ? buildNavOverlay(navGrid, map) : null;
+  if (navOverlay) group.add(navOverlay);
+  const setNavPreview = (visible: boolean): void => {
+    if (navOverlay) navOverlay.visible = visible;
+  };
+
+  if (navGrid) {
+    return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview };
+  }
 
   const random = seeded(20261123);
   const townPositions = map.cities
@@ -315,7 +462,7 @@ export function buildTerrain(
     group.add(buildMesa(site.x, site.z, 1.1 + random() * 0.2, heightAt, random, palette));
   }
 
-  return { group, mesh: terrainMesh, heightAt };
+  return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview };
 }
 
 function isClear(

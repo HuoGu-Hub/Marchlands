@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateMap } from "@marchlands/content";
 import { createGame } from "@marchlands/sim";
+import { decodeBitmapBase64, encodeBitmapBase64 } from "@marchlands/nav";
 import {
   addProp,
   addSite,
@@ -10,6 +11,7 @@ import {
   createGridDocument,
   createStarterDocument,
   disconnect,
+  gridCellAt,
   fromMapDef,
   moveProp,
   moveSite,
@@ -253,6 +255,34 @@ describe("map authoring", () => {
     const result = compileDocument(document);
     expect(
       result.diagnostics.some((entry) => entry.code === "grid" && entry.message.includes("网格宽度")),
+    ).toBe(true);
+  });
+
+  it("reports a blocked grid town", () => {
+    const document = createGridDocument();
+    const grid = document.grid;
+    if (!grid) throw new Error("missing grid");
+    const cell = gridCellAt(grid, document.size, document.sites[0].pos);
+    if (!cell) throw new Error("missing cell");
+    const flags = decodeBitmapBase64(grid.blocked, grid.width * grid.height);
+    flags[cell[1] * grid.width + cell[0]] = 1;
+    grid.blocked = encodeBitmapBase64(flags);
+    const result = compileDocument(document);
+    expect(
+      result.diagnostics.some((entry) => entry.code === "grid-nav" && entry.message.includes("不可走")),
+    ).toBe(true);
+  });
+
+  it("reports grid towns split by a wall", () => {
+    const document = createGridDocument();
+    const grid = document.grid;
+    if (!grid) throw new Error("missing grid");
+    const flags = decodeBitmapBase64(grid.blocked, grid.width * grid.height);
+    for (let z = 0; z < grid.height; z += 1) flags[z * grid.width + 35] = 1;
+    grid.blocked = encodeBitmapBase64(flags);
+    const result = compileDocument(document);
+    expect(
+      result.diagnostics.some((entry) => entry.code === "grid-nav" && entry.message.includes("无法到达")),
     ).toBe(true);
   });
 

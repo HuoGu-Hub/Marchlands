@@ -1,10 +1,12 @@
 import {
+  NavGrid,
   decodeBitmapBase64,
   decodeInt16Base64,
   decodeUint8Base64,
   encodeBitmapBase64,
   encodeInt16Base64,
   encodeUint8Base64,
+  findCellPath,
 } from "@marchlands/nav";
 import type { MapGridDef } from "@marchlands/sim";
 import type { GridDraft } from "./types";
@@ -137,4 +139,68 @@ export function gridCellAt(
   const z = Math.floor((pos[1] + size[1] / 2) / grid.cellSizeDm);
   if (x < 0 || z < 0 || x >= grid.width || z >= grid.height) return null;
   return [x, z];
+}
+
+/** 把格子中心换算为地图坐标（分米，中心为原点）。 */
+export function gridCellCenter(
+  grid: Pick<GridDraft, "cellSizeDm">,
+  size: [number, number],
+  cell: [number, number],
+): [number, number] {
+  return [
+    -size[0] / 2 + (cell[0] + 0.5) * grid.cellSizeDm,
+    -size[1] / 2 + (cell[1] + 0.5) * grid.cellSizeDm,
+  ];
+}
+
+export interface GridSitePoint {
+  readonly id: string;
+  readonly pos: [number, number];
+}
+
+export interface GridNavigationIssue {
+  readonly siteId?: string;
+  readonly message: string;
+}
+
+export function gridNavigationIssues(
+  grid: GridDraft,
+  size: [number, number],
+  sites: ReadonlyArray<GridSitePoint>,
+): GridNavigationIssue[] {
+  const cells = grid.width * grid.height;
+  const nav = new NavGrid({
+    cellSizeCm: grid.cellSizeDm * 10,
+    width: grid.width,
+    height: grid.height,
+    heightCm: grid.heightCm,
+    surface: grid.surface,
+    blocked: decodeBitmapBase64(grid.blocked, cells),
+    walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
+  });
+  const issues: GridNavigationIssue[] = [];
+  const reached: Array<{ id: string; index: number }> = [];
+  for (const site of sites) {
+    const cell = gridCellAt(grid, size, site.pos);
+    if (!cell) {
+      issues.push({ siteId: site.id, message: `${site.id} 超出网格范围` });
+      continue;
+    }
+    const index = nav.index(cell[0], cell[1]);
+    if (!nav.isWalkable(index)) {
+      issues.push({ siteId: site.id, message: `${site.id} 所在格不可走` });
+      continue;
+    }
+    reached.push({ id: site.id, index });
+  }
+  if (reached.length >= 2) {
+    const start = reached[0];
+    for (let index = 1; index < reached.length; index += 1) {
+      const target = reached[index];
+      if (!findCellPath(nav, start.index, target.index, { radiusCm: 40 })) {
+        issues.push({ siteId: target.id, message: `${start.id} 无法到达 ${target.id}` });
+      }
+    }
+  }
+  return issues;
 }

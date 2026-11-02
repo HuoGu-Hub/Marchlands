@@ -44,6 +44,41 @@ test("creates a map in the editor and returns from playtest", async ({ page }) =
   await expect(page.locator("#ml-ed-map-label")).toContainText("4 据点");
 });
 
+test("creates a grid map, sculpts terrain and previews navigation", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#page-editor")).toBeVisible();
+  await page.click("#ml-ed-new-grid");
+  await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+  await expect(page.locator("#ml-ed-grid-enable")).toBeDisabled();
+
+  const box = await page.locator("#ml-ed-canvas").boundingBox();
+  if (!box) throw new Error("editor canvas has no box");
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.click('[data-grid-tool="raise"]');
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 30, cy + 12, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator("#ml-ed-badge")).toContainText("高度");
+  await expect(page.locator("#ml-ed-undo")).toBeEnabled();
+
+  await page.click("#ml-ed-nav-preview");
+  await expect(page.locator("#ml-ed-nav-preview")).toHaveClass(/active/);
+
+  await page.click("#ml-ed-path-test");
+  await page.mouse.click(cx - 40, cy + 10);
+  await page.mouse.click(cx + 40, cy - 10);
+  await expect(page.locator("#ml-ed-toast")).toContainText("路径", { timeout: 5000 });
+
+  await page.click('[data-grid-tool="blocker"]');
+  await page.mouse.click(cx + 60, cy + 20);
+  await page.click("#ml-ed-undo");
+  await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+});
+
 test("places and rotates a terrain prop in the editor", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });

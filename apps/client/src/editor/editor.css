@@ -407,3 +407,30 @@
   cursor: pointer;
 }
 .ml-ed-pack-row button:hover { background: rgba(185,83,50,.12); }
+.ml-ed-grid-tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.ml-ed-grid-tool {
+  height: 26px;
+  border: 1px solid #2f3d31;
+  border-radius: 3px;
+  background: #162018;
+  color: #c8bfae;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.ml-ed-grid-tool:hover { background: #1c2a20; border-color: #4b5f4c; }
+.ml-ed-grid-tool.active { border-color: #c6a36a; background: #2a2c1e; color: #e5d7bb; }
+.ml-ed-grid-tool:disabled { opacity: .35; cursor: default; }
+.ml-ed-grid-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.ml-ed-grid-actions .ml-ed-btn { padding: 0 4px; font-size: 10px; height: 28px; }
+.ml-ed-grid-actions .ml-ed-btn:last-child { grid-column: span 2; }

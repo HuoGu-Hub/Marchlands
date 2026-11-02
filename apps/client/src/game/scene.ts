@@ -193,6 +193,10 @@ export class BattleScene {
     this.resize();
   }
 
+  setNavPreview(visible: boolean): void {
+    this.terrain.setNavPreview(visible);
+  }
+
   projectGround(x: number, z: number, height = 0): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
     const worldX = x / 10;

@@ -32,6 +32,9 @@ importers:
       '@marchlands/map-authoring':
         specifier: workspace:*
         version: link:../../packages/map-authoring
+      '@marchlands/nav':
+        specifier: workspace:*
+        version: link:../../packages/nav
       '@marchlands/sim':
         specifier: workspace:*
         version: link:../../packages/sim

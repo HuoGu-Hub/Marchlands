@@ -16,6 +16,7 @@
     "@marchlands/asset-pack": "workspace:*",
     "@marchlands/content": "workspace:*",
     "@marchlands/map-authoring": "workspace:*",
+    "@marchlands/nav": "workspace:*",
     "@marchlands/sim": "workspace:*",
     "three": "^0.171.0"
   },
