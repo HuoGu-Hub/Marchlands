@@ -174,12 +174,12 @@ function makeTorso(kind: UnitKind, palette: TeamPalette, variant: number): THREE
   const trim = paintTrim(palette);
   const armor = kind === "shield" || kind === "cavalry" ? STEEL : kind === "elite" ? DARK_STEEL : LEATHER;
   return part((b) => {
-    ball(b, 0.21, 1.05, 1.15, 0.9, team, 0, 0.17, 0);
-    ball(b, 0.16, 1.0, 0.82, 0.4, armor, 0, 0.17, 0.14);
+    ball(b, 0.22, 1.08, 1.12, 0.92, team, 0, 0.17, 0);
+    ball(b, 0.17, 1.0, 0.85, 0.42, armor, 0, 0.17, 0.14);
     torus(b, 0.19, 0.018, DARK_LEATHER, 0, 0.045, 0);
     ball(b, 0.035, 1, 1, 1, GOLD, 0, 0.045, 0.18);
     for (const x of [-0.19, 0.19]) ball(b, 0.075, 1, 1, 1, armor, x, 0.29, 0);
-    roundedPanel(b, 0.12, 0.18, team, 0, 0.15, 0.18);
+    ball(b, 0.1, 0.95, 1.1, 0.18, team, 0, 0.15, 0.18);
 
     if (kind === "shield") {
       ball(b, 0.18, 1, 0.9, 0.4, STEEL, 0, 0.18, 0.16);
@@ -193,10 +193,10 @@ function makeTorso(kind: UnitKind, palette: TeamPalette, variant: number): THREE
         }
       }
       torus(b, 0.2, 0.015, GOLD, 0, 0.27, 0, Math.PI / 2, 0, 0.1);
-      roundedPanel(b, 0.26, 0.3, team, 0, 0.12, -0.19);
+      ball(b, 0.18, 0.95, 1.0, 0.22, team, 0, 0.14, -0.17);
     } else if (kind === "archer") {
       torus(b, 0.2, 0.018, trim, 0, 0.27, 0, Math.PI / 2, 0, 0.15);
-      roundedPanel(b, 0.3, 0.38, team, 0, 0.08, -0.19);
+      ball(b, 0.19, 0.9, 1.05, 0.2, team, 0, 0.1, -0.16);
     } else if (kind === "cavalry") {
       torus(b, 0.2, 0.015, DARK_STEEL, 0, 0.27, 0);
     } else {
@@ -222,14 +222,14 @@ function makeHead(kind: UnitKind, palette: TeamPalette, variant: number): THREE.
 
     if (kind === "shield") {
       ball(b, 0.225, 1, 1, 1, DARK_STEEL, 0, 0.12, 0.005);
-      capsule(b, 0.018, 0.12, INK, 0, 0.15, 0.22, 0, 0, Math.PI / 2);
-      capsule(b, 0.016, 0.07, INK, 0, 0.1, 0.225, 0, 0, 0);
-      for (const x of [-0.12, 0.12]) ball(b, 0.022, 1, 1, 1, GOLD, x, 0.21, 0.19);
+      ball(b, 0.13, 1.0, 0.2, 0.12, INK, 0, 0.15, 0.205);
+      for (const x of [-0.13, 0.13]) ball(b, 0.035, 1, 1, 1, GOLD, x, 0.18, 0.18);
       torus(b, 0.2, 0.018, STEEL, 0, 0.13, 0, Math.PI / 2, 0, 0);
+      ball(b, 0.03, 1, 1, 1, GOLD, 0, 0.27, 0.16);
     } else if (kind === "archer") {
-      ball(b, 0.235, 1, 1, 1, team, 0, 0.13, -0.075);
-      torus(b, 0.19, 0.035, trim, 0, 0.1, 0.13, 0.2, 0, 0);
-      ball(b, 0.07, 1.1, 0.6, 0.8, team, 0, 0.31, -0.12);
+      ball(b, 0.215, 1, 1, 1, team, 0, 0.16, -0.06);
+      torus(b, 0.18, 0.032, trim, 0, 0.12, 0.14, 0.2, 0, 0);
+      ball(b, 0.06, 1.1, 0.6, 0.8, team, 0, 0.33, -0.12);
       capsule(b, 0.025, 0.1, GOLD, 0.16, 0.1, 0.08, 0, 0, -0.4);
     } else if (kind === "elite") {
       b.add(
@@ -302,13 +302,13 @@ function roundShield(palette: TeamPalette): THREE.Group {
   const team = paintTeam(palette);
   const trim = paintTrim(palette);
   return part((b) => {
-    const disc = new THREE.CylinderGeometry(0.25, 0.25, 0.045, 28);
+    const disc = new THREE.CylinderGeometry(0.225, 0.225, 0.045, 32);
     b.add(disc, team, new THREE.Vector3(0, 0, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)));
-    torus(b, 0.245, 0.025, trim, 0, 0, 0.01, 0, 0, 0);
-    torus(b, 0.145, 0.014, GOLD, 0, 0, 0.03, 0, 0, 0);
+    torus(b, 0.22, 0.023, trim, 0, 0, 0.01, 0, 0, 0);
+    torus(b, 0.13, 0.013, GOLD, 0, 0, 0.03, 0, 0, 0);
     ball(b, 0.065, 1, 1, 0.55, GOLD, 0, 0, 0.04);
     for (const angle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
-      ball(b, 0.022, 1, 1, 1, GOLD, Math.cos(angle) * 0.19, Math.sin(angle) * 0.19, 0.03);
+      ball(b, 0.02, 1, 1, 1, GOLD, Math.cos(angle) * 0.17, Math.sin(angle) * 0.17, 0.03);
     }
   });
 }
@@ -335,7 +335,7 @@ function lance(palette: TeamPalette): THREE.Group {
     capsule(b, 0.022, 0.62, WOOD, 0, 0.2, 0);
     b.add(new THREE.ConeGeometry(0.05, 0.14, 10), STEEL, new THREE.Vector3(0, 0.66, 0));
     const team = paintTeam(palette);
-    roundedPanel(b, 0.16, 0.1, team, 0.09, 0.51, 0);
+    ball(b, 0.09, 1.2, 0.7, 0.2, team, 0.1, 0.51, 0);
     ball(b, 0.03, 1, 1, 1, GOLD, 0, 0.06, 0);
   });
 }
