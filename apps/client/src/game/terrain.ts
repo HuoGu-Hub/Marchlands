@@ -43,12 +43,143 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
+
+export interface TerrainStylePalette {
+  grass: number;
+  grassDark: number;
+  grassLight: number;
+  dirt: number;
+  dirtLight: number;
+  rock: number;
+  rockDark: number;
+  ridge: number;
+  ridgeDark: number;
+  mesa: number;
+  mesaCap: number;
+  skirt: number;
+  background: number;
+  fog: number;
+}
+
+export const TERRAIN_PALETTES: Record<string, TerrainStylePalette> = {
+  frontier: {
+    grass: 0x58743c,
+    grassDark: 0x44602f,
+    grassLight: 0x6b8849,
+    dirt: 0x927e52,
+    dirtLight: 0xa59060,
+    rock: 0x77705f,
+    rockDark: 0x5a5548,
+    ridge: 0x8a857a,
+    ridgeDark: 0x5d574d,
+    mesa: 0x7c715d,
+    mesaCap: 0x647845,
+    skirt: 0x4a3f2e,
+    background: 0x0c120e,
+    fog: 0x0c120e,
+  },
+  meadow: {
+    grass: 0x6f9148,
+    grassDark: 0x547338,
+    grassLight: 0x8aa95a,
+    dirt: 0xa58a58,
+    dirtLight: 0xb79d6b,
+    rock: 0x8a8474,
+    rockDark: 0x6b6658,
+    ridge: 0x968e7c,
+    ridgeDark: 0x6f6859,
+    mesa: 0x8a7b60,
+    mesaCap: 0x7a954e,
+    skirt: 0x594a32,
+    background: 0x0d130d,
+    fog: 0x0d130d,
+  },
+  autumn: {
+    grass: 0x7a7a3c,
+    grassDark: 0x5b5b2c,
+    grassLight: 0x9a8a45,
+    dirt: 0x8d5f38,
+    dirtLight: 0xa7744a,
+    rock: 0x7d715f,
+    rockDark: 0x5c5245,
+    ridge: 0x8a7965,
+    ridgeDark: 0x645343,
+    mesa: 0x80634b,
+    mesaCap: 0x8a7a3d,
+    skirt: 0x4d3423,
+    background: 0x140f0b,
+    fog: 0x140f0b,
+  },
+  ash: {
+    grass: 0x5c5a45,
+    grassDark: 0x403f33,
+    grassLight: 0x777154,
+    dirt: 0x5f5548,
+    dirtLight: 0x75695a,
+    rock: 0x66625a,
+    rockDark: 0x494640,
+    ridge: 0x6e6a62,
+    ridgeDark: 0x4f4b45,
+    mesa: 0x655b4e,
+    mesaCap: 0x5f6248,
+    skirt: 0x2d2a25,
+    background: 0x0c0b0a,
+    fog: 0x0c0b0a,
+  },
+  coast: {
+    grass: 0x6a8a54,
+    grassDark: 0x4f6b3e,
+    grassLight: 0x8aa76b,
+    dirt: 0xb6a177,
+    dirtLight: 0xc9b58a,
+    rock: 0x8d8778,
+    rockDark: 0x6b665b,
+    ridge: 0x9a9486,
+    ridgeDark: 0x746e61,
+    mesa: 0x8f8068,
+    mesaCap: 0x7f9a5c,
+    skirt: 0x65583f,
+    background: 0x0b1112,
+    fog: 0x0b1112,
+  },
+  snow: {
+    grass: 0xd8dfd2,
+    grassDark: 0xb3c0b4,
+    grassLight: 0xf0f3ea,
+    dirt: 0x9fa89d,
+    dirtLight: 0xb8c0b5,
+    rock: 0x7e8580,
+    rockDark: 0x5f6662,
+    ridge: 0x8d948f,
+    ridgeDark: 0x6a716d,
+    mesa: 0x7b807c,
+    mesaCap: 0xd9e0d5,
+    skirt: 0x454c4a,
+    background: 0x0c1114,
+    fog: 0x0c1114,
+  },
+};
+
+export function terrainAtmosphere(style: string | undefined): { background: number; fog: number } {
+  const palette = TERRAIN_PALETTES[style ?? "frontier"] ?? TERRAIN_PALETTES.frontier;
+  return { background: palette.background, fog: palette.fog };
+}
+
 export interface Terrain {
   group: THREE.Group;
   heightAt(x: number, z: number): number;
 }
 
-export function buildTerrain(map: MapDef, positions: Map<CityId, THREE.Vector3>): Terrain {
+export function buildTerrain(
+  map: MapDef,
+  positions: Map<CityId, THREE.Vector3>,
+  options: { style?: string; seed?: number; amplitude?: number } = {},
+): Terrain {
+  const style = options.style ?? "frontier";
+  const palette = TERRAIN_PALETTES[style] ?? TERRAIN_PALETTES.frontier;
+  const seed = Math.round(options.seed ?? 20261123);
+  const amplitude = Math.min(1.5, Math.max(0.2, options.amplitude ?? 1));
+  const noiseShift = (seed % 1000) * 0.017;
   const cities = [...positions.values()];
   const edges = map.edges
     .map((edge) => {
@@ -109,9 +240,11 @@ export function buildTerrain(map: MapDef, positions: Map<CityId, THREE.Vector3>)
       roadFade = Math.min(roadFade, smoothstep(ROAD_PAD, ROAD_FADE, distance));
       if (roadFade === 0) break;
     }
-    const broad = valueNoise(x / 13, z / 13, 17) * 1.25 + valueNoise(x / 5.5, z / 5.5, 31) * 0.34;
-    const ridge = Math.max(0, valueNoise(x / 9, z / 9, 71) - 0.5) * 1.7;
-    return Math.max(0, (broad - 0.32 + ridge) * cityFade * roadFade);
+    const broad =
+      valueNoise(x / 13 + noiseShift, z / 13 - noiseShift, 17) * 1.25 +
+      valueNoise(x / 5.5 - noiseShift, z / 5.5 + noiseShift, 31) * 0.34;
+    const ridge = Math.max(0, valueNoise(x / 9 + noiseShift, z / 9, 71) - 0.5) * 1.7;
+    return Math.max(0, (broad - 0.32 + ridge) * cityFade * roadFade * amplitude);
   }
 
   function heightAt(x: number, z: number): number {
@@ -154,15 +287,15 @@ export function buildTerrain(map: MapDef, positions: Map<CityId, THREE.Vector3>)
     const x = (ax + bx + cx) / 3;
     const y = (ay + by + cy) / 3;
     const z = (az + bz + cz) / 3;
-    const dirt = valueNoise(x / 9, z / 9, 103) > 0.76;
+    const dirt = valueNoise(x / 9 + noiseShift, z / 9, 103) > 0.76;
     if (slope > 0.24 || y > 1.05) {
-      color.setHex(dirt ? 0x8b7855 : 0x77705f);
+      color.setHex(dirt ? palette.dirtLight : palette.rock);
     } else if (y > 0.45) {
-      color.setHex(dirt ? 0x927e52 : 0x718848);
+      color.setHex(dirt ? palette.dirt : palette.grassLight);
     } else if (dirt) {
-      color.setHex(0x927e52);
+      color.setHex(palette.dirt);
     } else {
-      color.setHex(0x58743c);
+      color.setHex(palette.grass);
     }
     color.offsetHSL(0, 0, (valueNoise(x / 3.5, z / 3.5, 7) - 0.5) * 0.13 - slope * 0.2);
     for (let vertex = 0; vertex < 3; vertex += 1) colors.push(color.r, color.g, color.b);
@@ -181,7 +314,7 @@ export function buildTerrain(map: MapDef, positions: Map<CityId, THREE.Vector3>)
 
   const group = new THREE.Group();
   group.add(terrainMesh);
-  group.add(buildSkirt(minX, maxX, minZ, maxZ, heightAt));
+  group.add(buildSkirt(minX, maxX, minZ, maxZ, heightAt, palette));
 
   const random = seeded(20261123);
   const townPositions = map.cities
@@ -209,10 +342,10 @@ export function buildTerrain(map: MapDef, positions: Map<CityId, THREE.Vector3>)
     [candidates[index], candidates[swap]] = [candidates[swap], candidates[index]];
   }
   for (const site of candidates.slice(0, 3)) {
-    group.add(buildRockRidge(site.x, site.z, 0.95 + random() * 0.25, heightAt, random));
+    group.add(buildRockRidge(site.x, site.z, 0.95 + random() * 0.25, heightAt, random, palette));
   }
   for (const site of candidates.slice(3, 5)) {
-    group.add(buildMesa(site.x, site.z, 1.1 + random() * 0.2, heightAt, random));
+    group.add(buildMesa(site.x, site.z, 1.1 + random() * 0.2, heightAt, random, palette));
   }
 
   return { group, heightAt };
@@ -244,12 +377,13 @@ function buildSkirt(
   minZ: number,
   maxZ: number,
   heightAt: (x: number, z: number) => number,
+  palette: TerrainStylePalette,
 ): THREE.Mesh {
   const steps = 32;
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
-  const color = new THREE.Color(0x4a3f2e);
+  const color = new THREE.Color(palette.skirt);
   const perimeter: Array<[number, number]> = [];
   for (let i = 0; i <= steps; i += 1) perimeter.push([minX + ((maxX - minX) * i) / steps, minZ]);
   for (let i = 0; i <= steps; i += 1) perimeter.push([maxX, minZ + ((maxZ - minZ) * i) / steps]);
@@ -280,11 +414,12 @@ function buildRockRidge(
   size: number,
   heightAt: (x: number, z: number) => number,
   random: () => number,
+  palette: TerrainStylePalette,
 ): THREE.Group {
   const group = new THREE.Group();
   group.position.set(x, heightAt(x, z), z);
-  const rock = new THREE.MeshStandardMaterial({ color: 0x8a857a, roughness: 0.95, flatShading: true });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x5d574d, roughness: 1, flatShading: true });
+  const rock = new THREE.MeshStandardMaterial({ color: palette.ridge, roughness: 0.95, flatShading: true });
+  const dark = new THREE.MeshStandardMaterial({ color: palette.ridgeDark, roughness: 1, flatShading: true });
   for (let index = 0; index < 5; index += 1) {
     const radius = (0.8 + random() * 0.9) * size;
     const height = (1.4 + random() * 2.6) * size;
@@ -310,20 +445,21 @@ function buildMesa(
   size: number,
   heightAt: (x: number, z: number) => number,
   random: () => number,
+  palette: TerrainStylePalette,
 ): THREE.Group {
   const group = new THREE.Group();
   group.position.set(x, heightAt(x, z), z);
   const height = 2.4 * size;
   const top = new THREE.Mesh(
     new THREE.CylinderGeometry(1.9 * size, 2.4 * size, height, 7, 1),
-    new THREE.MeshStandardMaterial({ color: 0x7c715d, roughness: 1, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: palette.mesa, roughness: 1, flatShading: true }),
   );
   top.position.y = height / 2;
   top.rotation.y = random() * Math.PI;
   group.add(top);
   const cap = new THREE.Mesh(
     new THREE.CylinderGeometry(2.0 * size, 1.9 * size, 0.28 * size, 7, 1),
-    new THREE.MeshStandardMaterial({ color: 0x647845, roughness: 1, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: palette.mesaCap, roughness: 1, flatShading: true }),
   );
   cap.position.y = height + 0.03;
   cap.rotation.y = top.rotation.y;

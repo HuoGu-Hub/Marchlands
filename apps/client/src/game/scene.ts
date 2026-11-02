@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
+import type { MapVisual } from "@marchlands/map-authoring";
 import { art } from "./assets";
+import { assetRegistry } from "./asset-registry";
 import { buildBuilding, buildTown, buildWall, paletteFor, townBuildingKind } from "./buildings";
 import { UnitActor } from "./unit-actor";
-import { buildTerrain } from "./terrain";
+import { buildTerrain, terrainAtmosphere } from "./terrain";
 import type { Terrain } from "./terrain";
 import type { UnitKind } from "./unit-models";
 
@@ -33,6 +35,7 @@ interface CityView {
   labelText: string;
   owner: Owner;
   level: number;
+  buildToken: number;
 }
 
 export interface SceneViewState {
@@ -53,6 +56,7 @@ interface SquadView {
 export class BattleScene {
   private readonly canvas: HTMLCanvasElement;
   private readonly map: MapDef;
+  private readonly visual: MapVisual | null;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.OrthographicCamera;
@@ -73,10 +77,14 @@ export class BattleScene {
   private elapsed = 0;
   private selected: CityId | null = null;
   private disposed = false;
+  private propBuildToken = 0;
+  private propPoints: Array<{ x: number; z: number; radius: number }> = [];
+  private readonly missingAssets = new Set<string>();
 
-  constructor(canvas: HTMLCanvasElement, map: MapDef) {
+  constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
     this.canvas = canvas;
     this.map = map;
+    this.visual = visual;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -99,6 +107,7 @@ export class BattleScene {
     this.buildGround();
     this.buildRoads();
     this.buildScenery();
+    this.buildExplicitProps();
     this.ring = this.buildRing();
     this.resize();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -235,13 +244,18 @@ export class BattleScene {
     this.renderer.render(this.scene, this.camera);
   }
 
+  getMissingAssets(): string[] {
+    return [...this.missingAssets];
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.propBuildToken += 1;
     this.resizeObserver.disconnect();
     this.scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
-      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.geometry && mesh.geometry.userData.shared !== true) mesh.geometry.dispose();
       const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(material)) material.forEach((entry) => {
         if (entry.userData.shared !== true) entry.dispose();
@@ -412,12 +426,15 @@ export class BattleScene {
       labelText: "",
       owner: 255 as Owner,
       level: 0,
+      buildToken: 0,
     };
     this.rebuildCityModel(view, city);
     return view;
   }
 
   private rebuildCityModel(view: CityView, city: CityState): void {
+    view.buildToken += 1;
+    const token = view.buildToken;
     view.model.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (mesh.geometry) mesh.geometry.dispose();
@@ -435,6 +452,32 @@ export class BattleScene {
     }
     view.owner = city.owner;
     view.level = city.level;
+
+    const siteVisual = this.visual?.sites[city.id];
+    if (!siteVisual?.assetId) return;
+    const assetId = siteVisual.assetId;
+    if (!assetRegistry.has(assetId)) {
+      this.missingAssets.add(assetId);
+      return;
+    }
+    void assetRegistry
+      .build(assetId, { owner: city.owner, level: city.level, seed })
+      .then((object) => {
+        if (this.disposed || view.buildToken !== token) {
+          disposeObject(object);
+          return;
+        }
+        for (const child of [...view.model.children]) {
+          disposeObject(child);
+          view.model.remove(child);
+        }
+        object.rotation.y = ((siteVisual.rotation ?? 0) * Math.PI) / 180;
+        object.scale.multiplyScalar(siteVisual.scale ?? 1);
+        view.model.add(object);
+      })
+      .catch(() => {
+        this.missingAssets.add(assetId);
+      });
   }
 
   private createSquadView(squad: SquadState): SquadView {
@@ -520,17 +563,24 @@ export class BattleScene {
   }
 
   private buildGround(): void {
-    this.terrain = buildTerrain(this.map, this.positions);
+    const terrain = this.visual?.terrain;
+    this.terrain = buildTerrain(this.map, this.positions, terrain);
     this.scene.add(this.terrain.group);
+    const atmosphere = terrainAtmosphere(terrain?.style);
+    this.scene.background = new THREE.Color(atmosphere.background);
+    this.scene.fog = new THREE.Fog(atmosphere.fog, 125, 195);
   }
 
   private buildRoads(): void {
-    const width = 1.6;
+    const width = this.visual?.roads.width ?? 1.6;
     const centerId = "c3";
     const cityRadius = () => 3.75;
-    const roadMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(1, 1), roughness: 1 });
+    const dirt = this.visual?.roads.style === "dirt";
+    const roadMaterial = dirt
+      ? new THREE.MeshStandardMaterial({ map: dirtTexture(1, 6), roughness: 1 })
+      : new THREE.MeshStandardMaterial({ map: cobbleTexture(1, 1), roughness: 1 });
     const plazaMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
-    const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xb3aa96, roughness: 1 });
+    const curbMaterial = new THREE.MeshStandardMaterial({ color: dirt ? 0x736348 : 0xb3aa96, roughness: 1 });
 
     for (const edge of this.map.edges) {
       const from = this.positions.get(edge.from);
@@ -700,6 +750,17 @@ export class BattleScene {
   }
 
   private buildScenery(): void {
+    if (this.visual?.scatter === false) return;
+    this.propPoints = (this.visual?.props ?? []).map((prop) => {
+      const info = assetRegistry.info(prop.assetId);
+      return {
+        x: prop.pos[0] / 10,
+        z: prop.pos[1] / 10,
+        radius: Math.max(1, (info?.footprint ?? 1.5) * prop.scale * 0.5),
+      };
+    });
+    const nearProp = (x: number, z: number, distance: number): boolean =>
+      this.propPoints.some((point) => Math.hypot(point.x - x, point.z - z) < point.radius + distance);
     const random = seededRandom(20261101);
     const treePlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
     const rockPlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
@@ -712,6 +773,7 @@ export class BattleScene {
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 6.2)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
+      if (nearProp(x, z, 1.2)) continue;
       treePlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 2.6 + random() * 1.1 });
     }
 
@@ -722,6 +784,7 @@ export class BattleScene {
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 5.3)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.5)) continue;
+      if (nearProp(x, z, 1.0)) continue;
       rockPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.6 + random() * 1.2 });
     }
 
@@ -732,6 +795,7 @@ export class BattleScene {
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
       if (nearCity(this.positions, x, z, 3.45)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
+      if (nearProp(x, z, 0.8)) continue;
       plantPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
     }
 
@@ -783,6 +847,41 @@ export class BattleScene {
         this.scene.add(instanced);
       }
     });
+  }
+
+
+  private buildExplicitProps(): void {
+    const props = this.visual?.props ?? [];
+    if (props.length === 0) return;
+    const group = new THREE.Group();
+    group.name = "map-props";
+    this.scene.add(group);
+    const token = this.propBuildToken;
+    for (const prop of props) {
+      const info = assetRegistry.info(prop.assetId);
+      if (!info) {
+        this.missingAssets.add(prop.assetId);
+        continue;
+      }
+      void assetRegistry
+        .build(prop.assetId, { seed: hashId(prop.id), terrainStyle: this.visual?.terrain.style })
+        .then((object) => {
+          if (this.disposed || token !== this.propBuildToken) {
+            disposeObject(object);
+            return;
+          }
+          const x = prop.pos[0] / 10;
+          const z = prop.pos[1] / 10;
+          const y = this.terrain.heightAt(x, z) - (info.kind === "terrain" ? 0.04 : 0);
+          object.position.set(x, y, z);
+          object.rotation.y = (prop.rotation * Math.PI) / 180;
+          object.scale.multiplyScalar(prop.scale);
+          group.add(object);
+        })
+        .catch(() => {
+          this.missingAssets.add(prop.assetId);
+        });
+    }
   }
 
   private buildRing(): THREE.Mesh {
@@ -869,6 +968,19 @@ function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: n
   return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
 }
 
+
+function disposeObject(root: THREE.Object3D): void {
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (mesh.geometry && mesh.geometry.userData.shared !== true) mesh.geometry.dispose();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if (material && material.userData.shared !== true) material.dispose();
+    }
+  });
+}
+
 function makeGroundTexture(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -942,6 +1054,55 @@ function flagstoneTexture(): THREE.CanvasTexture {
   texture.repeat.set(2, 2);
   flagstoneTextureCache = texture;
   return texture;
+}
+
+
+let dirtCache: THREE.CanvasTexture | null = null;
+
+function dirtTexture(repeatX: number, repeatY: number): THREE.CanvasTexture {
+  if (!dirtCache) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.fillStyle = "#8a7451";
+      context.fillRect(0, 0, 256, 256);
+      let seed = 7319;
+      const random = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+      for (let index = 0; index < 900; index += 1) {
+        const x = random() * 256;
+        const y = random() * 256;
+        const size = 1 + random() * 3;
+        context.fillStyle = `rgba(${70 + Math.floor(random() * 40)}, ${56 + Math.floor(random() * 30)}, ${34 + Math.floor(random() * 24)}, ${0.18 + random() * 0.35})`;
+        context.fillRect(x, y, size, size);
+      }
+      for (let index = 0; index < 45; index += 1) {
+        context.strokeStyle = "rgba(58, 45, 28, 0.28)";
+        context.lineWidth = 1;
+        context.beginPath();
+        const x = random() * 256;
+        const y = random() * 256;
+        context.moveTo(x, y);
+        context.quadraticCurveTo(x + 8, y + 5, x + 18, y - 2);
+        context.stroke();
+      }
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    dirtCache = texture;
+  }
+  const clone = dirtCache.clone();
+  clone.needsUpdate = true;
+  clone.wrapS = THREE.RepeatWrapping;
+  clone.wrapT = THREE.RepeatWrapping;
+  clone.repeat.set(repeatX, repeatY);
+  return clone;
 }
 
 let cobbleCache: THREE.CanvasTexture | null = null;

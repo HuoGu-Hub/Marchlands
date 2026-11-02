@@ -63,6 +63,11 @@ const TOWN_PROPS = [
   "builtin:prop.banner.green",
 ];
 
+function snap(value: number): number {
+  const rounded = Math.round(value * 2) / 2;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
 function seeded(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -126,8 +131,8 @@ function place(
   const halfW = Math.max(8, document.size[0] / 20 - 3);
   const halfH = Math.max(8, document.size[1] / 20 - 3);
   for (let attempt = 0; attempt < 160; attempt += 1) {
-    const x = Math.round((-halfW + random() * halfW * 2) * 2) / 2;
-    const z = Math.round((-halfH + random() * halfH * 2) * 2) / 2;
+    const x = snap(-halfW + random() * halfW * 2);
+    const z = snap(-halfH + random() * halfH * 2);
     const town = siteDistance(document, x, z);
     if (options.nearTown) {
       if (town < (options.minTown ?? 5.4) || town > (options.maxTown ?? 8.2)) continue;
@@ -165,10 +170,36 @@ export function createStarterVisual(document: MapDocument): VisualDraft {
   const props: PropDraft[] = [];
   let next = 1;
 
-  for (const assetId of TERRAIN_FEATURES) {
-    const position = place(document, random, placed, 4.2);
+  const anchors: Array<{ assetId: string; x: number; z: number }> = [
+    { assetId: "builtin:terrain.hill", x: -8, z: -3 },
+    { assetId: "builtin:terrain.grove", x: 4, z: 10 },
+    { assetId: "builtin:terrain.pond", x: 10, z: -10 },
+    { assetId: "builtin:terrain.field", x: -14, z: 5 },
+    { assetId: "builtin:terrain.ruin", x: -13, z: -22 },
+    { assetId: "builtin:terrain.ridge", x: 5, z: -24 },
+  ];
+  for (const anchor of anchors) {
+    let position: [number, number] | null = null;
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const jitter = attempt === 0 ? 0 : 2.2;
+      const x = snap(anchor.x + (random() - 0.5) * jitter);
+      const z = snap(anchor.z + (random() - 0.5) * jitter);
+      if (siteDistance(document, x, z) < 7.2) continue;
+      if (roadDistance(document, x, z) < 4.4) continue;
+      let blocked = false;
+      for (const point of placed) {
+        if (Math.hypot(point.x - x, point.z - z) < 11) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+      placed.push({ x, z, radius: 5.8 });
+      position = [x, z];
+      break;
+    }
     if (!position) continue;
-    props.push(prop(`p${next}`, assetId, position, Math.round(random() * 360), 0.9 + random() * 0.2));
+    props.push(prop(`p${next}`, anchor.assetId, position, Math.round(random() * 360), 0.94 + random() * 0.14));
     next += 1;
   }
 
@@ -178,8 +209,8 @@ export function createStarterVisual(document: MapDocument): VisualDraft {
     for (let index = 0; index < count; index += 1) {
       const angle = random() * Math.PI * 2;
       const distance = 5.2 + random() * 3;
-      const x = Math.round((site.pos[0] / 10 + Math.cos(angle) * distance) * 2) / 2;
-      const z = Math.round((site.pos[1] / 10 + Math.sin(angle) * distance) * 2) / 2;
+      const x = snap(site.pos[0] / 10 + Math.cos(angle) * distance);
+      const z = snap(site.pos[1] / 10 + Math.sin(angle) * distance);
       if (Math.abs(x) > document.size[0] / 20 - 2 || Math.abs(z) > document.size[1] / 20 - 2) continue;
       if (roadDistance(document, x, z) < 2.1) continue;
       let blocked = false;
@@ -198,9 +229,9 @@ export function createStarterVisual(document: MapDocument): VisualDraft {
   }
 
   const scatterPlan: Array<{ pool: string[]; count: number; radius: number; scale: [number, number] }> = [
-    { pool: TREES, count: 42, radius: 1.1, scale: [0.8, 1.2] },
-    { pool: ROCKS, count: 10, radius: 0.9, scale: [0.8, 1.3] },
-    { pool: PLANTS, count: 16, radius: 0.7, scale: [0.8, 1.2] },
+    { pool: TREES, count: 34, radius: 1.1, scale: [0.8, 1.2] },
+    { pool: ROCKS, count: 8, radius: 0.9, scale: [0.8, 1.3] },
+    { pool: PLANTS, count: 12, radius: 0.7, scale: [0.8, 1.2] },
   ];
   for (const plan of scatterPlan) {
     for (let index = 0; index < plan.count; index += 1) {

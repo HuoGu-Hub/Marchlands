@@ -122,6 +122,7 @@ export class ArtLibrary {
         const geometryByRole = parseObjByMaterial(source);
         const group = new THREE.Group();
         for (const [role, geometry] of geometryByRole) {
+          geometry.userData.shared = true;
           const mesh = new THREE.Mesh(geometry);
           mesh.userData.role = role;
           group.add(mesh);
@@ -140,6 +141,10 @@ export class ArtLibrary {
         gltfLoader
           .loadAsync(url)
           .then((gltf) => {
+            gltf.scene.traverse((object) => {
+              const mesh = object as THREE.Mesh;
+              if (mesh.isMesh && mesh.geometry) mesh.geometry.userData.shared = true;
+            });
             this.modelPrototypes.set(baseName(path), gltf.scene);
           })
           .catch(() => {
@@ -150,6 +155,14 @@ export class ArtLibrary {
     }
     await Promise.all(jobs);
     this.ready = this.castlePrototypes.size > 0 || this.modelPrototypes.size > 0;
+  }
+
+  get modelNames(): string[] {
+    return [...this.modelPrototypes.keys()].sort();
+  }
+
+  get castleNames(): string[] {
+    return [...this.castlePrototypes.keys()].sort();
   }
 
   hasCastle(name: string): boolean {
@@ -200,6 +213,7 @@ export class ArtLibrary {
       flatShading: true,
     });
     material.name = role;
+    material.userData.shared = true;
     this.materials.set(key, material);
     return material;
   }

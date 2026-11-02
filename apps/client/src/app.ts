@@ -3,13 +3,14 @@ import frontierMapJson from "@marchlands/content/maps/frontier01.json";
 import forestMapJson from "@marchlands/content/maps/forest01.json";
 import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
-import { compileDocument, parseDocument } from "@marchlands/map-authoring";
-import type { MapDocument } from "@marchlands/map-authoring";
+import { compileDocument, defaultVisualForMap, parseDocument } from "@marchlands/map-authoring";
+import type { MapDocument, MapVisual } from "@marchlands/map-authoring";
 import { defenseMilliFor } from "@marchlands/sim";
 import type { MapDef, SimState } from "@marchlands/sim";
 import { audio } from "./audio";
 import { EditorController } from "./editor/editor";
 import { openMapText } from "./editor/map-io";
+import { assetRegistry } from "./game/asset-registry";
 import { art } from "./game/assets";
 import { GameSession } from "./game/session";
 import { loadSettings, saveSettings } from "./settings";
@@ -238,6 +239,7 @@ interface MapEntry {
   id: string;
   label: string;
   content: ReturnType<typeof validateContent>;
+  visual: MapVisual;
   description: string;
   custom?: boolean;
   document?: MapDocument;
@@ -254,11 +256,12 @@ export class App {
   private readonly root: HTMLElement;
   private readonly mapEntries: Map<string, MapEntry>;
   private content: ReturnType<typeof validateContent>;
+  private currentVisual: MapVisual;
   private currentMapId: string;
   private settings: Settings = loadSettings();
   private session: GameSession | null = null;
   private editor: EditorController | null = null;
-  private playtestMap: MapDef | null = null;
+  private playtestMap: { map: MapDef; visual: MapVisual } | null = null;
   private page: PageId = "boot";
   private toastTimer = 0;
 
@@ -274,6 +277,7 @@ export class App {
           id: "forest01",
           label: "Forest 01",
           content: forest,
+          visual: defaultVisualForMap(forest.map),
           description: "你的旗帜插在西侧。东侧的红旗正在集结，五座中立城镇在等待第一个到达的人。",
         },
       ],
@@ -283,6 +287,7 @@ export class App {
           id: "crossroads01",
           label: "Crossroads 01",
           content: crossroads,
+          visual: defaultVisualForMap(crossroads.map),
           description:
             "十二座城镇沿河谷铺开，四条粮道与四个路边驻兵点卡在岔路口。先拿下路口和粮仓的人，才能让兵团走得更远。",
         },
@@ -293,6 +298,7 @@ export class App {
           id: "frontier01",
           label: "Frontier 01 · 40 据点",
           content: frontier,
+          visual: defaultVisualForMap(frontier.map),
           description:
             "三十二座城镇铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
         },
@@ -302,6 +308,7 @@ export class App {
     const requested = new URLSearchParams(window.location.search).get("map");
     this.currentMapId = requested && this.mapEntries.has(requested) ? requested : "frontier01";
     this.content = this.mapEntries.get(this.currentMapId)!.content;
+    this.currentVisual = this.mapEntries.get(this.currentMapId)!.visual;
     this.root.innerHTML = TEMPLATE;
     this.bind();
     this.syncSettingsForm();
@@ -320,9 +327,15 @@ export class App {
         bar.style.width = `${percent}%`;
         status.textContent = `正在装载美术资源 ${done}/${total}`;
       })
-      .then(() => {
+      .then(async () => {
+        assetRegistry.registerBuiltins();
+        const packs = await assetRegistry.loadStoredPacks();
         bar.style.width = "100%";
-        status.textContent = art.ready ? "准备就绪" : "资源加载失败，使用简化美术";
+        status.textContent = art.ready
+          ? packs > 0
+            ? `准备就绪 · ${packs} 个资产包`
+            : "准备就绪"
+          : "资源加载失败，使用简化美术";
         window.setTimeout(() => this.show("menu"), 320);
       });
   }
@@ -354,7 +367,7 @@ export class App {
     this.on("btn-exit-cancel", "click", () => this.hideOverlay("exit-overlay"));
     this.on("btn-exit-confirm", "click", () => this.exitApp());
     this.on("btn-replay", "click", () => {
-      if (this.playtestMap) this.startEditorPlaytest(this.playtestMap);
+      if (this.playtestMap) this.startEditorPlaytest(this.playtestMap.map, this.playtestMap.visual);
       else this.startGame();
     });
     this.on("btn-result-menu", "click", () => {
@@ -417,7 +430,7 @@ export class App {
     this.editor ??= new EditorController({
       root: this.el("editor-root"),
       rules: this.content.rules,
-      onPlaytest: (map) => this.startEditorPlaytest(map),
+      onPlaytest: (map, visual) => this.startEditorPlaytest(map, visual),
       onExit: () => this.closeEditor(),
     });
     this.show("editor");
@@ -429,10 +442,10 @@ export class App {
     this.show("menu");
   }
 
-  private startEditorPlaytest(map: MapDef): void {
+  private startEditorPlaytest(map: MapDef, visual: MapVisual): void {
     this.session?.dispose();
     this.editor?.suspend();
-    this.playtestMap = map;
+    this.playtestMap = { map, visual };
     this.show("game");
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
@@ -441,6 +454,7 @@ export class App {
       canvas,
       hud: this.root,
       map,
+      visual,
       rules: this.content.rules,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),
@@ -483,6 +497,7 @@ export class App {
       canvas,
       hud: this.root,
       map: this.content.map,
+      visual: this.currentVisual,
       rules: this.content.rules,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),
@@ -566,6 +581,7 @@ export class App {
     if (!entry) return;
     this.currentMapId = id;
     this.content = entry.content;
+    this.currentVisual = entry.visual;
     this.syncBriefing();
     try {
       const url = new URL(window.location.href);
@@ -606,6 +622,7 @@ export class App {
             id: entry.id,
             label: `${parsed.document.name} · 玩家`,
             content: validateContent(compiled.map, rules),
+            visual: compiled.visual,
             description: `玩家地图 · ${parsed.document.sites.length} 个据点`,
             custom: true,
             document: parsed.document,
@@ -640,6 +657,7 @@ export class App {
       id,
       label: `${document.name || "未命名地图"} · 玩家`,
       content,
+      visual: compiled.visual,
       description: `玩家地图 · ${document.sites.length} 个据点`,
       custom: true,
       document,

@@ -13,6 +13,7 @@
     "package:win": "node electron/package.cjs"
   },
   "dependencies": {
+    "@marchlands/asset-pack": "workspace:*",
     "@marchlands/content": "workspace:*",
     "@marchlands/map-authoring": "workspace:*",
     "@marchlands/sim": "workspace:*",

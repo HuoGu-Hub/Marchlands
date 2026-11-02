@@ -23,6 +23,9 @@ importers:
 
   apps/client:
     dependencies:
+      '@marchlands/asset-pack':
+        specifier: workspace:*
+        version: link:../../packages/asset-pack
       '@marchlands/content':
         specifier: workspace:*
         version: link:../../packages/content

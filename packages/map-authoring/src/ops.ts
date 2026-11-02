@@ -13,10 +13,9 @@ import { cloneVisual } from "./visual";
 export function clampPosition(document: MapDocument, pos: [number, number]): [number, number] {
   const halfW = Math.floor(document.size[0] / 2);
   const halfH = Math.floor(document.size[1] / 2);
-  return [
-    Math.max(-halfW, Math.min(halfW, Math.round(pos[0]))),
-    Math.max(-halfH, Math.min(halfH, Math.round(pos[1]))),
-  ];
+  const x = Math.max(-halfW, Math.min(halfW, Math.round(pos[0])));
+  const z = Math.max(-halfH, Math.min(halfH, Math.round(pos[1])));
+  return [Object.is(x, -0) ? 0 : x, Object.is(z, -0) ? 0 : z];
 }
 
 export function nextSiteId(document: MapDocument, kind: SiteKind): CityId {
