@@ -37,6 +37,13 @@ describe("map authoring", () => {
     expect(() => validateMap(result.map)).not.toThrow();
   });
 
+  it("does not add roads when placing a site", () => {
+    const starter = createStarterDocument();
+    const result = addSite(starter, "town", [0, 0]);
+    expect(result.document.sites).toHaveLength(starter.sites.length + 1);
+    expect(result.document.roads).toEqual(starter.roads);
+  });
+
   it("adds sites and recomputes road length after moving one", () => {
     const starter = createStarterDocument();
     const added = addSite(starter, "town", [0, 0]);
