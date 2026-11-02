@@ -8,6 +8,7 @@
 - 模拟核心：packages/sim
 - 地图与规则：packages/content
 - 地图编辑器数据层：packages/map-authoring
+- 网格导航核心：packages/nav
 - 资产包格式与校验：packages/asset-pack
 - 资产包说明：docs/Marchlands-资产包.md
 - 地形高度与寻路：docs/Marchlands-地形高度与寻路.md
@@ -51,6 +52,7 @@ release/Marchlands-win32-x64/Marchlands.exe
 - 单位资产：地图可为绿方/红方指定 GLB 单位；支持骨骼动画与命名节点动画，优先播放 `walk`/`idle` 剪辑，缺失时回退程序化单位。
 - 地形高度：城市、道路、装饰、兵团贴地；道路随地形起伏；编辑器点击射线命中地形网格。
 - 坡度寻路：地图编译时采样每条边的爬升写入 `grade`，Dijkstra 与 ETA 使用 `length × (1 + grade × 3)` 的代价，平地路线优先。
+- 网格导航：新增 `packages/nav`，1 米网格、整数厘米坐标与代价、8 方向 A*、禁止贴角、坡度/台阶判定、单位半径膨胀、路径平滑与缓存；8800 格单次寻路基准约 1.5 ms。
 - 模型格式：城堡 17 个 OBJ 已转 GLB 并切换运行时；建筑、城墙、城镇、单位、地形与 Kenney 资源已生成 118 个 GLB 的统一转换包，见 release/Marchlands-models-converted.mlpack。
 - HUD：资源卡、等级刻度、人口条、城镇归属色条。
 - 美术许可：ASSETS.md。
@@ -60,8 +62,11 @@ release/Marchlands-win32-x64/Marchlands.exe
 
 ## 测试
 
-- `packages/sim`：64 项单测与属性测试。
+- `packages/sim`：65 项单测与属性测试。
 - `packages/content`：22 项地图与规则校验。
-- `packages/map-authoring`：10 项草稿、编译、叶子据点与自定义地图测试。
-- `tools/harness`：100 局 AI 自对弈、回放一致性、crossroads01 自对弈。
+- `packages/asset-pack`：5 项资产包格式与转换包测试。
+- `packages/map-authoring`：15 项草稿、编译、叶子据点与自定义地图测试。
+- `packages/nav`：17 项 A* 正确性、确定性、坡度、台阶、膨胀阻挡、平滑与 8800 格基准。
+- `packages/harness`：5 项 100 局 AI 自对弈、回放一致性、crossroads01 自对弈。
+- `tools/map-export`：2 项官方图导出测试。
 - `tests/e2e`：页面流程、派兵占领、编辑器建图与试玩返回、暂停恢复、重开确认、设置持久化、新地图选择、时间上限结算、高低差场景。
