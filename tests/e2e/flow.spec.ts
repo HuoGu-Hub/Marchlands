@@ -77,6 +77,13 @@ test("creates a grid map, sculpts terrain and previews navigation", async ({ pag
   await page.mouse.click(cx + 60, cy + 20);
   await page.click("#ml-ed-undo");
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+
+  await page.click("#ml-ed-play");
+  await expect(page.locator("#page-game")).toBeVisible();
+  await expect(page.locator("#hud-cities")).toHaveText("1");
+  await page.click("#btn-pause");
+  await page.click("#btn-editor-return");
+  await expect(page.locator("#page-editor")).toBeVisible();
 });
 
 test("places and rotates a terrain prop in the editor", async ({ page }) => {

@@ -246,6 +246,7 @@ export class RouteOverlay {
   }
 
   pickBranch(state: SimState, squad: SquadState, clientX: number, clientY: number): CityId | null {
+    if (this.map.navigation === "grid") return null;
     this.resize();
     this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
     const x = clientX - this.rect.left;
@@ -296,6 +297,9 @@ export class RouteOverlay {
   }
 
   private squadPoint(squad: SquadState, state: SimState): ScreenPoint | null {
+    if (squad.xCm !== undefined && squad.zCm !== undefined) {
+      return this.projector.point(squad.xCm / 10, squad.zCm / 10, SQUAD_Y);
+    }
     const from = this.sites.get(squad.path[squad.pathIndex]);
     const to = this.sites.get(squad.path[squad.pathIndex + 1]);
     if (!from || !to) return null;
@@ -326,6 +330,22 @@ export class RouteOverlay {
   private drawRoutes(squad: SquadState, state: SimState): void {
     const context = this.context;
     const start = this.squadPoint(squad, state);
+    if (squad.gridPath && squad.xCm !== undefined && squad.zCm !== undefined) {
+      const points: ScreenPoint[] = [];
+      if (start) points.push(start);
+      for (let index = squad.gridIndex ?? 0; index < squad.gridPath.length; index += 1) {
+        const target = squad.gridPath[index];
+        const projected = this.projector.point(target[0] / 10, target[1] / 10, GROUND_Y);
+        if (projected) points.push(projected);
+      }
+      if (points.length >= 2) {
+        this.stroke(points, "rgba(8,12,9,.72)", 7, []);
+        this.stroke(points, "rgba(133,226,157,.95)", 3.2, []);
+        const end = points[points.length - 1];
+        this.diamond(end, "rgba(133,226,157,.95)");
+      }
+      return;
+    }
     const currentPoints: ScreenPoint[] = start ? [start] : [];
     for (let index = squad.pathIndex + 1; index < squad.path.length; index += 1) {
       const point = this.sitePoint(squad.path[index], GROUND_Y);

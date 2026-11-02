@@ -127,6 +127,10 @@ importers:
         version: 2.1.8(@types/node@22.20.5)
 
   packages/sim:
+    dependencies:
+      '@marchlands/nav':
+        specifier: workspace:*
+        version: link:../nav
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

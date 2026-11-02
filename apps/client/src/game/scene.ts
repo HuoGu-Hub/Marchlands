@@ -339,15 +339,26 @@ export class BattleScene {
       const point = this.squadPoint(squad, state.tick);
       point.y = this.terrain.heightAt(point.x, point.z);
       view.group.position.set(point.x, point.y + 0.06, point.z);
-      const from = this.positions.get(squad.path[squad.pathIndex] ?? squad.from);
-      const to = this.positions.get(squad.path[squad.pathIndex + 1] ?? squad.to);
-      if (from && to) {
-        const direction = new THREE.Vector3().subVectors(to, from);
-        if (direction.lengthSq() > 0.0001) {
-          view.group.rotation.y = Math.atan2(direction.x, direction.z);
+      if (squad.gridPath && squad.xCm !== undefined && squad.zCm !== undefined && squad.gridIndex !== undefined) {
+        const target = squad.gridPath[squad.gridIndex];
+        if (target) {
+          const dx = target[0] / 10 - squad.xCm / 10;
+          const dz = target[1] / 10 - squad.zCm / 10;
+          if (dx * dx + dz * dz > 0.0001) view.group.rotation.y = Math.atan2(dx, dz);
+        }
+      } else {
+        const from = this.positions.get(squad.path[squad.pathIndex] ?? squad.from);
+        const to = this.positions.get(squad.path[squad.pathIndex + 1] ?? squad.to);
+        if (from && to) {
+          const direction = new THREE.Vector3().subVectors(to, from);
+          if (direction.lengthSq() > 0.0001) {
+            view.group.rotation.y = Math.atan2(direction.x, direction.z);
+          }
         }
       }
-      const moving = squad.pathIndex < squad.path.length - 1;
+      const moving = squad.gridPath
+        ? (squad.gridIndex ?? 0) < squad.gridPath.length
+        : squad.pathIndex < squad.path.length - 1;
       for (const unit of view.units) {
         unit.setMoving(moving);
         unit.update(delta);
@@ -365,6 +376,9 @@ export class BattleScene {
   }
 
   private squadPoint(squad: SquadState, tick: number): THREE.Vector3 {
+    if (squad.xCm !== undefined && squad.zCm !== undefined) {
+      return new THREE.Vector3(squad.xCm / 10, 0, squad.zCm / 10);
+    }
     const start = this.positions.get(squad.path[0] ?? squad.from) ?? new THREE.Vector3();
     const end = this.positions.get(squad.path[squad.path.length - 1] ?? squad.to) ?? new THREE.Vector3();
     const segments: Array<{ from: THREE.Vector3; to: THREE.Vector3; length: number }> = [];

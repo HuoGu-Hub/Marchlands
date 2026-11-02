@@ -1,6 +1,16 @@
-import { resolveAttack, resolveFieldCombat } from "./combat";
+import { attackValue, resolveAttack, resolveFieldCombat } from "./combat";
 import { applyUpgrade, growCity, growGold } from "./economy";
 import { MapGraph } from "./path";
+import {
+  GRID_CAPTURE_RADIUS_CM,
+  createNavGrid,
+  gridDistance,
+  gridSpeedCmPerTick,
+  gridTravelTicks,
+  moveAlongGridPath,
+  planGridRoute,
+  polylineLength,
+} from "./grid";
 import { blockedTransit, buildRetargetPath } from "./routes";
 import {
   DEFAULT_RULESET,
@@ -58,6 +68,9 @@ function cloneState(state: SimState): SimState {
       ...squad,
       path: squad.path.slice(),
       intercepted: squad.intercepted.slice(),
+      ...(squad.gridPath
+        ? { gridPath: squad.gridPath.map((point) => [point[0], point[1]] as [number, number]) }
+        : {}),
     })),
     events: [],
   };
@@ -191,6 +204,8 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
         stance,
         decayAtTick,
         watch,
+        ...(city.captureRadiusCm !== undefined ? { captureRadiusCm: city.captureRadiusCm } : {}),
+        ...(city.footprintCm !== undefined ? { footprintCm: city.footprintCm } : {}),
       };
     })
     .sort(byId);
@@ -213,6 +228,7 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
     rules,
     map,
     graph: new MapGraph(map),
+    nav: createNavGrid(map),
     nextSquad: 1,
   };
 }
@@ -255,6 +271,11 @@ function applyCommand(
     if (from.id === to.id) return reject(rejected, command, "same_city");
     if (from.owner === 0) return reject(rejected, command, "not_owned");
     if (from.pop < 2) return reject(rejected, command, "too_few_troops");
+
+    if (state.nav) {
+      sendGridSquad(state, from, to, command, events, rejected);
+      return;
+    }
 
     const route = state.graph.route(from.id, to.id, blockedTransit(state, from.owner, to.id));
     if (!route) return reject(rejected, command, "no_route");
@@ -310,6 +331,10 @@ function applyCommand(
     if (!squad) return reject(rejected, command, "unknown_squad");
     const to = findCity(state, command.to);
     if (!to) return reject(rejected, command, "unknown_target");
+    if (state.nav) {
+      retargetGridSquad(state, squad, to, command, events, rejected);
+      return;
+    }
     const result = buildRetargetPath(state.graph, squad, to.id, command.via, blockedTransit(state, squad.owner, to.id));
     if (result === "no_anchor") return reject(rejected, command, "squad_arrived");
     if (result === "invalid_via") return reject(rejected, command, "invalid_via");
@@ -372,6 +397,10 @@ function growEconomy(state: SimState): void {
 }
 
 function advanceSquads(state: SimState, events: SimEvent[]): void {
+  if (state.nav) {
+    advanceGridSquads(state, events);
+    return;
+  }
   resolveInterceptions(state, events);
   if (state.squads.length === 0) return;
 
@@ -528,4 +557,221 @@ function checkFinish(state: SimState, events: SimEvent[]): void {
   else if (gold[1] !== gold[2]) winner = gold[1] > gold[2] ? 1 : 2;
 
   finish(state, winner, winner === 0 ? "draw" : "time_limit", events);
+}
+function sendGridSquad(
+  state: SimState,
+  from: CityState,
+  to: CityState,
+  command: Command,
+  events: SimEvent[],
+  rejected: CommandRejection[],
+): void {
+  const nav = state.nav;
+  if (!nav) return;
+  const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
+  const goal: [number, number] = [to.pos[0] * 10, to.pos[1] * 10];
+  const route = planGridRoute(state.map, nav, start, goal);
+  if (!route) {
+    reject(rejected, command, "no_route");
+    return;
+  }
+  const count = Math.max(1, Math.floor((from.pop * sendPercent(state.rules)) / 100));
+  from.pop -= count;
+
+  const hasGranary = playerHasGranary(state, from.owner);
+  const speedMilli = granarySpeedMilli(state.rules, hasGranary);
+  const strengthMilli = granaryStrengthMilli(state.rules, hasGranary);
+  const points: Array<[number, number]> = [
+    [start[0], start[1]],
+    ...route.points,
+  ];
+  const speedCm = gridSpeedCmPerTick(state.rules, speedMilli);
+  const arrivalTick = state.tick + gridTravelTicks(polylineLength(points), state.rules, speedMilli);
+  const squad: SquadState = {
+    id: `s${String(state.nextSquad).padStart(6, "0")}`,
+    owner: from.owner as PlayerId,
+    from: from.id,
+    to: to.id,
+    count,
+    path: [from.id, to.id],
+    pathIndex: 0,
+    legStartTick: state.tick,
+    legEndTick: arrivalTick,
+    departTick: state.tick,
+    arrivalTick,
+    speedMilli,
+    strengthMilli,
+    supplyLeft: state.rules.supply.carryTicks,
+    nextStarveTick: state.tick + state.rules.supply.carryTicks,
+    intercepted: [],
+    xCm: start[0],
+    zCm: start[1],
+    gridPath: points,
+    gridIndex: 1,
+    gridSpeedCmPerTick: speedCm,
+  };
+  state.nextSquad += 1;
+  state.squads.push(squad);
+  events.push({
+    type: "squadSpawned",
+    squadId: squad.id,
+    from: squad.from,
+    to: squad.to,
+    count: squad.count,
+    arrivalTick: squad.arrivalTick,
+  });
+}
+
+function retargetGridSquad(
+  state: SimState,
+  squad: SquadState,
+  to: CityState,
+  command: Command,
+  events: SimEvent[],
+  rejected: CommandRejection[],
+): void {
+  const nav = state.nav;
+  if (!nav) return;
+  if (squad.xCm === undefined || squad.zCm === undefined) return reject(rejected, command, "squad_arrived");
+  const start: [number, number] = [squad.xCm, squad.zCm];
+  const goal: [number, number] = [to.pos[0] * 10, to.pos[1] * 10];
+  const route = planGridRoute(state.map, nav, start, goal);
+  if (!route) return reject(rejected, command, "no_route");
+  const points: Array<[number, number]> = [[start[0], start[1]], ...route.points];
+  const distance = polylineLength(points);
+  const arrivalTick = state.tick + gridTravelTicks(distance, state.rules, squad.speedMilli);
+  squad.path = [squad.from, to.id];
+  squad.pathIndex = 0;
+  squad.to = to.id;
+  squad.gridPath = points;
+  squad.gridIndex = 1;
+  squad.legStartTick = state.tick;
+  squad.legEndTick = arrivalTick;
+  squad.arrivalTick = arrivalTick;
+  events.push({
+    type: "squadRetargeted",
+    squadId: squad.id,
+    to: squad.to,
+    via: command.type === "retarget" ? command.via ?? null : null,
+    arrivalTick,
+  });
+}
+
+function advanceGridSquads(state: SimState, events: SimEvent[]): void {
+  const removed = new Set<string>();
+  for (const squad of state.squads.slice().sort(byId)) {
+    if (removed.has(squad.id)) continue;
+    if (squad.xCm === undefined || squad.zCm === undefined || !squad.gridPath) {
+      removed.add(squad.id);
+      continue;
+    }
+    const budget = squad.gridSpeedCmPerTick ?? gridSpeedCmPerTick(state.rules, squad.speedMilli);
+    const moved = moveAlongGridPath(squad.xCm, squad.zCm, squad.gridPath, squad.gridIndex ?? 0, budget);
+    squad.xCm = moved.xCm;
+    squad.zCm = moved.zCm;
+    squad.gridIndex = moved.index;
+
+    const city = findCity(state, squad.to);
+    const radius = city?.captureRadiusCm ?? GRID_CAPTURE_RADIUS_CM;
+    if (city) {
+      const cityPoint: [number, number] = [city.pos[0] * 10, city.pos[1] * 10];
+      if (gridDistance([moved.xCm, moved.zCm], cityPoint) <= radius) {
+        removed.add(squad.id);
+        resolveSquad(state, squad, events);
+        continue;
+      }
+    }
+    if (moved.index >= squad.gridPath.length) {
+      removed.add(squad.id);
+      resolveSquad(state, squad, events);
+    }
+  }
+
+  resolveGridOutposts(state, events, removed);
+  resolveGridClashes(state, events, removed);
+  if (removed.size > 0) state.squads = state.squads.filter((squad) => !removed.has(squad.id));
+}
+
+function resolveGridOutposts(state: SimState, events: SimEvent[], removed: Set<string>): void {
+  const outposts = state.cities.filter((city) => city.kind === "outpost").sort(byId);
+  if (outposts.length === 0) return;
+  for (const squad of state.squads.slice().sort(byId)) {
+    if (removed.has(squad.id) || squad.xCm === undefined || squad.zCm === undefined) continue;
+    for (const outpost of outposts) {
+      if (outpost.owner === 0 || outpost.pop <= 0 || outpost.stance !== "engage") continue;
+      if (outpost.owner === squad.owner || squad.intercepted.includes(outpost.id)) continue;
+      const radius = outpost.captureRadiusCm ?? 600;
+      const center: [number, number] = [outpost.pos[0] * 10, outpost.pos[1] * 10];
+      if (gridDistance([squad.xCm, squad.zCm], center) > radius) continue;
+
+      squad.intercepted.push(outpost.id);
+      const outpostOwner = outpost.owner as PlayerId;
+      const outcome = resolveFieldCombat(
+        squad.count,
+        squad.strengthMilli,
+        outpost,
+        state.rules,
+        strengthFor(state, outpost.owner),
+      );
+      events.push({
+        type: "squadIntercepted",
+        squadId: squad.id,
+        cityId: outpost.id,
+        squadOwner: squad.owner,
+        outpostOwner,
+        squadLoss: outcome.squadLoss,
+        outpostLoss: outcome.outpostLoss,
+        squadDestroyed: outcome.squadDestroyed,
+        outpostEmptied: outcome.outpostEmptied,
+      });
+      if (outcome.outpostEmptied) {
+        outpost.owner = 0;
+        outpost.stance = "evade";
+        outpost.decayAtTick = 0;
+      }
+      if (outcome.squadDestroyed) {
+        removed.add(squad.id);
+        break;
+      }
+      squad.count = outcome.squadCount;
+    }
+  }
+}
+
+function resolveGridClashes(state: SimState, events: SimEvent[], removed: Set<string>): void {
+  const squads = state.squads.filter((squad) => !removed.has(squad.id)).sort(byId);
+  for (let a = 0; a < squads.length; a += 1) {
+    const attacker = squads[a];
+    if (removed.has(attacker.id)) continue;
+    for (let b = a + 1; b < squads.length; b += 1) {
+      const defender = squads[b];
+      if (removed.has(defender.id) || attacker.owner === defender.owner) continue;
+      if (attacker.xCm === undefined || attacker.zCm === undefined) continue;
+      if (defender.xCm === undefined || defender.zCm === undefined) continue;
+      if (gridDistance([attacker.xCm, attacker.zCm], [defender.xCm, defender.zCm]) > 300) continue;
+
+      const attack = attackValue(attacker.count, attacker.strengthMilli);
+      const defense = attackValue(defender.count, defender.strengthMilli);
+      const attackerWins = attack >= defense;
+      const attackerLoss = attackerWins
+        ? Math.min(attacker.count, Math.floor(defender.count / 2))
+        : attacker.count;
+      const defenderLoss = attackerWins ? defender.count : Math.min(defender.count, Math.floor(attacker.count / 2));
+      attacker.count -= attackerLoss;
+      defender.count -= defenderLoss;
+      if (attacker.count <= 0) removed.add(attacker.id);
+      if (defender.count <= 0) removed.add(defender.id);
+      events.push({
+        type: "squadClashed",
+        attacker: attacker.id,
+        defender: defender.id,
+        attackerOwner: attacker.owner,
+        defenderOwner: defender.owner,
+        attackerLoss,
+        defenderLoss,
+        defenderDestroyed: defender.count <= 0,
+      });
+      if (removed.has(attacker.id)) break;
+    }
+  }
 }

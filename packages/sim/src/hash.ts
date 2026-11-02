@@ -81,8 +81,12 @@ export function canonicalState(state: SimState): string {
     );
   }
   for (const squad of state.squads.slice().sort(byId)) {
+    const grid =
+      squad.xCm !== undefined
+        ? `|${squad.xCm},${squad.zCm ?? 0},${squad.gridIndex ?? 0},${squad.gridSpeedCmPerTick ?? 0},${(squad.gridPath ?? []).map((point) => `${point[0]}:${point[1]}`).join(">")}`
+        : "";
     parts.push(
-      `S${squad.id},${squad.owner},${squad.from},${squad.to},${squad.count},${squad.pathIndex},${squad.legStartTick},${squad.legEndTick},${squad.departTick},${squad.arrivalTick},${squad.speedMilli},${squad.strengthMilli},${squad.supplyLeft},${squad.nextStarveTick},${squad.path.join(">")},${squad.intercepted.join(">") || "-"}`,
+      `S${squad.id},${squad.owner},${squad.from},${squad.to},${squad.count},${squad.pathIndex},${squad.legStartTick},${squad.legEndTick},${squad.departTick},${squad.arrivalTick},${squad.speedMilli},${squad.strengthMilli},${squad.supplyLeft},${squad.nextStarveTick},${squad.path.join(">")},${squad.intercepted.join(">") || "-"}${grid}`,
     );
   }
   return parts.join("|");

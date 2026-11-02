@@ -617,7 +617,11 @@ export class EditorController {
       this.drawOverlay();
       return;
     }
-    this.pathPoints = path.points.map((point) => [point.xCm / 10, point.zCm / 10] as [number, number]);
+    const offsetX = this.doc.size[0] * 5;
+    const offsetZ = this.doc.size[1] * 5;
+    this.pathPoints = path.points.map(
+      (point) => [(point.xCm - offsetX) / 10, (point.zCm - offsetZ) / 10] as [number, number],
+    );
     this.notice(`路径 ${path.cells.length} 格 · 代价 ${path.cost} · 终点 ${cell[0]}, ${cell[1]}`);
     this.drawOverlay();
   }

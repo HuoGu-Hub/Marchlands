@@ -1,3 +1,4 @@
+import type { NavGrid } from "@marchlands/nav";
 import type { MapGraph } from "./path";
 
 export type CityId = string;
@@ -145,6 +146,10 @@ export interface CityState {
   stance: Stance;
   decayAtTick: number;
   watch: [CityId, CityId] | null;
+  /** 网格模式下的占领半径，厘米。 */
+  captureRadiusCm?: number;
+  /** 网格模式下的占地直径，厘米。 */
+  footprintCm?: number;
 }
 
 export type SiteState = CityState;
@@ -170,6 +175,15 @@ export interface SquadState {
   /** 下一次断粮掉兵的 tick。 */
   nextStarveTick: number;
   intercepted: CityId[];
+  /** 网格模式下当前位置，厘米。 */
+  xCm?: number;
+  zCm?: number;
+  /** 网格模式下的路径点，厘米。 */
+  gridPath?: Array<[number, number]>;
+  /** 当前目标路径点下标。 */
+  gridIndex?: number;
+  /** 网格模式下每 tick 前进的厘米数。 */
+  gridSpeedCmPerTick?: number;
 }
 
 export interface PlayerState {
@@ -227,6 +241,16 @@ export type SimEvent =
       count: number;
       destroyed: boolean;
     }
+  | {
+      type: "squadClashed";
+      attacker: string;
+      defender: string;
+      attackerOwner: PlayerId;
+      defenderOwner: PlayerId;
+      attackerLoss: number;
+      defenderLoss: number;
+      defenderDestroyed: boolean;
+    }
   | { type: "gameOver"; winner: Owner; reason: FinishReason };
 
 export type Command =
@@ -259,5 +283,7 @@ export interface SimState {
   rules: Ruleset;
   map: MapDef;
   graph: MapGraph;
+  /** 仅网格地图存在。 */
+  nav: NavGrid | null;
   nextSquad: number;
 }

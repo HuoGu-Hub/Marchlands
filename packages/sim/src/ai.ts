@@ -1,6 +1,7 @@
 import { attackValue, defenseValue } from "./combat";
 import { granaryStrengthMilli, levelRule, sendPercent } from "./rules";
 import { blockedTransit } from "./routes";
+import { planGridRoute } from "./grid";
 import type { CityState, Command, Owner, PlayerId, SimState } from "./types";
 
 export interface AiController {
@@ -24,6 +25,20 @@ function strengthFor(state: SimState, owner: Owner): number {
   return granaryStrengthMilli(state.rules, hasGranary(state, owner));
 }
 
+function routeDistance(state: SimState, origin: CityState, target: CityState): number | null {
+  if (state.nav) {
+    const route = planGridRoute(
+      state.map,
+      state.nav,
+      [origin.pos[0] * 10, origin.pos[1] * 10],
+      [target.pos[0] * 10, target.pos[1] * 10],
+    );
+    return route ? route.cost : null;
+  }
+  const route = state.graph.route(origin.id, target.id, blockedTransit(state, origin.owner, target.id));
+  return route ? route.distance : null;
+}
+
 function pickTarget(
   state: SimState,
   origin: CityState,
@@ -41,10 +56,10 @@ function pickTarget(
   for (const target of state.cities) {
     if (target.owner === player) continue;
     if (target.kind === "outpost") continue;
-    const route = state.graph.route(origin.id, target.id, blockedTransit(state, origin.owner, target.id));
-    if (!route) continue;
+    const distance = routeDistance(state, origin, target);
+    if (distance === null) continue;
     const defense = defenseValue(target, state.rules, strengthFor(state, target.owner));
-    let score = route.distance * 1000 + defense;
+    let score = distance * 1000 + defense;
     if (target.kind === "granary") {
       score += ownsGranary ? GRANARY_EXTRA_COST : -GRANARY_FIRST_BONUS;
     }
