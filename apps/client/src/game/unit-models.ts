@@ -2,26 +2,6 @@ import * as THREE from "three";
 import { ModelBuilder } from "./building-kit";
 import type { TeamPalette } from "./building-kit";
 
-const GRADIENT = (() => {
-  const data = new Uint8Array([96, 172, 255]);
-  const texture = new THREE.DataTexture(data, 3, 1, THREE.RedFormat);
-  texture.minFilter = THREE.NearestFilter;
-  texture.magFilter = THREE.NearestFilter;
-  texture.needsUpdate = true;
-  return texture;
-})();
-
-const PAINT_CACHE = new Map<number, THREE.MeshToonMaterial>();
-
-function paint(color: number, _options?: unknown): THREE.MeshToonMaterial {
-  const key = color >>> 0;
-  const existing = PAINT_CACHE.get(key);
-  if (existing) return existing;
-  const created = new THREE.MeshToonMaterial({ color, gradientMap: GRADIENT });
-  PAINT_CACHE.set(key, created);
-  return created;
-}
-
 export type UnitKind = "infantry" | "shield" | "cavalry" | "archer" | "elite";
 
 export const UNIT_KINDS: UnitKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
@@ -36,29 +16,49 @@ export const UNIT_NAMES: Record<UnitKind, string> = {
 
 export const UNIT_DESCRIPTIONS: Record<UnitKind, string> = {
   infantry: "单刀 · 皮甲",
-  shield: "重甲 · 盾牌",
+  shield: "重甲 · 大盾",
   cavalry: "长枪 · 战马",
-  archer: "弓箭 · 箭袋",
-  elite: "轻甲 · 精锐",
+  archer: "弓箭 · 兜帽",
+  elite: "轻甲 · 羽饰",
 };
 
-const SKIN = paint(0xd7b08a, { rough: 0.9 });
-const HAIR = paint(0x4a3324, { rough: 1 });
-const STEEL = paint(0x969da5, { rough: 0.42, metal: 0.35 });
-const DARK_STEEL = paint(0x5f666e, { rough: 0.5, metal: 0.3 });
-const GOLD = paint(0xc9a24e, { rough: 0.4, metal: 0.45 });
-const LEATHER = paint(0x7a5637, { rough: 0.95 });
-const DARK_LEATHER = paint(0x4a3322, { rough: 1 });
-const WOOD = paint(0x6b4a2f, { rough: 0.95 });
-const BOW_WOOD = paint(0x8a643c, { rough: 0.9 });
-const HORSE = paint(0x6b4a35, { rough: 0.95 });
-const HORSE_DARK = paint(0x3e2d20, { rough: 1 });
-const HORSE_LIGHT = paint(0x9a7252, { rough: 0.95 });
-const CLOTH_WHITE = paint(0xd8cfb6, { rough: 0.95 });
+const GRADIENT = (() => {
+  const texture = new THREE.DataTexture(new Uint8Array([110, 180, 255]), 3, 1, THREE.RedFormat);
+  texture.minFilter = THREE.NearestFilter;
+  texture.magFilter = THREE.NearestFilter;
+  texture.needsUpdate = true;
+  return texture;
+})();
 
-const HIP_Y = 0.32;
-const SHOULDER_Y = 0.27;
-const NECK_Y = 0.34;
+const CACHE = new Map<number, THREE.MeshToonMaterial>();
+
+function paint(color: number): THREE.MeshToonMaterial {
+  const key = color >>> 0;
+  const cached = CACHE.get(key);
+  if (cached) return cached;
+  const created = new THREE.MeshToonMaterial({ color, gradientMap: GRADIENT });
+  CACHE.set(key, created);
+  return created;
+}
+
+const SKIN = paint(0xf5c9a0);
+const HAIR = paint(0x4a3324);
+const STEEL = paint(0xb9c2ca);
+const DARK_STEEL = paint(0x77828c);
+const GOLD = paint(0xe8bd62);
+const LEATHER = paint(0x9a6b42);
+const DARK_LEATHER = paint(0x563a26);
+const WOOD = paint(0x9a6a3d);
+const HORSE = paint(0xa86d47);
+const HORSE_LIGHT = paint(0xe0b890);
+const HORSE_DARK = paint(0x4c3323);
+const WHITE = paint(0xf6efdf);
+const INK = paint(0x2a1e17);
+const BLUSH = paint(0xeea08b);
+
+const HIP_Y = 0.19;
+const SHOULDER_Y = 0.25;
+const NECK_Y = 0.45;
 
 export interface UnitRig {
   root: THREE.Group;
@@ -80,227 +80,235 @@ function part(build: (builder: ModelBuilder) => void): THREE.Group {
   return builder.finish();
 }
 
-function teamMat(palette: TeamPalette): THREE.MeshToonMaterial {
-  return paint(palette.cloth);
+function paintTeam(palette: TeamPalette): THREE.MeshToonMaterial {
+  const color = new THREE.Color(palette.cloth);
+  color.offsetHSL(0, 0.16, 0.08);
+  return paint(color.getHex());
+}
+
+function paintTrim(palette: TeamPalette): THREE.MeshToonMaterial {
+  return paint(new THREE.Color(palette.roofEdge).offsetHSL(0, 0.08, 0.03).getHex());
+}
+
+function ball(
+  builder: ModelBuilder,
+  radius: number,
+  sx: number,
+  sy: number,
+  sz: number,
+  material: THREE.Material,
+  x: number,
+  y: number,
+  z: number,
+): void {
+  const geometry = new THREE.SphereGeometry(radius, 16, 12);
+  geometry.scale(sx, sy, sz);
+  builder.add(geometry, material, new THREE.Vector3(x, y, z));
+}
+
+function capsule(
+  builder: ModelBuilder,
+  radius: number,
+  length: number,
+  material: THREE.Material,
+  x: number,
+  y: number,
+  z: number,
+  rx = 0,
+  ry = 0,
+  rz = 0,
+  sx = 1,
+  sy = 1,
+  sz = 1,
+): void {
+  const geometry = new THREE.CapsuleGeometry(radius, length, 6, 14);
+  geometry.scale(sx, sy, sz);
+  const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz));
+  builder.add(geometry, material, new THREE.Vector3(x, y, z), quaternion);
+}
+
+function torus(
+  builder: ModelBuilder,
+  radius: number,
+  tube: number,
+  material: THREE.Material,
+  x: number,
+  y: number,
+  z: number,
+  rx = Math.PI / 2,
+  ry = 0,
+  rz = 0,
+): void {
+  const geometry = new THREE.TorusGeometry(radius, tube, 10, 28);
+  const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz));
+  builder.add(geometry, material, new THREE.Vector3(x, y, z), quaternion);
+}
+
+function roundedPanel(
+  builder: ModelBuilder,
+  width: number,
+  height: number,
+  material: THREE.Material,
+  x: number,
+  y: number,
+  z: number,
+): void {
+  const shape = new THREE.Shape();
+  const w = width / 2;
+  const h = height / 2;
+  shape.moveTo(-w + 0.02, -h);
+  shape.quadraticCurveTo(-w, -h, -w, -h + 0.02);
+  shape.lineTo(-w, h - 0.02);
+  shape.quadraticCurveTo(-w, h, -w + 0.02, h);
+  shape.lineTo(w - 0.02, h);
+  shape.quadraticCurveTo(w, h, w, h - 0.02);
+  shape.lineTo(w, -h + 0.02);
+  shape.quadraticCurveTo(w, -h, w - 0.02, -h);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false });
+  builder.add(geometry, material, new THREE.Vector3(x, y, z));
 }
 
 function makeTorso(kind: UnitKind, palette: TeamPalette, variant: number): THREE.Group {
-  const team = teamMat(palette);
-  const trim = paint(palette.roofEdge, { rough: 0.85 });
+  const team = paintTeam(palette);
+  const trim = paintTrim(palette);
   const armor = kind === "shield" || kind === "cavalry" ? STEEL : kind === "elite" ? DARK_STEEL : LEATHER;
   return part((b) => {
-    b.box([0.24, 0.12, 0.17], LEATHER, 0, 0.06, 0);
-    b.box([0.3, 0.22, 0.2], armor, 0, 0.2, 0);
-    b.box([0.11, 0.26, 0.012], team, -0.075, 0.13, 0.112);
-    b.box([0.11, 0.26, 0.012], team, 0.075, 0.13, 0.112);
-    b.box([0.24, 0.22, 0.012], team, 0, 0.13, -0.112);
-    b.box([0.032, 0.3, 0.012], team, 0, 0.17, 0.115, 0, 0, 0.55);
-    b.box([0.29, 0.045, 0.19], DARK_LEATHER, 0, 0.055, 0);
-    for (const x of [-0.09, 0.09]) {
-      b.box([0.1, 0.12, 0.18], armor, x, -0.01, 0.01);
-      b.box([0.11, 0.03, 0.19], GOLD, x, -0.08, 0.01);
-    }
-    b.box([0.06, 0.045, 0.02], GOLD, 0, 0.055, 0.105);
-    b.box([0.08, 0.08, 0.045], DARK_LEATHER, 0.13, 0.02, 0.09);
-    b.box([0.05, 0.05, 0.04], GOLD, -0.13, 0.02, 0.09);
-    b.box([0.12, 0.03, 0.14], team, 0, 0.335, 0);
-    for (const x of [-0.18, 0.18]) {
-      b.box([0.095, 0.04, 0.145], team, x, 0.31, 0);
-    }
-    b.box([0.02, 0.02, 0.02], GOLD, 0.07, 0.09, 0.112);
+    ball(b, 0.21, 1.05, 1.15, 0.9, team, 0, 0.17, 0);
+    ball(b, 0.16, 1.0, 0.82, 0.4, armor, 0, 0.17, 0.14);
+    torus(b, 0.19, 0.018, DARK_LEATHER, 0, 0.045, 0);
+    ball(b, 0.035, 1, 1, 1, GOLD, 0, 0.045, 0.18);
+    for (const x of [-0.19, 0.19]) ball(b, 0.075, 1, 1, 1, armor, x, 0.29, 0);
+    roundedPanel(b, 0.12, 0.18, team, 0, 0.15, 0.18);
 
     if (kind === "shield") {
-      b.box([0.22, 0.16, 0.025], STEEL, 0, 0.21, 0.113);
-      b.box([0.1, 0.1, 0.03], STEEL, 0, 0.11, 0.115);
-      b.box([0.32, 0.1, 0.22], DARK_STEEL, 0, 0.33, 0);
-      b.box([0.24, 0.08, 0.02], STEEL, 0, 0.28, 0.112);
-      for (const x of [-0.16, 0.16]) {
-        b.add(new THREE.SphereGeometry(0.09, 7, 5), STEEL, new THREE.Vector3(x, 0.3, 0));
-      }
-      for (const x of [-0.11, -0.035, 0.04, 0.115]) {
-        b.box([0.06, 0.05, 0.018], STEEL, x, 0.12, 0.11);
-      }
+      ball(b, 0.18, 1, 0.9, 0.4, STEEL, 0, 0.18, 0.16);
+      torus(b, 0.16, 0.014, GOLD, 0, 0.18, 0.2, 0, 0, 0);
+      ball(b, 0.045, 1, 1, 1, GOLD, 0, 0.18, 0.22);
     } else if (kind === "elite") {
-      b.box([0.2, 0.14, 0.02], GOLD, 0, 0.2, 0.114);
-      for (let row = 0; row < 3; row += 1) {
-        for (let column = 0; column < 5; column += 1) {
-          b.box([0.045, 0.045, 0.014], STEEL, -0.11 + column * 0.055, 0.11 + row * 0.05, 0.108);
+      ball(b, 0.19, 1, 0.9, 0.35, DARK_STEEL, 0, 0.18, 0.15);
+      for (let row = 0; row < 2; row += 1) {
+        for (let column = 0; column < 4; column += 1) {
+          ball(b, 0.018, 1, 1, 1, GOLD, -0.075 + column * 0.05, 0.15 + row * 0.05, 0.2);
         }
       }
-      b.box([0.3, 0.035, 0.19], GOLD, 0, 0.31, 0);
-      for (const x of [-0.19, 0.19]) {
-        b.add(new THREE.SphereGeometry(0.085, 7, 5), STEEL, new THREE.Vector3(x, 0.3, 0));
-      }
-    } else if (kind === "cavalry") {
-      b.box([0.31, 0.05, 0.21], DARK_STEEL, 0, 0.31, 0);
-      for (const x of [-0.19, 0.19]) {
-        b.add(new THREE.SphereGeometry(0.08, 7, 5), DARK_STEEL, new THREE.Vector3(x, 0.3, 0));
-      }
-      b.box([0.045, 0.34, 0.02], team, 0.1, 0.15, 0.112);
+      torus(b, 0.2, 0.015, GOLD, 0, 0.27, 0, Math.PI / 2, 0, 0.1);
+      roundedPanel(b, 0.26, 0.3, team, 0, 0.12, -0.19);
     } else if (kind === "archer") {
-      b.box([0.035, 0.36, 0.02], DARK_LEATHER, 0.11, 0.16, 0.106);
-      b.box([0.12, 0.06, 0.02], LEATHER, -0.12, 0.25, 0.11);
+      torus(b, 0.2, 0.018, trim, 0, 0.27, 0, Math.PI / 2, 0, 0.15);
+      roundedPanel(b, 0.3, 0.38, team, 0, 0.08, -0.19);
+    } else if (kind === "cavalry") {
+      torus(b, 0.2, 0.015, DARK_STEEL, 0, 0.27, 0);
     } else {
-      b.box([0.32, 0.035, 0.19], DARK_LEATHER, 0, 0.31, 0);
-      b.box([0.04, 0.3, 0.018], DARK_LEATHER, -0.1, 0.16, 0.108);
-      b.box([0.04, 0.3, 0.018], DARK_LEATHER, 0.1, 0.16, 0.108);
-      for (const y of [0.1, 0.17, 0.24]) {
-        b.box([0.02, 0.02, 0.02], GOLD, -0.1, y, 0.118);
-        b.box([0.02, 0.02, 0.02], GOLD, 0.1, y, 0.118);
-      }
+      ball(b, 0.17, 1, 0.85, 0.35, LEATHER, 0, 0.18, 0.16);
+      for (const x of [-0.09, 0, 0.09]) ball(b, 0.018, 1, 1, 1, GOLD, x, 0.12, 0.21);
     }
-
-    if (kind === "infantry" || kind === "elite") {
-      b.box([0.055, 0.34, 0.035], DARK_LEATHER, -0.14, 0.01, 0.02, 0, 0, 0.25);
-      b.box([0.065, 0.03, 0.045], GOLD, -0.18, -0.15, 0.02, 0, 0, 0.25);
-    }
-    if (kind === "elite") {
-      const cape = new THREE.Shape();
-      cape.moveTo(-0.16, 0.3);
-      cape.lineTo(0.16, 0.3);
-      cape.lineTo(0.12, -0.28);
-      cape.lineTo(0, -0.34);
-      cape.lineTo(-0.12, -0.28);
-      cape.closePath();
-      b.shape(cape, team, 0, 0, -0.118);
-    }
-
-    if (kind === "archer") {
-      b.cylinder(0.055, 0.055, 0.3, 7, DARK_LEATHER, -0.1, 0.2, -0.13, 0, 0, -0.22);
-      for (const offset of [-0.02, 0.02]) {
-        b.cylinder(0.006, 0.006, 0.2, 4, WOOD, -0.08 + offset, 0.4, -0.13, 0, 0, -0.22);
-        b.box([0.03, 0.05, 0.006], CLOTH_WHITE, -0.08 + offset, 0.49, -0.13);
-      }
-    }
-
-    b.cylinder(0.05, 0.055, 0.08, 7, SKIN, 0, NECK_Y + 0.01, 0);
-    b.box([0.06, 0.06, 0.06], team, 0, NECK_Y + 0.01, 0);
-    if (variant % 2 === 0) b.box([0.03, 0.14, 0.02], trim, 0, 0.32, 0.12);
+    if (variant % 2 === 0) ball(b, 0.022, 1, 1, 1, GOLD, 0, 0.28, 0.19);
   });
 }
 
 function makeHead(kind: UnitKind, palette: TeamPalette, variant: number): THREE.Group {
-  const team = teamMat(palette);
-  const trim = paint(palette.roofEdge);
+  const team = paintTeam(palette);
+  const trim = paintTrim(palette);
   return part((b) => {
-    b.cylinder(0.048, 0.052, 0.06, 7, SKIN, 0, 0.02, 0);
-    b.add(new THREE.DodecahedronGeometry(0.1, 0), SKIN, new THREE.Vector3(0, 0.12, 0));
-    b.box([0.02, 0.018, 0.02], SKIN, 0, 0.1, 0.105);
-    for (const x of [-0.035, 0.035]) {
-      b.box([0.018, 0.02, 0.01], paint(0x2a211a), x, 0.13, 0.102);
+    ball(b, 0.21, 1, 1, 0.96, SKIN, 0, 0.12, 0);
+    ball(b, 0.07, 1, 1, 1, HAIR, 0, 0.26, -0.12);
+    for (const x of [-0.075, 0.075]) {
+      ball(b, 0.045, 1, 1.1, 0.55, INK, x, 0.14, 0.185);
+      ball(b, 0.014, 1, 1, 1, WHITE, x + 0.012, 0.155, 0.21);
+      ball(b, 0.027, 1, 0.8, 0.4, BLUSH, x * 1.75, 0.075, 0.17);
     }
-    b.box([0.14, 0.05, 0.12], HAIR, 0, 0.055, -0.02);
+    ball(b, 0.016, 1, 0.8, 0.5, INK, 0, 0.075, 0.205);
 
     if (kind === "shield") {
-      b.box([0.19, 0.2, 0.2], STEEL, 0, 0.13, 0);
-      b.box([0.15, 0.025, 0.02], paint(0x1b1a18), 0, 0.145, 0.102);
-      for (const x of [-0.065, 0.065]) {
-        b.box([0.02, 0.11, 0.01], paint(0x2a211a), x, 0.19, 0.102);
-      }
-      b.box([0.2, 0.025, 0.21], DARK_STEEL, 0, 0.24, 0);
+      ball(b, 0.225, 1, 1, 1, DARK_STEEL, 0, 0.12, 0.005);
+      capsule(b, 0.018, 0.12, INK, 0, 0.15, 0.22, 0, 0, Math.PI / 2);
+      capsule(b, 0.016, 0.07, INK, 0, 0.1, 0.225, 0, 0, 0);
+      for (const x of [-0.12, 0.12]) ball(b, 0.022, 1, 1, 1, GOLD, x, 0.21, 0.19);
+      torus(b, 0.2, 0.018, STEEL, 0, 0.13, 0, Math.PI / 2, 0, 0);
     } else if (kind === "archer") {
-      b.add(new THREE.ConeGeometry(0.15, 0.2, 7), team, new THREE.Vector3(0, 0.23, -0.1), new THREE.Quaternion().setFromEuler(new THREE.Euler(0.22, 0, 0)));
-      for (const x of [-0.13, 0.13]) b.box([0.06, 0.16, 0.18], team, x, 0.1, -0.04);
-      b.box([0.26, 0.05, 0.1], trim, 0, 0.03, 0.1);
-      b.box([0.02, 0.08, 0.02], GOLD, 0.14, 0.08, 0.05);
+      ball(b, 0.235, 1, 1, 1, team, 0, 0.13, -0.075);
+      torus(b, 0.19, 0.035, trim, 0, 0.1, 0.13, 0.2, 0, 0);
+      ball(b, 0.07, 1.1, 0.6, 0.8, team, 0, 0.31, -0.12);
+      capsule(b, 0.025, 0.1, GOLD, 0.16, 0.1, 0.08, 0, 0, -0.4);
     } else if (kind === "elite") {
-      b.cylinder(0.11, 0.12, 0.08, 8, STEEL, 0, 0.17, 0);
-      b.add(new THREE.SphereGeometry(0.105, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), STEEL, new THREE.Vector3(0, 0.21, 0));
-      b.box([0.21, 0.025, 0.21], GOLD, 0, 0.15, 0);
-      b.box([0.025, 0.025, 0.14], GOLD, 0.06, 0.235, -0.02);
-      b.box([0.035, 0.2, 0.08], team, 0.11, 0.3, -0.05, 0, 0, -0.45);
-      b.box([0.025, 0.13, 0.05], paint(0xf1e4c8), 0.14, 0.35, -0.03, 0, 0, -0.62);
+      b.add(
+        new THREE.SphereGeometry(0.225, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        STEEL,
+        new THREE.Vector3(0, 0.2, 0),
+      );
+      torus(b, 0.21, 0.02, GOLD, 0, 0.19, 0, Math.PI / 2, 0, 0);
+      for (const x of [-0.19, 0.19]) ball(b, 0.05, 1, 1, 1, STEEL, x, 0.1, 0.02);
+      const plume = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0.13, 0.3, 0),
+        new THREE.Vector3(0.26, 0.42, -0.02),
+        new THREE.Vector3(0.28, 0.55, -0.06),
+      ]);
+      b.add(new THREE.TubeGeometry(plume, 8, 0.035, 6, false), team, new THREE.Vector3(0, 0, 0));
+      ball(b, 0.06, 1, 1, 1, GOLD, 0.16, 0.28, 0);
     } else if (kind === "cavalry") {
-      b.cylinder(0.11, 0.12, 0.08, 8, DARK_STEEL, 0, 0.17, 0);
-      b.add(new THREE.ConeGeometry(0.13, 0.13, 8), STEEL, new THREE.Vector3(0, 0.25, 0));
-      b.box([0.02, 0.2, 0.18], CLOTH_WHITE, 0, 0.08, -0.04);
-      b.box([0.14, 0.03, 0.14], GOLD, 0, 0.13, 0.08);
+      b.add(
+        new THREE.SphereGeometry(0.225, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        STEEL,
+        new THREE.Vector3(0, 0.19, 0),
+      );
+      capsule(b, 0.045, 0.1, team, 0, 0.4, -0.03, 0, 0, 0);
+      torus(b, 0.2, 0.016, GOLD, 0, 0.16, 0, Math.PI / 2, 0, 0);
+      capsule(b, 0.015, 0.06, GOLD, 0, 0.16, 0.2);
     } else {
-      b.cylinder(0.115, 0.12, 0.09, 8, STEEL, 0, 0.16, 0);
-      b.add(new THREE.SphereGeometry(0.11, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), STEEL, new THREE.Vector3(0, 0.19, 0));
-      b.box([0.024, 0.1, 0.02], STEEL, 0, 0.14, 0.108);
-      if (variant % 2 === 0) b.box([0.02, 0.1, 0.06], team, 0, 0.28, 0);
+      b.add(
+        new THREE.SphereGeometry(0.225, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        STEEL,
+        new THREE.Vector3(0, 0.19, 0),
+      );
+      torus(b, 0.21, 0.018, DARK_STEEL, 0, 0.18, 0, Math.PI / 2, 0, 0);
+      capsule(b, 0.014, 0.06, STEEL, 0, 0.12, 0.21);
+      if (variant % 2 === 0) capsule(b, 0.025, 0.09, team, 0, 0.37, -0.02);
     }
   });
 }
 
-function makeArm(kind: UnitKind, palette: TeamPalette, side: number): THREE.Group {
-  const team = teamMat(palette);
+function makeArm(kind: UnitKind, palette: TeamPalette): THREE.Group {
+  const team = paintTeam(palette);
   const armor = kind === "shield" || kind === "cavalry" ? STEEL : kind === "elite" ? DARK_STEEL : LEATHER;
   return part((b) => {
-    b.box([0.1, 0.18, 0.11], armor, 0, -0.09, 0);
-    b.add(new THREE.SphereGeometry(0.055, 7, 5), armor, new THREE.Vector3(0, -0.18, 0.01));
-    b.box([0.09, 0.15, 0.095], kind === "archer" ? LEATHER : armor, 0, -0.26, 0.01);
-    b.box([0.095, 0.04, 0.1], team, 0, -0.04, 0);
-    if (kind === "shield" || kind === "elite" || kind === "cavalry") {
-      b.add(new THREE.SphereGeometry(0.085, 7, 5), STEEL, new THREE.Vector3(0, -0.01, 0));
-      b.box([0.1, 0.06, 0.11], STEEL, 0, -0.3, 0.01);
-    }
-    if (kind === "archer") {
-      b.box([0.095, 0.07, 0.1], DARK_LEATHER, 0, -0.33, 0.02);
-      b.box([0.1, 0.03, 0.105], GOLD, 0, -0.28, 0.01);
-    } else {
-      b.add(new THREE.SphereGeometry(0.06, 6, 5), SKIN, new THREE.Vector3(0, -0.34, 0.02));
-    }
-    if (side < 0 && (kind === "shield" || kind === "cavalry")) {
-      b.box([0.1, 0.03, 0.1], GOLD, 0, -0.05, 0.02);
-    }
+    capsule(b, 0.065, 0.08, kind === "archer" ? team : armor, 0, -0.08, 0);
+    ball(b, 0.07, 1, 1, 1, kind === "shield" || kind === "elite" ? STEEL : SKIN, 0, -0.17, 0.01);
+    if (kind === "shield" || kind === "cavalry") torus(b, 0.055, 0.012, GOLD, 0, -0.02, 0, 0, 0, 0);
   });
 }
 
-function makeLeg(kind: UnitKind, side: number): THREE.Group {
-  const armor = kind === "shield" ? STEEL : kind === "elite" ? DARK_STEEL : LEATHER;
+function makeLeg(kind: UnitKind): THREE.Group {
   return part((b) => {
-    b.box([0.105, 0.2, 0.115], kind === "shield" || kind === "elite" ? DARK_LEATHER : LEATHER, 0, -0.1, 0);
-    b.box([0.09, 0.18, 0.1], armor, 0, -0.28, 0);
-    if (kind === "shield" || kind === "elite") b.box([0.1, 0.05, 0.11], STEEL, 0, -0.2, 0);
-    b.box([0.12, 0.08, 0.19], DARK_LEATHER, 0, -0.4, 0.035);
-    b.box([0.12, 0.02, 0.2], DARK_STEEL, 0, -0.445, 0.035);
-    if (side > 0) b.box([0.02, 0.2, 0.02], kind === "elite" ? GOLD : DARK_LEATHER, 0.06, -0.1, 0);
+    capsule(b, 0.078, 0.05, kind === "shield" || kind === "elite" ? DARK_STEEL : DARK_LEATHER, 0, -0.075, 0);
+    ball(b, 0.075, 1.05, 0.7, 1.25, DARK_LEATHER, 0, -0.175, 0.025);
+    if (kind === "shield" || kind === "elite") torus(b, 0.065, 0.012, STEEL, 0, -0.11, 0, 0, 0, 0);
   });
 }
 
 function sword(): THREE.Group {
   return part((b) => {
-    b.box([0.042, 0.34, 0.014], STEEL, 0, 0.24, 0);
-    b.box([0.012, 0.28, 0.004], paint(0x6f767d), 0, 0.24, 0.009);
-    b.add(new THREE.ConeGeometry(0.042, 0.08, 4), STEEL, new THREE.Vector3(0, 0.45, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 4, 0)));
-    b.box([0.16, 0.03, 0.04], GOLD, 0, 0.06, 0);
-    b.cylinder(0.022, 0.024, 0.13, 6, LEATHER, 0, 0.0, 0);
-    b.add(new THREE.SphereGeometry(0.032, 6, 5), GOLD, new THREE.Vector3(0, -0.075, 0));
-  });
-}
-
-function kiteShield(palette: TeamPalette, kind: UnitKind): THREE.Group {
-  const team = teamMat(palette);
-  return part((b) => {
-    const shape = new THREE.Shape();
-    shape.moveTo(-0.16, 0.2);
-    shape.lineTo(0.16, 0.2);
-    shape.lineTo(0.16, -0.06);
-    shape.lineTo(0, -0.34);
-    shape.lineTo(-0.16, -0.06);
-    shape.closePath();
-    b.shape(shape, paint(0x3d4248), 0, 0, -0.01);
-    b.shape(shape, team, 0, 0, 0.012);
-    b.box([0.035, 0.42, 0.035], DARK_STEEL, 0, -0.04, 0.005);
-    b.box([0.3, 0.035, 0.035], DARK_STEEL, 0, 0.17, 0.005);
-    b.box([0.3, 0.035, 0.035], DARK_STEEL, 0, 0.1, 0.005);
-    b.box([0.028, 0.35, 0.03], GOLD, 0, -0.06, 0.025);
-    b.box([0.24, 0.028, 0.03], GOLD, 0, 0.14, 0.025);
-    b.add(new THREE.SphereGeometry(0.055, 6, 5), GOLD, new THREE.Vector3(0, 0.04, 0.045));
-    if (kind === "elite") b.box([0.2, 0.02, 0.03], GOLD, 0, -0.2, 0.02);
+    const blade = new THREE.CapsuleGeometry(0.045, 0.18, 6, 10);
+    blade.scale(1, 1, 0.32);
+    b.add(blade, STEEL, new THREE.Vector3(0, 0.2, 0));
+    ball(b, 0.05, 1, 0.5, 0.35, STEEL, 0, 0.32, 0);
+    capsule(b, 0.025, 0.1, GOLD, 0, 0.075, 0, 0, 0, Math.PI / 2);
+    capsule(b, 0.022, 0.05, DARK_LEATHER, 0, 0.0, 0);
+    ball(b, 0.035, 1, 1, 1, GOLD, 0, -0.035, 0);
   });
 }
 
 function roundShield(palette: TeamPalette): THREE.Group {
-  const team = teamMat(palette);
+  const team = paintTeam(palette);
+  const trim = paintTrim(palette);
   return part((b) => {
-    b.cylinder(0.19, 0.19, 0.035, 12, DARK_STEEL, 0, 0, 0, Math.PI / 2, 0, 0);
-    b.cylinder(0.16, 0.16, 0.04, 12, team, 0, 0, 0.02, Math.PI / 2, 0, 0);
-    b.cylinder(0.05, 0.05, 0.05, 8, GOLD, 0, 0, 0.03, Math.PI / 2, 0, 0);
+    const disc = new THREE.CylinderGeometry(0.25, 0.25, 0.045, 28);
+    b.add(disc, team, new THREE.Vector3(0, 0, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)));
+    torus(b, 0.245, 0.025, trim, 0, 0, 0.01, 0, 0, 0);
+    torus(b, 0.145, 0.014, GOLD, 0, 0, 0.03, 0, 0, 0);
+    ball(b, 0.065, 1, 1, 0.55, GOLD, 0, 0, 0.04);
     for (const angle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
-      b.box([0.02, 0.2, 0.02], GOLD, Math.cos(angle) * 0.095, Math.sin(angle) * 0.095, 0.03, 0, 0, angle);
+      ball(b, 0.022, 1, 1, 1, GOLD, Math.cos(angle) * 0.19, Math.sin(angle) * 0.19, 0.03);
     }
   });
 }
@@ -308,69 +316,40 @@ function roundShield(palette: TeamPalette): THREE.Group {
 function bow(): THREE.Group {
   return part((b) => {
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.02, -0.44, 0),
-      new THREE.Vector3(0.14, -0.24, 0),
+      new THREE.Vector3(0.02, -0.36, 0),
+      new THREE.Vector3(0.16, -0.2, 0),
       new THREE.Vector3(0.2, 0, 0),
-      new THREE.Vector3(0.14, 0.24, 0),
-      new THREE.Vector3(0.02, 0.44, 0),
+      new THREE.Vector3(0.16, 0.2, 0),
+      new THREE.Vector3(0.02, 0.36, 0),
     ]);
-    b.add(new THREE.TubeGeometry(curve, 14, 0.016, 5, false), BOW_WOOD, new THREE.Vector3(0, 0, 0));
-    b.box([0.006, 0.86, 0.006], paint(0x3c3326), 0.03, 0, 0);
-    b.cylinder(0.024, 0.024, 0.12, 6, LEATHER, 0.2, 0, 0);
-    b.box([0.012, 0.1, 0.012], GOLD, 0.2, 0.06, 0);
-    b.box([0.012, 0.1, 0.012], GOLD, 0.2, -0.06, 0);
-    b.cone(0.014, 0.06, 4, GOLD, 0.02, 0.47, 0);
-    b.cone(0.014, 0.06, 4, GOLD, 0.02, -0.47, 0);
+    b.add(new THREE.TubeGeometry(curve, 14, 0.02, 6, false), WOOD, new THREE.Vector3(0, 0, 0));
+    capsule(b, 0.005, 0.56, WHITE, 0.03, 0, 0);
+    capsule(b, 0.022, 0.08, DARK_LEATHER, 0.18, 0, 0);
+    ball(b, 0.026, 1, 1, 1, GOLD, 0.02, 0.37, 0);
+    ball(b, 0.026, 1, 1, 1, GOLD, 0.02, -0.37, 0);
   });
 }
 
-function lance(): THREE.Group {
+function lance(palette: TeamPalette): THREE.Group {
   return part((b) => {
-    b.cylinder(0.012, 0.016, 1.05, 6, WOOD, 0, 0.3, 0);
-    b.add(new THREE.ConeGeometry(0.03, 0.16, 5), STEEL, new THREE.Vector3(0, 0.9, 0));
-    b.box([0.16, 0.13, 0.01], paint(0xe8e0c8), 0.09, 0.72, 0);
-    b.box([0.03, 0.03, 0.04], GOLD, 0, 0.08, 0);
+    capsule(b, 0.022, 0.62, WOOD, 0, 0.2, 0);
+    b.add(new THREE.ConeGeometry(0.05, 0.14, 10), STEEL, new THREE.Vector3(0, 0.66, 0));
+    const team = paintTeam(palette);
+    roundedPanel(b, 0.16, 0.1, team, 0.09, 0.51, 0);
+    ball(b, 0.03, 1, 1, 1, GOLD, 0, 0.06, 0);
   });
 }
 
 function quiver(palette: TeamPalette): THREE.Group {
-  const team = teamMat(palette);
+  const team = paintTeam(palette);
   return part((b) => {
-    b.cylinder(0.06, 0.07, 0.3, 7, DARK_LEATHER, 0, 0.02, 0, 0, 0, -0.25);
-    b.cylinder(0.065, 0.065, 0.03, 7, team, 0, 0.15, 0, 0, 0, -0.25);
-    for (const offset of [-0.035, 0, 0.035]) {
-      b.cylinder(0.006, 0.006, 0.26, 4, WOOD, offset, 0.2, 0, 0, 0, -0.25);
-      b.box([0.03, 0.06, 0.006], CLOTH_WHITE, offset - 0.01, 0.32, 0);
+    capsule(b, 0.06, 0.16, DARK_LEATHER, 0, 0.02, 0, 0, 0, -0.22);
+    torus(b, 0.06, 0.015, team, 0, 0.1, 0, 0, 0, 0);
+    for (const x of [-0.035, 0, 0.035]) {
+      capsule(b, 0.007, 0.16, WOOD, x, 0.17, 0, 0, 0, -0.22);
+      ball(b, 0.02, 1, 1.4, 0.6, WHITE, x, 0.26, 0);
     }
   });
-}
-
-function addSword(arm: THREE.Group): void {
-  const weapon = sword();
-  weapon.position.set(0.015, -0.34, 0.06);
-  weapon.rotation.set(0.35, 0.1, -0.18);
-  arm.add(weapon);
-}
-
-function addShield(arm: THREE.Group, palette: TeamPalette, kind: UnitKind, side = 1): void {
-  const shield = kind === "elite" ? roundShield(palette) : kiteShield(palette, kind);
-  shield.position.set(-0.04, -0.3, 0.15);
-  shield.rotation.set(0.05, -0.18 * side, 0.05);
-  arm.add(shield);
-}
-
-function addBow(arm: THREE.Group): void {
-  const weapon = bow();
-  weapon.position.set(-0.02, -0.32, 0.2);
-  weapon.rotation.set(0.06, 0.02, 0.08);
-  arm.add(weapon);
-}
-
-function addLance(arm: THREE.Group): void {
-  const weapon = lance();
-  weapon.position.set(0, -0.32, 0.02);
-  weapon.rotation.set(0.12, 0, 0);
-  arm.add(weapon);
 }
 
 function makeHumanoid(kind: UnitKind, palette: TeamPalette, variant: number): UnitRig {
@@ -381,46 +360,60 @@ function makeHumanoid(kind: UnitKind, palette: TeamPalette, variant: number): Un
 
   const head = makeHead(kind, palette, variant);
   head.position.y = NECK_Y;
-  head.scale.setScalar(1.42);
   torso.add(head);
 
-  const leftArm = makeArm(kind, palette, -1);
+  const leftArm = makeArm(kind, palette);
   leftArm.position.set(-0.205, SHOULDER_Y, 0);
-  leftArm.rotation.set(kind === "archer" ? -1.05 : -0.45, 0, kind === "archer" ? -0.2 : -0.12);
-  leftArm.scale.set(1.12, 0.78, 1.12);
+  leftArm.rotation.set(kind === "archer" ? -1.0 : -0.4, 0, kind === "archer" ? -0.25 : -0.3);
   torso.add(leftArm);
 
-  const rightArm = makeArm(kind, palette, 1);
+  const rightArm = makeArm(kind, palette);
   rightArm.position.set(0.205, SHOULDER_Y, 0);
-  rightArm.rotation.set(kind === "cavalry" ? -0.55 : -0.7, 0, 0.14);
-  rightArm.scale.set(1.12, 0.78, 1.12);
+  rightArm.rotation.set(-0.6, 0, 0.3);
   torso.add(rightArm);
 
-  const leftLeg = makeLeg(kind, -1);
+  const leftLeg = makeLeg(kind);
   leftLeg.position.set(-0.095, HIP_Y, 0);
-  leftLeg.scale.set(1.18, 0.72, 1.18);
   root.add(leftLeg);
-
-  const rightLeg = makeLeg(kind, 1);
+  const rightLeg = makeLeg(kind);
   rightLeg.position.set(0.095, HIP_Y, 0);
-  rightLeg.scale.set(1.18, 0.72, 1.18);
   root.add(rightLeg);
 
   if (kind === "archer") {
     const bag = quiver(palette);
-    bag.position.set(0.1, 0.1, -0.14);
+    bag.position.set(0.11, 0.12, -0.15);
     torso.add(bag);
-    addBow(leftArm);
+    const weapon = bow();
+    weapon.position.set(-0.02, -0.17, 0.16);
+    weapon.rotation.set(0.1, 0, 0.08);
+    leftArm.add(weapon);
   } else if (kind === "shield") {
-    addSword(rightArm);
-    addShield(leftArm, palette, kind);
+    const weapon = sword();
+    weapon.position.set(0.01, -0.17, 0.04);
+    weapon.rotation.set(0.2, 0, -0.2);
+    rightArm.add(weapon);
+    const shield = roundShield(palette);
+    shield.position.set(-0.04, -0.12, 0.12);
+    shield.rotation.set(0.05, -0.2, 0.05);
+    leftArm.add(shield);
   } else if (kind === "elite") {
-    addSword(rightArm);
+    const weapon = sword();
+    weapon.position.set(0.01, -0.17, 0.04);
+    weapon.rotation.set(0.2, 0, -0.2);
+    rightArm.add(weapon);
   } else if (kind === "cavalry") {
-    addLance(rightArm);
-    addShield(leftArm, palette, "shield");
+    const weapon = lance(palette);
+    weapon.position.set(0, -0.16, 0.02);
+    rightArm.add(weapon);
+    const shield = roundShield(palette);
+    shield.position.set(-0.04, -0.12, 0.12);
+    shield.rotation.set(0.05, -0.2, 0.05);
+    leftArm.add(shield);
   } else {
-    addSword(rightArm);
+    const weapon = sword();
+    weapon.position.set(0.01, -0.17, 0.04);
+    weapon.rotation.set(0.2, 0, -0.2);
+    rightArm.add(weapon);
   }
 
   return {
@@ -432,16 +425,15 @@ function makeHumanoid(kind: UnitKind, palette: TeamPalette, variant: number): Un
     leftLeg,
     rightLeg,
     mountLegs: [],
-    height: 1.0,
+    height: 0.9,
     kind,
   };
 }
 
 function makeHorseLeg(x: number, z: number): THREE.Group {
   return part((b) => {
-    b.box([0.075, 0.26, 0.09], HORSE, 0, -0.13, 0);
-    b.box([0.055, 0.22, 0.06], HORSE_DARK, 0, -0.35, 0.01);
-    b.box([0.08, 0.06, 0.1], HORSE_DARK, 0, -0.48, 0.02);
+    capsule(b, 0.065, 0.16, HORSE, 0, -0.11, 0);
+    ball(b, 0.075, 1.05, 0.7, 1.25, HORSE_DARK, 0, -0.235, 0.02);
   }).translateX(x).translateZ(z);
 }
 
@@ -450,76 +442,78 @@ function makeCavalry(palette: TeamPalette, variant: number): UnitRig {
   const mount = new THREE.Group();
   root.add(mount);
   const horse = part((b) => {
-    b.cylinder(0.2, 0.22, 0.66, 9, HORSE, 0, 0.76, -0.02, Math.PI / 2, 0, 0);
-    b.add(new THREE.SphereGeometry(0.2, 8, 6), HORSE, new THREE.Vector3(0, 0.76, 0.28));
-    b.add(new THREE.SphereGeometry(0.2, 8, 6), HORSE, new THREE.Vector3(0, 0.76, -0.28));
-    b.cylinder(0.12, 0.18, 0.48, 8, HORSE, 0, 1.0, 0.42, 0.65, 0, 0);
-    b.add(new THREE.SphereGeometry(0.22, 10, 8), HORSE, new THREE.Vector3(0, 1.08, 0.68));
-    b.box([0.24, 0.05, 0.3], teamMat(palette), 0, 1.23, 0.62, -0.1, 0, 0);
-    b.box([0.16, 0.14, 0.2], HORSE_LIGHT, 0, 1.0, 0.86);
-    b.box([0.06, 0.04, 0.07], HORSE_DARK, 0, 1.04, 0.95);
-    for (const x of [-0.09, 0.09]) {
-      b.cone(0.035, 0.13, 4, HORSE_DARK, x, 1.32, 0.64);
-      b.add(new THREE.SphereGeometry(0.026, 6, 5), paint(0x241a14), new THREE.Vector3(x, 1.12, 0.86));
-      b.add(new THREE.SphereGeometry(0.008, 5, 4), paint(0xf4ecdb), new THREE.Vector3(x + 0.008, 1.128, 0.88));
+    ball(b, 0.26, 1.0, 1.0, 1.45, HORSE, 0, 0.42, 0);
+    ball(b, 0.2, 0.9, 0.9, 0.9, HORSE, 0, 0.48, 0.3);
+    capsule(b, 0.11, 0.16, HORSE, 0, 0.62, 0.3, 0.55, 0, 0);
+    ball(b, 0.2, 1.0, 1.0, 0.95, HORSE, 0, 0.74, 0.44);
+    ball(b, 0.12, 1.0, 0.85, 1.1, HORSE_LIGHT, 0, 0.68, 0.6);
+    ball(b, 0.05, 1, 0.8, 0.7, HORSE_DARK, 0, 0.7, 0.69);
+    for (const x of [-0.085, 0.085]) {
+      b.add(new THREE.ConeGeometry(0.045, 0.12, 10), HORSE_DARK, new THREE.Vector3(x, 0.94, 0.38));
+      ball(b, 0.03, 1, 1, 0.6, INK, x, 0.76, 0.59);
+      ball(b, 0.01, 1, 1, 1, WHITE, x + 0.01, 0.77, 0.61);
     }
-    b.box([0.04, 0.3, 0.08], HORSE_DARK, 0, 1.06, 0.36, 0.65, 0, 0);
-    b.box([0.08, 0.14, 0.05], HORSE_DARK, 0, 1.29, 0.62, -0.2, 0, 0);
-    b.box([0.07, 0.18, 0.04], HORSE_DARK, 0, 1.28, 0.58, -0.2, 0, 0);
-    b.box([0.012, 0.012, 0.32], DARK_LEATHER, 0.07, 1.04, 0.72, -0.35, 0, 0);
-    b.cylinder(0.05, 0.012, 0.32, 5, HORSE_DARK, 0, 0.72, -0.46, Math.PI / 2, 0, 0);
-    const cloth = teamMat(palette);
-    b.box([0.42, 0.02, 0.5], cloth, 0, 0.95, -0.02);
-    for (const side of [-1, 1]) {
-      b.box([0.014, 0.24, 0.48], cloth, side * 0.21, 0.83, -0.02);
-      b.box([0.014, 0.035, 0.52], GOLD, side * 0.215, 0.7, -0.02);
-    }
-    b.box([0.2, 0.06, 0.34], DARK_LEATHER, 0, 0.96, -0.02);
-    b.box([0.08, 0.1, 0.04], GOLD, 0, 0.96, 0.18);
+    const mane = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0.92, 0.32),
+      new THREE.Vector3(0, 0.82, 0.24),
+      new THREE.Vector3(0, 0.72, 0.18),
+    ]);
+    b.add(new THREE.TubeGeometry(mane, 6, 0.045, 8, false), HORSE_DARK, new THREE.Vector3(0, 0, 0));
+    const tail = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0.5, -0.4),
+      new THREE.Vector3(0, 0.38, -0.52),
+      new THREE.Vector3(0, 0.24, -0.55),
+    ]);
+    b.add(new THREE.TubeGeometry(tail, 6, 0.04, 8, false), HORSE_DARK, new THREE.Vector3(0, 0, 0));
+    const team = paintTeam(palette);
+    ball(b, 0.18, 0.35, 0.65, 1.3, team, -0.24, 0.44, 0);
+    ball(b, 0.18, 0.35, 0.65, 1.3, team, 0.24, 0.44, 0);
+    ball(b, 0.16, 0.95, 0.28, 1.15, team, 0, 0.56, 0);
+    ball(b, 0.13, 0.9, 0.35, 1.0, DARK_LEATHER, 0, 0.57, 0);
+    torus(b, 0.15, 0.014, GOLD, 0, 0.58, 0, Math.PI / 2, 0, 0);
   });
   mount.add(horse);
 
   const mountLegs: THREE.Group[] = [];
   for (const x of [-0.14, 0.14]) {
-    for (const z of [-0.26, 0.26]) {
+    for (const z of [-0.24, 0.24]) {
       const leg = makeHorseLeg(x, z);
-      leg.position.y = 0.56;
+      leg.position.y = 0.22;
       mount.add(leg);
       mountLegs.push(leg);
     }
   }
 
   const torso = makeTorso("cavalry", palette, variant);
-  torso.position.set(0, 1.02, -0.2);
+  torso.position.set(0, 0.62, -0.12);
   root.add(torso);
   const head = makeHead("cavalry", palette, variant);
   head.position.y = NECK_Y;
-  head.scale.setScalar(1.38);
   torso.add(head);
-  const leftArm = makeArm("cavalry", palette, -1);
+  const leftArm = makeArm("cavalry", palette);
   leftArm.position.set(-0.205, SHOULDER_Y, 0);
-  leftArm.rotation.set(-0.55, 0, -0.2);
-  leftArm.scale.set(1.12, 0.8, 1.12);
+  leftArm.rotation.set(-0.5, 0, -0.35);
   torso.add(leftArm);
-  const rightArm = makeArm("cavalry", palette, 1);
+  const rightArm = makeArm("cavalry", palette);
   rightArm.position.set(0.205, SHOULDER_Y, 0);
-  rightArm.rotation.set(-0.5, 0, 0.18);
-  rightArm.scale.set(1.12, 0.8, 1.12);
+  rightArm.rotation.set(-0.55, 0, 0.3);
   torso.add(rightArm);
-  addLance(rightArm);
-  const shield = kiteShield(palette, "shield");
-  shield.position.set(-0.12, -0.28, 0.03);
-  shield.rotation.set(0.05, 0.55, 0.08);
+  const weapon = lance(palette);
+  weapon.position.set(0, -0.16, 0.02);
+  rightArm.add(weapon);
+  const shield = roundShield(palette);
+  shield.position.set(-0.05, -0.12, 0.12);
+  shield.rotation.set(0.05, 0.45, 0.05);
   leftArm.add(shield);
 
   const leftLeg = part((b) => {
-    b.box([0.1, 0.26, 0.12], LEATHER, 0, -0.12, 0.04, -0.7, 0, 0);
-    b.box([0.09, 0.12, 0.2], DARK_LEATHER, 0, -0.26, 0.12);
+    capsule(b, 0.075, 0.1, LEATHER, 0, -0.08, 0.02, -0.7, 0, 0);
+    ball(b, 0.07, 1, 0.8, 1.2, DARK_LEATHER, 0, -0.18, 0.07);
   });
-  leftLeg.position.set(-0.22, 1.03, -0.02);
+  leftLeg.position.set(-0.2, 0.64, -0.02);
   root.add(leftLeg);
   const rightLeg = leftLeg.clone();
-  rightLeg.position.x = 0.22;
+  rightLeg.position.x = 0.2;
   root.add(rightLeg);
 
   return {
@@ -532,7 +526,7 @@ function makeCavalry(palette: TeamPalette, variant: number): UnitRig {
     rightLeg,
     mount,
     mountLegs,
-    height: 1.62,
+    height: 1.32,
     kind: "cavalry",
   };
 }

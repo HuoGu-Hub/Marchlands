@@ -381,7 +381,7 @@ export class BattleScene {
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
     label.scale.set(2.2, 1.1, 1);
-    label.position.y = 1.75;
+    label.position.y = 1.35;
     group.add(label);
 
     this.scene.add(group);
