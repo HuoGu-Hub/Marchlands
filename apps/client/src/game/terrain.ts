@@ -369,8 +369,10 @@ export function buildTerrain(
     cities: [...positions.values()].map((city) => [city.x, city.z] as [number, number]),
     terrain: { seed, amplitude },
   });
+  const offsetX = map.size[0] * 5;
+  const offsetZ = map.size[1] * 5;
   const heightAt = (x: number, z: number): number => {
-    if (navGrid) return navGrid.heightCmAtXZ(Math.round(x * 100), Math.round(z * 100)) / 100;
+    if (navGrid) return navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100;
     return heightField.heightAt(x, z);
   };
 
@@ -412,7 +414,7 @@ export function buildTerrain(
     const z = (az + bz + cz) / 3;
     const dirt = valueNoise(x / 9 + noiseShift, z / 9, 103) > 0.76;
     if (navGrid) {
-      color.setHex(surfaceColor(navGrid.surfaceAtXZ(Math.round(x * 100), Math.round(z * 100)), palette));
+      color.setHex(surfaceColor(navGrid.surfaceAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)), palette));
     } else if (slope > 0.24 || y > 1.05) {
       color.setHex(dirt ? palette.dirtLight : palette.rock);
     } else if (y > 0.45) {

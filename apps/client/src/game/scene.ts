@@ -943,7 +943,84 @@ export class BattleScene {
       .filter((point) => point.distanceTo(first) > 1.95 && point.distanceTo(last) > 1.95);
     if (samples.length < 2) return;
     for (const point of samples) point.y = this.roadGroundAt(point.x, point.z);
+    this.addBridgeDetails(samples, width);
     this.addRoadRibbon(samples, width, material);
+  }
+
+  private isBridgeAt(x: number, z: number): boolean {
+    const grid = this.roadGrid;
+    if (!grid) return false;
+    const cx = Math.floor((x * 100 + this.map.size[0] * 5) / grid.cellCm);
+    const cz = Math.floor((z * 100 + this.map.size[1] * 5) / grid.cellCm);
+    if (cx < 0 || cz < 0 || cx >= grid.width || cz >= grid.height) return false;
+    return grid.surface[cz * grid.width + cx] === Surface.Bridge;
+  }
+
+  private addBridgeDetails(points: THREE.Vector3[], width: number): void {
+    const spans: Array<[number, number]> = [];
+    let start = -1;
+    for (let index = 0; index < points.length; index += 1) {
+      const bridge = this.isBridgeAt(points[index].x, points[index].z);
+      if (bridge && start < 0) start = index;
+      if (!bridge && start >= 0) {
+        if (index - start >= 2) spans.push([start, index - 1]);
+        start = -1;
+      }
+    }
+    if (start >= 0 && points.length - 1 - start >= 2) spans.push([start, points.length - 1]);
+    if (spans.length === 0) return;
+
+    const postGeometry = new THREE.BoxGeometry(0.09, 0.72, 0.09);
+    const postMaterial = new THREE.MeshStandardMaterial({ color: 0x5b4a35, roughness: 1 });
+    const railMaterial = new THREE.LineBasicMaterial({ color: 0x6d5a40 });
+    const pierGeometry = new THREE.CylinderGeometry(0.2, 0.28, 1, 7);
+    const pierMaterial = new THREE.MeshStandardMaterial({ color: 0x7d7665, roughness: 1, flatShading: true });
+
+    for (const [from, to] of spans) {
+      const sides: THREE.Vector3[][] = [[], []];
+      for (let index = from; index <= to; index += 1) {
+        const point = points[index];
+        const previous = points[Math.max(from, index - 1)];
+        const next = points[Math.min(to, index + 1)];
+        const tangent = new THREE.Vector3().subVectors(next, previous);
+        if (tangent.lengthSq() === 0) tangent.set(1, 0, 0);
+        tangent.normalize();
+        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+        sides.forEach((side, sideIndex) => {
+          const sign = sideIndex === 0 ? -1 : 1;
+          side.push(new THREE.Vector3(
+            point.x + normal.x * sign * (width / 2 - 0.02),
+            point.y,
+            point.z + normal.z * sign * (width / 2 - 0.02),
+          ));
+        });
+      }
+      sides.forEach((side) => {
+        const railPositions: number[] = [];
+        for (let index = 0; index < side.length - 1; index += 1) {
+          railPositions.push(
+            side[index].x, side[index].y + 0.72, side[index].z,
+            side[index + 1].x, side[index + 1].y + 0.72, side[index + 1].z,
+          );
+        }
+        const railGeometry = new THREE.BufferGeometry();
+        railGeometry.setAttribute("position", new THREE.Float32BufferAttribute(railPositions, 3));
+        this.roadGroup.add(new THREE.LineSegments(railGeometry, railMaterial));
+        for (let index = 0; index < side.length; index += 2) {
+          const post = new THREE.Mesh(postGeometry, postMaterial);
+          post.position.set(side[index].x, side[index].y + 0.36, side[index].z);
+          this.roadGroup.add(post);
+        }
+      });
+
+      const middle = points[Math.floor((from + to) / 2)];
+      const ground = this.terrain.heightAt(middle.x, middle.z);
+      const height = Math.max(0.4, middle.y - ground + 0.2);
+      const pier = new THREE.Mesh(pierGeometry, pierMaterial);
+      pier.scale.y = height;
+      pier.position.set(middle.x, middle.y - height / 2 - 0.15, middle.z);
+      this.roadGroup.add(pier);
+    }
   }
 
   private addRoadRibbon(points: THREE.Vector3[], width: number, material: THREE.Material): void {
