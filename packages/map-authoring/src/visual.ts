@@ -1,0 +1,316 @@
+import type { MapDef } from "@marchlands/sim";
+import type {
+  MapDocument,
+  MapVisual,
+  PropDraft,
+  RoadVisualDraft,
+  TerrainDraft,
+  TerrainStyle,
+  VisualDraft,
+} from "./types";
+import { TERRAIN_STYLE_IDS } from "./types";
+
+const STARTER_SEED = 20261102;
+
+interface Point {
+  x: number;
+  z: number;
+  radius: number;
+}
+
+const TERRAIN_FEATURES = [
+  "builtin:terrain.hill",
+  "builtin:terrain.ridge",
+  "builtin:terrain.grove",
+  "builtin:terrain.pond",
+  "builtin:terrain.field",
+  "builtin:terrain.ruin",
+];
+
+const TREES = [
+  "builtin:prop.tree.pine-tall",
+  "builtin:prop.tree.oak",
+  "builtin:prop.tree.detailed",
+  "builtin:prop.tree.default",
+  "builtin:prop.tree.pine-round",
+  "builtin:prop.tree.simple",
+  "builtin:prop.tree.thin",
+];
+
+const ROCKS = [
+  "builtin:prop.rock.large",
+  "builtin:prop.rock.small-a",
+  "builtin:prop.rock.small-b",
+  "builtin:prop.rock.small-c",
+];
+
+const PLANTS = [
+  "builtin:prop.plant.bush",
+  "builtin:prop.plant.grass",
+  "builtin:prop.flower.red",
+  "builtin:prop.flower.yellow",
+  "builtin:prop.mushroom.red-group",
+];
+
+const TOWN_PROPS = [
+  "builtin:prop.lantern",
+  "builtin:prop.stall.green",
+  "builtin:prop.stall.red",
+  "builtin:prop.cart",
+  "builtin:prop.fountain.round",
+  "builtin:prop.hedge",
+  "builtin:prop.fence",
+  "builtin:prop.banner.green",
+];
+
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function hashText(text: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function segmentDistance(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const lengthSq = dx * dx + dz * dz;
+  if (lengthSq === 0) return Math.hypot(px - ax, pz - az);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / lengthSq));
+  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
+}
+
+function roadDistance(document: MapDocument, x: number, z: number): number {
+  let best = Number.POSITIVE_INFINITY;
+  const byId = new Map(document.sites.map((site) => [site.id, site]));
+  for (const road of document.roads) {
+    const a = byId.get(road.from);
+    const b = byId.get(road.to);
+    if (!a || !b) continue;
+    best = Math.min(best, segmentDistance(x, z, a.pos[0] / 10, a.pos[1] / 10, b.pos[0] / 10, b.pos[1] / 10));
+  }
+  return best;
+}
+
+function siteDistance(document: MapDocument, x: number, z: number): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const site of document.sites) {
+    best = Math.min(best, Math.hypot(site.pos[0] / 10 - x, site.pos[1] / 10 - z));
+  }
+  return best;
+}
+
+function place(
+  document: MapDocument,
+  random: () => number,
+  placed: Point[],
+  radius: number,
+  options: { nearTown?: boolean; minTown?: number; maxTown?: number } = {},
+): [number, number] | null {
+  const halfW = Math.max(8, document.size[0] / 20 - 3);
+  const halfH = Math.max(8, document.size[1] / 20 - 3);
+  for (let attempt = 0; attempt < 160; attempt += 1) {
+    const x = Math.round((-halfW + random() * halfW * 2) * 2) / 2;
+    const z = Math.round((-halfH + random() * halfH * 2) * 2) / 2;
+    const town = siteDistance(document, x, z);
+    if (options.nearTown) {
+      if (town < (options.minTown ?? 5.4) || town > (options.maxTown ?? 8.2)) continue;
+    } else if (town < 6.2 + radius) {
+      continue;
+    }
+    if (roadDistance(document, x, z) < 2.6 + radius * 0.35) continue;
+    let blocked = false;
+    for (const point of placed) {
+      if (Math.hypot(point.x - x, point.z - z) < radius + point.radius + 0.8) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) continue;
+    placed.push({ x, z, radius });
+    return [x, z];
+  }
+  return null;
+}
+
+function prop(
+  id: string,
+  assetId: string,
+  pos: [number, number],
+  rotation: number,
+  scale: number,
+): PropDraft {
+  return { id, assetId, pos, rotation, scale };
+}
+
+export function createStarterVisual(document: MapDocument): VisualDraft {
+  const random = seeded(STARTER_SEED);
+  const placed: Point[] = [];
+  const props: PropDraft[] = [];
+  let next = 1;
+
+  for (const assetId of TERRAIN_FEATURES) {
+    const position = place(document, random, placed, 4.2);
+    if (!position) continue;
+    props.push(prop(`p${next}`, assetId, position, Math.round(random() * 360), 0.9 + random() * 0.2));
+    next += 1;
+  }
+
+  for (const site of document.sites) {
+    if (site.kind !== "town") continue;
+    const count = site.owner === 0 ? 2 : 3;
+    for (let index = 0; index < count; index += 1) {
+      const angle = random() * Math.PI * 2;
+      const distance = 5.2 + random() * 3;
+      const x = Math.round((site.pos[0] / 10 + Math.cos(angle) * distance) * 2) / 2;
+      const z = Math.round((site.pos[1] / 10 + Math.sin(angle) * distance) * 2) / 2;
+      if (Math.abs(x) > document.size[0] / 20 - 2 || Math.abs(z) > document.size[1] / 20 - 2) continue;
+      if (roadDistance(document, x, z) < 2.1) continue;
+      let blocked = false;
+      for (const point of placed) {
+        if (Math.hypot(point.x - x, point.z - z) < point.radius + 1.1) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+      const assetId = TOWN_PROPS[Math.floor(random() * TOWN_PROPS.length)];
+      placed.push({ x, z, radius: 1 });
+      props.push(prop(`p${next}`, assetId, [x, z], Math.round(random() * 360), 0.9 + random() * 0.3));
+      next += 1;
+    }
+  }
+
+  const scatterPlan: Array<{ pool: string[]; count: number; radius: number; scale: [number, number] }> = [
+    { pool: TREES, count: 42, radius: 1.1, scale: [0.8, 1.2] },
+    { pool: ROCKS, count: 10, radius: 0.9, scale: [0.8, 1.3] },
+    { pool: PLANTS, count: 16, radius: 0.7, scale: [0.8, 1.2] },
+  ];
+  for (const plan of scatterPlan) {
+    for (let index = 0; index < plan.count; index += 1) {
+      const position = place(document, random, placed, plan.radius);
+      if (!position) continue;
+      const assetId = plan.pool[Math.floor(random() * plan.pool.length)];
+      const scale = plan.scale[0] + random() * (plan.scale[1] - plan.scale[0]);
+      props.push(prop(`p${next}`, assetId, position, Math.round(random() * 360), scale));
+      next += 1;
+    }
+  }
+
+  return {
+    terrain: { style: "frontier", seed: STARTER_SEED, amplitude: 1 },
+    roads: { style: "cobble", width: 1.6 },
+    props,
+    scatter: true,
+  };
+}
+
+export function createDefaultVisual(seed = STARTER_SEED): VisualDraft {
+  return {
+    terrain: { style: "frontier", seed, amplitude: 1 },
+    roads: { style: "cobble", width: 1.6 },
+    props: [],
+    scatter: true,
+  };
+}
+
+export function defaultVisualForMap(map: MapDef): MapVisual {
+  const style: TerrainStyle = map.biome === "forest" ? "meadow" : "frontier";
+  return {
+    terrain: { style, seed: hashText(map.slug) % 1_000_000, amplitude: 1 },
+    roads: { style: map.biome === "forest" ? "dirt" : "cobble", width: 1.6 },
+    props: [],
+    scatter: true,
+    sites: {},
+  };
+}
+
+export function cloneVisual(visual: VisualDraft): VisualDraft {
+  return {
+    terrain: { ...visual.terrain },
+    roads: { ...visual.roads },
+    props: visual.props.map((entry) => ({
+      ...entry,
+      pos: [entry.pos[0], entry.pos[1]],
+    })),
+    scatter: visual.scatter,
+  };
+}
+
+export function compileVisual(document: MapDocument): MapVisual {
+  const sites: MapVisual["sites"] = {};
+  for (const site of document.sites) {
+    if (!site.visualAssetId && site.visualRotation === undefined && site.visualScale === undefined) continue;
+    sites[site.id] = {
+      ...(site.visualAssetId ? { assetId: site.visualAssetId } : {}),
+      rotation: site.visualRotation ?? 0,
+      scale: site.visualScale ?? 1,
+    };
+  }
+  return {
+    terrain: { ...document.visual.terrain },
+    roads: { ...document.visual.roads },
+    props: document.visual.props.map((entry) => ({
+      ...entry,
+      pos: [entry.pos[0], entry.pos[1]],
+    })),
+    scatter: document.visual.scatter,
+    sites,
+  };
+}
+
+const ASSET_ID = /^[a-z][a-z0-9_.-]{1,31}:[a-z0-9][a-z0-9_.\/-]{0,95}$/;
+
+export function isAssetId(value: unknown): value is string {
+  return typeof value === "string" && ASSET_ID.test(value);
+}
+
+export function isTerrainStyle(value: unknown): value is TerrainStyle {
+  return typeof value === "string" && (TERRAIN_STYLE_IDS as readonly string[]).includes(value);
+}
+
+export function isRoadStyle(value: unknown): value is RoadVisualDraft["style"] {
+  return value === "cobble" || value === "dirt";
+}
+
+export function terrainDraft(value: Partial<TerrainDraft> | undefined, fallback: TerrainDraft): TerrainDraft {
+  return {
+    style: isTerrainStyle(value?.style) ? value.style : fallback.style,
+    seed: typeof value?.seed === "number" && Number.isFinite(value.seed) ? Math.round(value.seed) : fallback.seed,
+    amplitude:
+      typeof value?.amplitude === "number" && Number.isFinite(value.amplitude)
+        ? Math.min(1.5, Math.max(0.2, value.amplitude))
+        : fallback.amplitude,
+  };
+}
+
+export function roadDraft(
+  value: Partial<RoadVisualDraft> | undefined,
+  fallback: RoadVisualDraft,
+): RoadVisualDraft {
+  return {
+    style: isRoadStyle(value?.style) ? value.style : fallback.style,
+    width:
+      typeof value?.width === "number" && Number.isFinite(value.width)
+        ? Math.min(6, Math.max(0.6, value.width))
+        : fallback.width,
+  };
+}
+
+export { STARTER_SEED };

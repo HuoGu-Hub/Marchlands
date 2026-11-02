@@ -4,39 +4,68 @@ import type {
   CompileResult,
   EditorDiagnostic,
   MapDocument,
+  MapVisual,
   ParsedDocument,
+  PropDraft,
   RoadDraft,
   SiteDraft,
+  TerrainDraft,
+  VisualDraft,
 } from "./types";
+import { TERRAIN_STYLE_IDS } from "./types";
+import {
+  cloneVisual,
+  compileVisual,
+  createDefaultVisual,
+  createStarterVisual,
+  isAssetId,
+  isRoadStyle,
+  isTerrainStyle,
+  roadDraft,
+  terrainDraft,
+} from "./visual";
 
 const DEFAULT_PLAYERS: MapPlayer[] = [
   { id: 1, name: "Player", color: "green", ai: false },
   { id: 2, name: "AI", color: "red", ai: true },
 ];
 
+const MAX_PROPS = 2000;
+
+function starterSites(): SiteDraft[] {
+  return [
+    { id: "c1", kind: "town", owner: 1, level: 3, pop: 30, pos: [-200, -150] },
+    { id: "c2", kind: "town", owner: 2, level: 3, pop: 30, pos: [200, 150] },
+    { id: "c3", kind: "town", owner: 0, level: 1, pop: 10, pos: [-200, 150] },
+    { id: "c4", kind: "town", owner: 0, level: 1, pop: 10, pos: [200, -150] },
+  ];
+}
+
+function starterRoads(): RoadDraft[] {
+  return [
+    { from: "c1", to: "c4" },
+    { from: "c4", to: "c2" },
+    { from: "c2", to: "c3" },
+    { from: "c3", to: "c1" },
+  ];
+}
+
 export function createStarterDocument(): MapDocument {
-  return {
-    schema: 1,
+  const document: MapDocument = {
+    schema: 2,
     slug: "custom",
     name: "新地图",
     size: [700, 700],
     biome: "frontier",
     players: DEFAULT_PLAYERS.map((player) => ({ ...player })),
-    sites: [
-      { id: "c1", kind: "town", owner: 1, level: 3, pop: 30, pos: [-200, -150] },
-      { id: "c2", kind: "town", owner: 2, level: 3, pop: 30, pos: [200, 150] },
-      { id: "c3", kind: "town", owner: 0, level: 1, pop: 10, pos: [-200, 150] },
-      { id: "c4", kind: "town", owner: 0, level: 1, pop: 10, pos: [200, -150] },
-    ],
-    roads: [
-      { from: "c1", to: "c4" },
-      { from: "c4", to: "c2" },
-      { from: "c2", to: "c3" },
-      { from: "c3", to: "c1" },
-    ],
+    sites: starterSites(),
+    roads: starterRoads(),
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
     transit: "friendly",
+    visual: createDefaultVisual(),
   };
+  document.visual = createStarterVisual(document);
+  return document;
 }
 
 export function cloneDocument(document: MapDocument): MapDocument {
@@ -51,6 +80,7 @@ export function cloneDocument(document: MapDocument): MapDocument {
     })),
     roads: document.roads.map((road) => ({ ...road })),
     objectives: document.objectives.map((objective) => ({ ...objective })),
+    visual: cloneVisual(document.visual),
   };
 }
 
@@ -63,6 +93,17 @@ function numberPair(value: unknown): [number, number] | null {
   if (typeof value[0] !== "number" || typeof value[1] !== "number") return null;
   if (!Number.isFinite(value[0]) || !Number.isFinite(value[1])) return null;
   return [Math.round(value[0]), Math.round(value[1])];
+}
+
+function exactNumberPair(value: unknown): [number, number] | null {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  if (typeof value[0] !== "number" || typeof value[1] !== "number") return null;
+  if (!Number.isFinite(value[0]) || !Number.isFinite(value[1])) return null;
+  return [value[0], value[1]];
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function siteFromUnknown(value: unknown): SiteDraft | null {
@@ -82,6 +123,20 @@ function siteFromUnknown(value: unknown): SiteDraft | null {
       site.watch = [watch[0], watch[1]];
     }
   }
+  if (value.visualAssetId !== undefined) {
+    if (!isAssetId(value.visualAssetId)) throw new Error(`据点 ${site.id} 的外观资产 ID 无效`);
+    site.visualAssetId = value.visualAssetId;
+  }
+  if (value.visualRotation !== undefined) {
+    const rotation = finiteNumber(value.visualRotation);
+    if (rotation === null) throw new Error(`据点 ${site.id} 的外观朝向无效`);
+    site.visualRotation = rotation;
+  }
+  if (value.visualScale !== undefined) {
+    const scale = finiteNumber(value.visualScale);
+    if (scale === null || scale < 0.1 || scale > 10) throw new Error(`据点 ${site.id} 的外观缩放无效`);
+    site.visualScale = scale;
+  }
   return site;
 }
 
@@ -91,9 +146,65 @@ function roadFromUnknown(value: unknown): RoadDraft | null {
   return { from: value.from, to: value.to };
 }
 
-export function fromMapDef(map: MapDef): MapDocument {
+function propFromUnknown(value: unknown): PropDraft | null {
+  if (!asRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (!isAssetId(value.assetId)) return null;
+  const pos = exactNumberPair(value.pos);
+  if (!pos) return null;
+  const rotation = finiteNumber(value.rotation);
+  const scale = finiteNumber(value.scale);
+  if (rotation === null || scale === null || scale < 0.1 || scale > 10) return null;
   return {
-    schema: 1,
+    id: value.id,
+    assetId: value.assetId,
+    pos,
+    rotation: ((rotation % 360) + 360) % 360,
+    scale,
+  };
+}
+
+function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
+  const fallback = createDefaultVisual(fallbackSeed);
+  if (value === undefined) return fallback;
+  if (!asRecord(value)) throw new Error("地图视觉配置必须是对象");
+  const terrainInput = asRecord(value.terrain) ? value.terrain : undefined;
+  const terrainValue = terrainInput as Partial<TerrainDraft> | undefined;
+  if (terrainInput?.style !== undefined && !isTerrainStyle(terrainInput.style)) {
+    throw new Error(`不支持的地貌风格：${String(terrainInput.style)}`);
+  }
+  const terrain = terrainDraft(terrainValue, fallback.terrain);
+  const roadsInput = asRecord(value.roads) ? value.roads : undefined;
+  if (roadsInput?.style !== undefined && !isRoadStyle(roadsInput.style)) {
+    throw new Error(`不支持的道路风格：${String(roadsInput.style)}`);
+  }
+  const roads = roadDraft(roadsInput as Partial<VisualDraft["roads"]> | undefined, fallback.roads);
+  const scatter = typeof value.scatter === "boolean" ? value.scatter : fallback.scatter;
+  const propsInput = value.props;
+  let props: PropDraft[] = [];
+  if (propsInput !== undefined) {
+    if (!Array.isArray(propsInput)) throw new Error("地图装饰必须是数组");
+    if (propsInput.length > MAX_PROPS) throw new Error(`地图装饰不能超过 ${MAX_PROPS} 个`);
+    props = propsInput.map((entry) => {
+      const parsed = propFromUnknown(entry);
+      if (!parsed) throw new Error("地图文件包含无效装饰");
+      return parsed;
+    });
+    const ids = new Set<string>();
+    for (const entry of props) {
+      if (ids.has(entry.id)) throw new Error(`装饰编号重复：${entry.id}`);
+      ids.add(entry.id);
+    }
+  }
+  return { terrain, roads, props, scatter };
+}
+
+export function fromMapDef(map: MapDef): MapDocument {
+  const visual = createDefaultVisual();
+  visual.terrain.style = map.biome === "forest" ? "meadow" : "frontier";
+  visual.roads.style = map.biome === "forest" ? "dirt" : "cobble";
+  return {
+    schema: 2,
     slug: map.slug,
     name: map.name,
     size: [map.size[0], map.size[1]],
@@ -116,13 +227,14 @@ export function fromMapDef(map: MapDef): MapDocument {
     roads: map.edges.map((edge) => ({ from: edge.from, to: edge.to })),
     objectives: map.objectives.map((objective) => ({ ...objective })),
     transit: map.transit ?? "open",
+    visual,
   };
 }
 
 export function parseDocument(input: unknown): ParsedDocument {
   if (!asRecord(input)) throw new Error("地图文件必须是 JSON 对象");
   if (Array.isArray(input.sites) && Array.isArray(input.roads)) {
-    if (input.schema !== 1) throw new Error("不支持的地图文档版本");
+    if (input.schema !== 1 && input.schema !== 2) throw new Error("不支持的地图文档版本");
     const size = numberPair(input.size);
     if (!size) throw new Error("地图尺寸必须是两个整数");
     const players = Array.isArray(input.players)
@@ -155,7 +267,7 @@ export function parseDocument(input: unknown): ParsedDocument {
           .filter((entry): entry is { type: string; ticks?: number } => entry !== null)
       : [];
     const document: MapDocument = {
-      schema: 1,
+      schema: 2,
       slug: typeof input.slug === "string" && input.slug.length > 0 ? input.slug : "custom",
       name: typeof input.name === "string" && input.name.length > 0 ? input.name : "新地图",
       size,
@@ -165,6 +277,7 @@ export function parseDocument(input: unknown): ParsedDocument {
       roads,
       objectives,
       transit: input.transit === "open" ? "open" : "friendly",
+      visual: visualFromUnknown(input.visual, input.schema === 1 ? 20261102 : 20261102),
     };
     return { document, diagnostics: compileDocument(document).diagnostics };
   }
@@ -187,8 +300,21 @@ export function compileDocument(document: MapDocument): CompileResult {
     seenMessages.add(diagnostic.message);
     diagnostics.push(diagnostic);
   };
-  const error = (code: string, message: string, siteId?: string, road?: [string, string]): void => {
-    add({ severity: "error", code, message, ...(siteId ? { siteId } : {}), ...(road ? { road } : {}) });
+  const error = (
+    code: string,
+    message: string,
+    siteId?: string,
+    road?: [string, string],
+    propId?: string,
+  ): void => {
+    add({
+      severity: "error",
+      code,
+      message,
+      ...(siteId ? { siteId } : {}),
+      ...(road ? { road } : {}),
+      ...(propId ? { propId } : {}),
+    });
   };
   const warning = (code: string, message: string, siteId?: string): void => {
     add({ severity: "warning", code, message, ...(siteId ? { siteId } : {}) });
@@ -208,6 +334,9 @@ export function compileDocument(document: MapDocument): CompileResult {
     }
     if (site.pos[1] < -document.size[1] / 2 || site.pos[1] > document.size[1] / 2) {
       error("site-outside", `${site.id} 超出地图上下边界`, site.id);
+    }
+    if (site.visualAssetId !== undefined && !isAssetId(site.visualAssetId)) {
+      error("site-visual", `${site.id} 的外观资产 ID 无效`, site.id);
     }
   }
 
@@ -281,6 +410,9 @@ export function compileDocument(document: MapDocument): CompileResult {
     error("objective", "地图目标必须包含占领全部城镇");
   }
 
+  const visualErrors = validateVisual(document);
+  for (const issue of visualErrors) error(issue.code, issue.message, undefined, undefined, issue.propId);
+
   const map: MapDef = {
     schema: 1,
     slug: document.slug,
@@ -320,7 +452,45 @@ export function compileDocument(document: MapDocument): CompileResult {
     }
   }
 
-  return { map, diagnostics };
+  return { map, visual: compileVisual(document), diagnostics };
+}
+
+function validateVisual(document: MapDocument): Array<{ code: string; message: string; propId?: string }> {
+  const issues: Array<{ code: string; message: string; propId?: string }> = [];
+  if (!(TERRAIN_STYLE_IDS as readonly string[]).includes(document.visual.terrain.style)) {
+    issues.push({ code: "terrain-style", message: `不支持的地貌风格：${String(document.visual.terrain.style)}` });
+  }
+  if (!isRoadStyle(document.visual.roads.style)) {
+    issues.push({ code: "road-style", message: `不支持的道路风格：${String(document.visual.roads.style)}` });
+  }
+  if (document.visual.roads.width < 0.6 || document.visual.roads.width > 6) {
+    issues.push({ code: "road-width", message: "道路宽度必须在 0.6 到 6 之间" });
+  }
+  if (document.visual.props.length > MAX_PROPS) {
+    issues.push({ code: "prop-count", message: `装饰不能超过 ${MAX_PROPS} 个` });
+  }
+  const ids = new Set<string>();
+  for (const prop of document.visual.props) {
+    if (ids.has(prop.id)) {
+      issues.push({ code: "duplicate-prop", message: `装饰编号重复：${prop.id}`, propId: prop.id });
+    }
+    ids.add(prop.id);
+    if (!isAssetId(prop.assetId)) {
+      issues.push({ code: "prop-asset", message: `${prop.id} 的资产 ID 无效`, propId: prop.id });
+    }
+    if (
+      prop.pos[0] < -document.size[0] / 2 ||
+      prop.pos[0] > document.size[0] / 2 ||
+      prop.pos[1] < -document.size[1] / 2 ||
+      prop.pos[1] > document.size[1] / 2
+    ) {
+      issues.push({ code: "prop-outside", message: `${prop.id} 超出地图边界`, propId: prop.id });
+    }
+    if (prop.scale < 0.1 || prop.scale > 10) {
+      issues.push({ code: "prop-scale", message: `${prop.id} 的缩放超出范围`, propId: prop.id });
+    }
+  }
+  return issues;
 }
 
 export function serializeDocument(document: MapDocument): string {

@@ -1,26 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { validateMap } from "@marchlands/content";
 import {
+  addProp,
   addSite,
   compileDocument,
   connect,
   createStarterDocument,
   disconnect,
   fromMapDef,
+  moveProp,
   moveSite,
   parseDocument,
+  removeProp,
   removeSite,
   serializeDocument,
+  updateProp,
   updateSite,
+  updateTerrain,
 } from "../src";
 
 describe("map authoring", () => {
-  it("compiles a valid starter document", () => {
+  it("compiles a valid starter document with a visual layer", () => {
     const result = compileDocument(createStarterDocument());
     expect(result.diagnostics.filter((entry) => entry.severity === "error")).toHaveLength(0);
     expect(result.map.cities).toHaveLength(4);
     expect(result.map.edges).toHaveLength(4);
     expect(result.map.edges.find((edge) => edge.from === "c1" && edge.to === "c4")?.length).toBe(400);
+    expect(result.visual.props.length).toBeGreaterThan(40);
+    expect(result.visual.terrain.style).toBe("frontier");
     expect(() => validateMap(result.map)).not.toThrow();
   });
 
@@ -87,13 +94,62 @@ describe("map authoring", () => {
     const parsed = parseDocument(JSON.parse(serializeDocument(starter)));
     expect(parsed.document).toEqual(starter);
     const map = compileDocument(starter).map;
-    expect(fromMapDef(map)).toEqual(starter);
-    expect(parseDocument(JSON.parse(JSON.stringify(map))).document).toEqual(starter);
+    const imported = fromMapDef(map);
+    expect(imported.sites).toEqual(starter.sites);
+    expect(imported.roads).toEqual(starter.roads);
+    expect(imported.visual.props).toEqual([]);
+    expect(parseDocument(JSON.parse(JSON.stringify(map))).document.schema).toBe(2);
   });
 
-  it("rejects malformed site entries instead of silently dropping them", () => {
+  it("upgrades a schema 1 document with default visual settings", () => {
+    const legacy = { ...createStarterDocument(), schema: 1 } as Record<string, unknown>;
+    delete legacy.visual;
+    const parsed = parseDocument(legacy);
+    expect(parsed.document.schema).toBe(2);
+    expect(parsed.document.visual.props).toEqual([]);
+    expect(parsed.document.visual.terrain.style).toBe("frontier");
+  });
+
+  it("adds, updates, moves and removes visual props", () => {
+    const starter = createStarterDocument();
+    const added = addProp(starter, "builtin:prop.tree_oak", [0, 0], 15, 1.4);
+    expect(added.prop.id).toMatch(/^p\d+$/);
+    const propId = added.prop.id;
+    expect(added.document.visual.props.some((prop) => prop.id === propId)).toBe(true);
+    const moved = moveProp(added.document, propId, [12, -8]);
+    expect(moved.visual.props.find((prop) => prop.id === propId)?.pos).toEqual([12, -8]);
+    const updated = updateProp(moved, propId, { rotation: 370, scale: 2 });
+    expect(updated.visual.props.find((prop) => prop.id === propId)?.rotation).toBe(10);
+    const removed = removeProp(updated, propId);
+    expect(removed.visual.props.some((prop) => prop.id === propId)).toBe(false);
+  });
+
+  it("updates terrain settings without touching simulation data", () => {
+    const starter = createStarterDocument();
+    const next = updateTerrain(starter, { style: "autumn", amplitude: 1.2 });
+    expect(next.visual.terrain.style).toBe("autumn");
+    expect(compileDocument(next).map).toEqual(compileDocument(starter).map);
+  });
+
+  it("reports props outside the map bounds", () => {
+    const starter = createStarterDocument();
+    starter.visual.props.push({
+      id: "bad",
+      assetId: "builtin:prop.tree_oak",
+      pos: [99999, 0],
+      rotation: 0,
+      scale: 1,
+    });
+    const result = compileDocument(starter);
+    expect(result.diagnostics.some((entry) => entry.code === "prop-outside")).toBe(true);
+  });
+
+  it("rejects malformed site and prop entries instead of silently dropping them", () => {
     const malformed = { ...createStarterDocument(), sites: [{ id: "broken" }] };
     expect(() => parseDocument(malformed)).toThrow();
+    const badProp = createStarterDocument();
+    badProp.visual.props = [{ id: "p1", assetId: "not-a-namespace", pos: [0, 0], rotation: 0, scale: 1 }];
+    expect(() => parseDocument(JSON.parse(serializeDocument(badProp)))).toThrow();
   });
 
   it("reports disconnected and insufficient-town documents", () => {

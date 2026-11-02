@@ -1,6 +1,14 @@
 import type { CityId, Level, Owner, SiteKind } from "@marchlands/sim";
 import { cloneDocument } from "./document";
-import type { MapDocument, RoadDraft, SiteDraft } from "./types";
+import type {
+  MapDocument,
+  PropDraft,
+  RoadDraft,
+  RoadVisualDraft,
+  SiteDraft,
+  TerrainDraft,
+} from "./types";
+import { cloneVisual } from "./visual";
 
 export function clampPosition(document: MapDocument, pos: [number, number]): [number, number] {
   const halfW = Math.floor(document.size[0] / 2);
@@ -17,6 +25,13 @@ export function nextSiteId(document: MapDocument, kind: SiteKind): CityId {
   const used = new Set(document.sites.map((site) => site.id));
   while (used.has(prefix + String(next))) next += 1;
   return prefix + String(next);
+}
+
+export function nextPropId(document: MapDocument): string {
+  const used = new Set(document.visual.props.map((prop) => prop.id));
+  let next = 1;
+  while (used.has(`p${next}`)) next += 1;
+  return `p${next}`;
 }
 
 export function addSite(
@@ -156,11 +171,84 @@ export function disconnect(document: MapDocument, from: CityId, to: CityId): Map
   return next;
 }
 
-export function updateDocument(document: MapDocument, patch: Partial<Omit<MapDocument, "sites" | "roads">>): MapDocument {
+export function addProp(
+  document: MapDocument,
+  assetId: string,
+  pos: [number, number],
+  rotation = 0,
+  scale = 1,
+): { document: MapDocument; prop: PropDraft } {
+  const next = cloneDocument(document);
+  const prop: PropDraft = {
+    id: nextPropId(next),
+    assetId,
+    pos: clampPosition(next, pos),
+    rotation: ((rotation % 360) + 360) % 360,
+    scale: Math.min(10, Math.max(0.1, scale)),
+  };
+  next.visual.props.push(prop);
+  return { document: next, prop };
+}
+
+export function moveProp(document: MapDocument, id: string, pos: [number, number]): MapDocument {
+  const next = cloneDocument(document);
+  const prop = next.visual.props.find((entry) => entry.id === id);
+  if (!prop) return next;
+  prop.pos = clampPosition(next, pos);
+  return next;
+}
+
+export function updateProp(
+  document: MapDocument,
+  id: string,
+  patch: Partial<Omit<PropDraft, "id">>,
+): MapDocument {
+  const next = cloneDocument(document);
+  const prop = next.visual.props.find((entry) => entry.id === id);
+  if (!prop) return next;
+  Object.assign(prop, patch);
+  prop.pos = clampPosition(next, prop.pos);
+  prop.rotation = ((prop.rotation % 360) + 360) % 360;
+  prop.scale = Math.min(10, Math.max(0.1, prop.scale));
+  return next;
+}
+
+export function removeProp(document: MapDocument, id: string): MapDocument {
+  const next = cloneDocument(document);
+  next.visual.props = next.visual.props.filter((prop) => prop.id !== id);
+  return next;
+}
+
+export function updateTerrain(document: MapDocument, patch: Partial<TerrainDraft>): MapDocument {
+  const next = cloneDocument(document);
+  next.visual.terrain = { ...next.visual.terrain, ...patch };
+  return next;
+}
+
+export function updateRoadVisual(document: MapDocument, patch: Partial<RoadVisualDraft>): MapDocument {
+  const next = cloneDocument(document);
+  next.visual.roads = { ...next.visual.roads, ...patch };
+  return next;
+}
+
+export function updateScatter(document: MapDocument, scatter: boolean): MapDocument {
+  const next = cloneDocument(document);
+  next.visual.scatter = scatter;
+  return next;
+}
+
+export function updateDocument(
+  document: MapDocument,
+  patch: Partial<Omit<MapDocument, "sites" | "roads">>,
+): MapDocument {
+  const next = cloneDocument(document);
   return {
-    ...cloneDocument(document),
+    ...next,
     ...patch,
     size: patch.size ? [patch.size[0], patch.size[1]] : [document.size[0], document.size[1]],
-    players: patch.players ? patch.players.map((player) => ({ ...player })) : document.players.map((player) => ({ ...player })),
+    players: patch.players
+      ? patch.players.map((player) => ({ ...player }))
+      : document.players.map((player) => ({ ...player })),
+    visual: patch.visual ? cloneVisual(patch.visual) : next.visual,
   };
 }
