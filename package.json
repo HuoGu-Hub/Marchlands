@@ -12,6 +12,7 @@
     "sim:forest01": "pnpm --filter @marchlands/harness start -- --matches 100",
     "validate:content": "pnpm --filter @marchlands/content validate",
     "build:forest01": "pnpm --filter @marchlands/map-export build:forest01",
+    "build:crossroads01": "pnpm --filter @marchlands/map-export build:crossroads01",
     "dev": "pnpm --filter @marchlands/client dev",
     "package:win": "pnpm --filter @marchlands/client package:win",
     "test:e2e": "playwright test"

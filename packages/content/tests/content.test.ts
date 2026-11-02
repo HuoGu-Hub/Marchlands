@@ -82,6 +82,42 @@ describe("forest01", () => {
   });
 });
 
+describe("crossroads01", () => {
+  const { map, rules } = loadContent("maps/crossroads01.json");
+
+  it("loads twenty sites with twelve towns", () => {
+    expect(map.cities).toHaveLength(20);
+    expect(map.cities.filter((city) => city.kind === "town")).toHaveLength(12);
+    expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
+    expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
+    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(18);
+    expect(map.players).toHaveLength(2);
+    expect(map.edges).toHaveLength(31);
+    expect(map.cities.every((city) => city.layer === 0)).toBe(true);
+  });
+
+  it("keeps special buildings as watched roadside leaves", () => {
+    for (const granary of map.cities.filter((city) => city.kind === "granary")) {
+      expect(map.edges.filter((edge) => edge.from === granary.id || edge.to === granary.id)).toHaveLength(1);
+    }
+    for (const outpost of map.cities.filter((city) => city.kind === "outpost")) {
+      expect(map.edges.filter((edge) => edge.from === outpost.id || edge.to === outpost.id)).toHaveLength(1);
+      const watch = outpost.watch as [string, string];
+      expect(
+        map.edges.some(
+          (edge) =>
+            (edge.from === watch[0] && edge.to === watch[1]) ||
+            (edge.from === watch[1] && edge.to === watch[0]),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("passes full content validation", () => {
+    expect(() => validateContent(map, rules)).not.toThrow();
+  });
+});
+
 describe("validation", () => {
   const { map, rules } = loadContent();
 

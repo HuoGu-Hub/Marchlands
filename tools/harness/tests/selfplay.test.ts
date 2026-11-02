@@ -27,6 +27,15 @@ describe("self play", () => {
     expect(first.state.tick).toBe(second.state.tick);
   });
 
+  it("finishes every seeded match on crossroads01", () => {
+    const crossroads = loadContent("maps/crossroads01.json");
+    for (let seed = 1; seed <= 5; seed += 1) {
+      const { state } = runMatch(crossroads.map, crossroads.rules, seed);
+      expect(state.status, `seed ${seed}`).toBe("finished");
+      expect(state.tick).toBeLessThanOrEqual(crossroads.rules.maxTicks);
+    }
+  });
+
   it("flips the winner when the seats are mirrored", () => {
     const mirrored = {
       ...map,

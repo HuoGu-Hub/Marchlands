@@ -1,0 +1,454 @@
+{
+  "schema": 1,
+  "slug": "crossroads01",
+  "name": "Crossroads 01",
+  "biome": "frontier",
+  "size": [
+    600,
+    600
+  ],
+  "scale": 0.1,
+  "ruleset": "1",
+  "players": [
+    {
+      "id": 1,
+      "name": "Player",
+      "color": "green",
+      "ai": false
+    },
+    {
+      "id": 2,
+      "name": "AI",
+      "color": "red",
+      "ai": true
+    }
+  ],
+  "cities": [
+    {
+      "id": "c1",
+      "kind": "town",
+      "owner": 1,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -240,
+        -180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c2",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        -80,
+        -180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c3",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        80,
+        -180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c4",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        240,
+        -180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c5",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -240,
+        0
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c6",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -80,
+        0
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c7",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        80,
+        0
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c8",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        240,
+        0
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c9",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        -240,
+        180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c10",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -80,
+        180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c11",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        80,
+        180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c12",
+      "kind": "town",
+      "owner": 2,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        240,
+        180
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g1",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -240,
+        -260
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g2",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        160,
+        80
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g3",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -160,
+        240
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g4",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        240,
+        260
+      ],
+      "layer": 0
+    },
+    {
+      "id": "o1",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -240,
+        80
+      ],
+      "layer": 0,
+      "stance": "evade",
+      "watch": [
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "id": "o2",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -80,
+        -240
+      ],
+      "layer": 0,
+      "stance": "evade",
+      "watch": [
+        "c2",
+        "c3"
+      ]
+    },
+    {
+      "id": "o3",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        80,
+        240
+      ],
+      "layer": 0,
+      "stance": "evade",
+      "watch": [
+        "c11",
+        "c12"
+      ]
+    },
+    {
+      "id": "o4",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        290,
+        0
+      ],
+      "layer": 0,
+      "stance": "evade",
+      "watch": [
+        "c4",
+        "c8"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "c1",
+      "to": "c2",
+      "length": 160
+    },
+    {
+      "from": "c2",
+      "to": "c3",
+      "length": 160
+    },
+    {
+      "from": "c3",
+      "to": "c4",
+      "length": 160
+    },
+    {
+      "from": "c5",
+      "to": "c6",
+      "length": 160
+    },
+    {
+      "from": "c6",
+      "to": "c7",
+      "length": 160
+    },
+    {
+      "from": "c7",
+      "to": "c8",
+      "length": 160
+    },
+    {
+      "from": "c9",
+      "to": "c10",
+      "length": 160
+    },
+    {
+      "from": "c10",
+      "to": "c11",
+      "length": 160
+    },
+    {
+      "from": "c11",
+      "to": "c12",
+      "length": 160
+    },
+    {
+      "from": "c1",
+      "to": "c5",
+      "length": 180
+    },
+    {
+      "from": "c5",
+      "to": "c9",
+      "length": 180
+    },
+    {
+      "from": "c2",
+      "to": "c6",
+      "length": 180
+    },
+    {
+      "from": "c6",
+      "to": "c10",
+      "length": 180
+    },
+    {
+      "from": "c3",
+      "to": "c7",
+      "length": 180
+    },
+    {
+      "from": "c7",
+      "to": "c11",
+      "length": 180
+    },
+    {
+      "from": "c4",
+      "to": "c8",
+      "length": 180
+    },
+    {
+      "from": "c8",
+      "to": "c12",
+      "length": 180
+    },
+    {
+      "from": "c1",
+      "to": "c6",
+      "length": 241
+    },
+    {
+      "from": "c3",
+      "to": "c6",
+      "length": 241
+    },
+    {
+      "from": "c7",
+      "to": "c12",
+      "length": 241
+    },
+    {
+      "from": "c8",
+      "to": "c11",
+      "length": 241
+    },
+    {
+      "from": "c2",
+      "to": "c5",
+      "length": 241
+    },
+    {
+      "from": "c4",
+      "to": "c7",
+      "length": 241
+    },
+    {
+      "from": "c1",
+      "to": "g1",
+      "length": 80
+    },
+    {
+      "from": "c7",
+      "to": "g2",
+      "length": 113
+    },
+    {
+      "from": "c10",
+      "to": "g3",
+      "length": 100
+    },
+    {
+      "from": "c12",
+      "to": "g4",
+      "length": 80
+    },
+    {
+      "from": "c5",
+      "to": "o1",
+      "length": 80
+    },
+    {
+      "from": "c2",
+      "to": "o2",
+      "length": 60
+    },
+    {
+      "from": "c11",
+      "to": "o3",
+      "length": 60
+    },
+    {
+      "from": "c8",
+      "to": "o4",
+      "length": 50
+    }
+  ],
+  "objectives": [
+    {
+      "type": "capture_all"
+    },
+    {
+      "type": "time_limit",
+      "ticks": 18000
+    }
+  ]
+}

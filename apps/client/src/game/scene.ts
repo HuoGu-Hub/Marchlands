@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
 import { art } from "./assets";
-import { buildTown, buildWall, paletteFor } from "./buildings";
+import { buildBuilding, buildTown, buildWall, paletteFor } from "./buildings";
 import { UnitActor } from "./unit-actor";
 import type { UnitKind } from "./unit-models";
 
@@ -14,8 +14,9 @@ const PLAYER_COLORS: Record<Owner, number> = {
 const PITCH = (55 * Math.PI) / 180;
 const CAMERA_DISTANCE = 90;
 const VIEW_HEIGHT = 57;
-const ZOOM_MIN = 1;
+const ZOOM_MIN = 0.7;
 const ZOOM_MAX = 2.4;
+const DEFAULT_ZOOM = 1.12;
 
 const TREE_SPECIES = ["tree_pineTallA", "tree_oak", "tree_detailed", "tree_default", "tree_pineRoundC"];
 const ROCK_SPECIES = ["rock_largeB", "rock_smallA", "rock_smallB"];
@@ -76,6 +77,7 @@ export class BattleScene {
     this.scene.fog = new THREE.Fog(0x0c120e, 125, 195);
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 260);
+    this.zoom = this.fitZoom();
 
     for (const city of map.cities) {
       this.positions.set(city.id, new THREE.Vector3(city.pos[0] / 10, 0, city.pos[1] / 10));
@@ -340,9 +342,14 @@ export class BattleScene {
     view.model.clear();
     const seed = hashId(city.id) + city.level * 17;
     const palette = paletteFor(city.owner);
-    const built = buildTown(city.level, palette, seed);
-    built.add(buildWall(city.level, palette, 4.5));
-    view.model.add(built);
+    if (city.kind === "town") {
+      const built = buildTown(city.level, palette, seed);
+      built.add(buildWall(city.level, palette, 4.5));
+      view.model.add(built);
+    } else {
+      const kind = city.kind === "granary" ? "granary" : "tower";
+      view.model.add(buildBuilding(kind, palette, city.level, seed));
+    }
     view.owner = city.owner;
     view.level = city.level;
   }
@@ -699,6 +706,15 @@ export class BattleScene {
     ring.position.y = 0.09;
     this.scene.add(ring);
     return ring;
+  }
+
+  private fitZoom(): number {
+    let radius = 1;
+    for (const city of this.map.cities) {
+      radius = Math.max(radius, Math.hypot(city.pos[0] / 10, city.pos[1] / 10));
+    }
+    const fit = VIEW_HEIGHT / (radius * 2 * 1.12);
+    return THREE.MathUtils.clamp(Math.min(DEFAULT_ZOOM, fit), ZOOM_MIN, ZOOM_MAX);
   }
 
   private resize(): void {

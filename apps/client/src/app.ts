@@ -1,6 +1,8 @@
+import crossroadsMapJson from "@marchlands/content/maps/crossroads01.json";
 import forestMapJson from "@marchlands/content/maps/forest01.json";
 import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
+import { defenseMilliFor } from "@marchlands/sim";
 import type { SimState } from "@marchlands/sim";
 import { audio } from "./audio";
 import { art } from "./game/assets";
@@ -27,7 +29,7 @@ const TEMPLATE = `
       <h1 class="menu-title">MARCH<span>LANDS</span></h1>
       <div class="menu-cn">边境之地</div>
       <div class="menu-rule"></div>
-      <p class="menu-desc">六十米的边境沙盘，七座城镇，一场没有退路的领地战争。派兵、行军、占领，把最后一面旗插满地图。</p>
+      <p class="menu-desc">六十米的边境沙盘，多座城镇与据点，一场没有退路的领地战争。派兵、行军、占领，把最后一面旗插满地图。</p>
     </div>
     <div class="menu-actions">
       <button class="btn primary" id="btn-start">开始游戏</button>
@@ -42,14 +44,21 @@ const TEMPLATE = `
   <div class="stage">
     <div class="panel">
       <div class="kicker">战役简报</div>
-      <h2>Forest 01</h2>
-      <p>你的旗帜插在西侧。东侧的红旗正在集结，五座中立城镇在等待第一个到达的人。</p>
+      <h2 id="brief-title">Forest 01</h2>
+      <p id="brief-desc">你的旗帜插在西侧。东侧的红旗正在集结，五座中立城镇在等待第一个到达的人。</p>
+      <div class="form-row">
+        <label for="map-select">地图</label>
+        <select id="map-select">
+          <option value="forest01">Forest 01</option>
+          <option value="crossroads01">Crossroads 01</option>
+        </select>
+      </div>
       <ul class="brief-list">
-        <li><span>目标</span><b>占领全部 7 座城镇</b></li>
-        <li><span>时限</span><b>15 分钟</b></li>
+        <li><span>目标</span><b id="brief-objective">占领全部 7 座城镇</b></li>
+        <li><span>时限</span><b id="brief-time">15 分钟</b></li>
         <li><span>判定</span><b>城镇数 · 人口 · 金币</b></li>
       </ul>
-      <p>点击己方城镇选中，再点击目标城镇派出一半守军。到达时与守军结算，防御随等级提高。</p>
+      <p>点击己方据点选中，再点击目标据点派出一半守军。点击行军中的兵团可改道或更换目的地；经过岔路口前可以改路，兵团断粮后会掉兵。</p>
       <div class="panel-actions">
         <button class="btn primary" id="btn-brief-start">开始</button>
         <button class="btn" id="btn-brief-back">返回</button>
@@ -212,9 +221,17 @@ interface ResultStats {
   time: string;
 }
 
+interface MapEntry {
+  id: string;
+  content: ReturnType<typeof validateContent>;
+  description: string;
+}
+
 export class App {
   private readonly root: HTMLElement;
-  private readonly content: ReturnType<typeof validateContent>;
+  private readonly mapEntries: Map<string, MapEntry>;
+  private content: ReturnType<typeof validateContent>;
+  private currentMapId: string;
   private settings: Settings = loadSettings();
   private session: GameSession | null = null;
   private page: PageId = "boot";
@@ -222,10 +239,34 @@ export class App {
 
   constructor(root: HTMLElement) {
     this.root = root;
-    this.content = validateContent(forestMapJson, rulesJson);
+    const forest = validateContent(forestMapJson, rulesJson);
+    const crossroads = validateContent(crossroadsMapJson, rulesJson);
+    this.mapEntries = new Map<string, MapEntry>([
+      [
+        "forest01",
+        {
+          id: "forest01",
+          content: forest,
+          description: "你的旗帜插在西侧。东侧的红旗正在集结，五座中立城镇在等待第一个到达的人。",
+        },
+      ],
+      [
+        "crossroads01",
+        {
+          id: "crossroads01",
+          content: crossroads,
+          description:
+            "十二座城镇沿河谷铺开，四条粮道与四个路边驻兵点卡在岔路口。先拿下路口和粮仓的人，才能让兵团走得更远。",
+        },
+      ],
+    ]);
+    const requested = new URLSearchParams(window.location.search).get("map");
+    this.currentMapId = requested && this.mapEntries.has(requested) ? requested : "forest01";
+    this.content = this.mapEntries.get(this.currentMapId)!.content;
     this.root.innerHTML = TEMPLATE;
     this.bind();
     this.syncSettingsForm();
+    this.syncBriefing();
     audio.setVolume(this.settings.volume);
   }
 
@@ -247,7 +288,7 @@ export class App {
   }
 
   private bind(): void {
-    this.on("btn-start", "click", () => this.show("briefing"));
+    this.on("btn-start", "click", () => this.openBriefing());
     this.on("btn-settings", "click", () => this.openSettings());
     this.on("btn-exit", "click", () => this.showOverlay("exit-overlay"));
     this.on("btn-brief-start", "click", () => this.startGame());
@@ -274,6 +315,8 @@ export class App {
     volume.addEventListener("input", () => {
       this.el("set-volume-out").textContent = volume.value;
     });
+    const mapSelect = this.el("map-select") as HTMLSelectElement;
+    mapSelect.addEventListener("change", () => this.selectMap(mapSelect.value));
 
     window.addEventListener("keydown", (event) => this.onKeyDown(event));
     window.addEventListener(
@@ -335,7 +378,7 @@ export class App {
     const stats: ResultStats = {
       won: state.winner === 1,
       draw: state.winner === 0,
-      cities: state.cities.filter((city) => city.owner === 1).length,
+      cities: state.cities.filter((city) => city.owner === 1 && city.kind === "town").length,
       pop: state.cities.filter((city) => city.owner === 1).reduce((sum, city) => sum + city.pop, 0),
       gold: state.players.find((player) => player.id === 1)?.gold ?? 0,
       time: this.formatTime(state.tick),
@@ -389,6 +432,38 @@ export class App {
     this.hideOverlay("confirm-overlay");
     this.updateCityPanel(null);
     this.show("menu");
+  }
+
+  private openBriefing(): void {
+    this.syncBriefing();
+    this.show("briefing");
+  }
+
+  private selectMap(id: string): void {
+    const entry = this.mapEntries.get(id);
+    if (!entry) return;
+    this.currentMapId = id;
+    this.content = entry.content;
+    this.syncBriefing();
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("map", id);
+      window.history.replaceState(null, "", url);
+    } catch {
+      // file:// pages can reject history updates
+    }
+  }
+
+  private syncBriefing(): void {
+    const entry = this.mapEntries.get(this.currentMapId);
+    if (!entry) return;
+    const towns = entry.content.map.cities.filter((city) => city.kind === "town").length;
+    const minutes = Math.round(entry.content.rules.maxTicks / entry.content.rules.tickHz / 60);
+    this.el("brief-title").textContent = entry.content.map.name;
+    this.el("brief-desc").textContent = entry.description;
+    this.el("brief-objective").textContent = `占领全部 ${towns} 座城镇`;
+    this.el("brief-time").textContent = `${minutes} 分钟`;
+    (this.el("map-select") as HTMLSelectElement).value = this.currentMapId;
   }
 
   private openSettings(): void {
@@ -464,7 +539,8 @@ export class App {
       return;
     }
     panel.classList.add("on");
-    this.el("city-name").textContent = city.id;
+    const kindLabel = city.kind === "town" ? "城镇" : city.kind === "granary" ? "粮仓" : "驻兵点";
+    this.el("city-name").textContent = `${city.id} · ${kindLabel}`;
     this.el("city-level").textContent = `LV.${city.level}`;
     this.el("city-pop").textContent = String(city.pop);
     this.el("city-max").textContent = String(city.maxPop);
@@ -475,12 +551,17 @@ export class App {
     fill.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#b3ab97";
     const pips = this.el("city-pips").querySelectorAll("i");
     pips.forEach((pip, index) => pip.classList.toggle("on", index < city.level));
-    const defense = [1, 1.1, 1.2][city.level - 1] ?? 1;
+    const defense = defenseMilliFor(city, this.content.rules) / 1000;
     this.el("city-defense").textContent = defense.toFixed(2);
     const cost = [15, 22, 32][city.level - 1] ?? 0;
     const button = this.el("city-upgrade") as HTMLButtonElement;
-    button.textContent = city.level >= 3 ? "已满级" : `升级 · ${cost}`;
-    button.disabled = city.level >= 3 || city.pop < cost;
+    if (city.kind !== "town") {
+      button.textContent = "不可升级";
+      button.disabled = true;
+    } else {
+      button.textContent = city.level >= 3 ? "已满级" : `升级 · ${cost}`;
+      button.disabled = city.level >= 3 || city.pop < cost;
+    }
   }
 
   private formatTime(ticks: number): string {

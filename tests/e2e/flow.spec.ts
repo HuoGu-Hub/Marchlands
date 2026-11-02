@@ -69,6 +69,18 @@ test("height test scene boots with a live canvas", async ({ page }) => {
   expect(size.height).toBeGreaterThan(0);
 });
 
+test("loads the crossroads01 map and selector", async ({ page }) => {
+  await page.goto("/?map=crossroads01");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-start");
+  await expect(page.locator("#brief-title")).toHaveText("Crossroads 01");
+  await expect(page.locator("#brief-objective")).toContainText("12");
+  await expect(page.locator("#map-select")).toHaveValue("crossroads01");
+  await page.click("#btn-brief-start");
+  await expect(page.locator("#page-game")).toBeVisible();
+  await expect(page.locator("#hud-cities")).toHaveText("1");
+});
+
 test("result screen appears at the time limit", async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto("/?speed=20");
