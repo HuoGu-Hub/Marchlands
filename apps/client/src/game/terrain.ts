@@ -197,6 +197,8 @@ export interface Terrain {
   setNavPreview(visible: boolean): void;
   bounds: TerrainBounds;
   island: IslandMetrics;
+  islandGroup: THREE.Group;
+  islandSignature: string;
 }
 
 function isSteepCell(grid: NavGrid, x: number, z: number): boolean {
@@ -318,7 +320,7 @@ function surfaceColor(surface: number, palette: TerrainStylePalette): number {
 export function buildTerrain(
   map: MapDef,
   positions: Map<CityId, THREE.Vector3>,
-  options: { style?: string; seed?: number; amplitude?: number } = {},
+  options: { style?: string; seed?: number; amplitude?: number; previous?: Terrain } = {},
 ): Terrain {
   const style = options.style ?? "frontier";
   const palette = TERRAIN_PALETTES[style] ?? TERRAIN_PALETTES.frontier;
@@ -437,9 +439,20 @@ export function buildTerrain(
 
   const group = new THREE.Group();
   group.add(terrainMesh);
-  const island = buildIsland(minX, maxX, minZ, maxZ, heightAt, palette, seed);
-  group.add(island.group);
   const bounds = { minX, maxX, minZ, maxZ };
+  const islandSignature = boundarySignature(bounds, heightAt);
+  let islandGroup: THREE.Group;
+  let island: IslandMetrics;
+  if (navGrid && options.previous && options.previous.islandSignature === islandSignature) {
+    islandGroup = options.previous.islandGroup;
+    island = options.previous.island;
+    options.previous.group.remove(islandGroup);
+  } else {
+    const built = buildIsland(minX, maxX, minZ, maxZ, heightAt, palette, seed);
+    islandGroup = built.group;
+    island = built.metrics;
+  }
+  group.add(islandGroup);
   const navOverlay = navGrid ? buildNavOverlay(navGrid, map) : null;
   if (navOverlay) group.add(navOverlay);
   const setNavPreview = (visible: boolean): void => {
@@ -447,7 +460,7 @@ export function buildTerrain(
   };
 
   if (navGrid) {
-    return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview, bounds, island: island.metrics };
+    return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview, bounds, island, islandGroup, islandSignature };
   }
 
   const random = seeded(20261123);
@@ -482,7 +495,7 @@ export function buildTerrain(
     group.add(buildMesa(site.x, site.z, 1.1 + random() * 0.2, heightAt, random, palette));
   }
 
-  return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview, bounds, island: island.metrics };
+  return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview, bounds, island, islandGroup, islandSignature };
 }
 
 function isClear(
@@ -780,6 +793,23 @@ function buildIslandBase(
     group.add(rock);
   }
   return group;
+}
+
+function boundarySignature(bounds: TerrainBounds, heightAt: (x: number, z: number) => number): string {
+  const parts: number[] = [];
+  const steps = 16;
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    const x = bounds.minX + (bounds.maxX - bounds.minX) * t;
+    const z = bounds.minZ + (bounds.maxZ - bounds.minZ) * t;
+    parts.push(
+      Math.round(heightAt(x, bounds.minZ) * 100),
+      Math.round(heightAt(x, bounds.maxZ) * 100),
+      Math.round(heightAt(bounds.minX, z) * 100),
+      Math.round(heightAt(bounds.maxX, z) * 100),
+    );
+  }
+  return parts.join(",");
 }
 
 function buildIsland(

@@ -729,11 +729,18 @@ export class BattleScene {
     this.scene.add(rim);
   }
 
-  private buildGround(): void {
+  private buildGround(previous?: Terrain, reuseIsland = false): void {
     const terrain = this.visual?.terrain;
-    this.terrain = buildTerrain(this.map, this.positions, terrain);
+    this.terrain = buildTerrain(this.map, this.positions, {
+      ...terrain,
+      ...(reuseIsland && previous ? { previous } : {}),
+    });
+    if (previous) {
+      this.scene.remove(previous.group);
+      disposeObject(previous.group);
+    }
     this.scene.add(this.terrain.group);
-    this.rebuildAtmosphere(terrain?.style);
+    if (!(previous && reuseIsland)) this.rebuildAtmosphere(terrain?.style);
   }
 
   private rebuildAtmosphere(style: string | undefined): void {
@@ -777,11 +784,17 @@ export class BattleScene {
   }
 
   updateTerrain(map: MapDef, visual: MapVisual | null): void {
+    const previous = this.terrain;
+    const previousVisual = this.visual;
+    const reuseIsland = Boolean(
+      previousVisual &&
+        previousVisual.terrain.style === visual?.terrain.style &&
+        previousVisual.terrain.seed === visual?.terrain.seed &&
+        previousVisual.terrain.amplitude === visual?.terrain.amplitude,
+    );
     this.map = map;
     this.visual = visual;
-    this.scene.remove(this.terrain.group);
-    disposeObject(this.terrain.group);
-    this.buildGround();
+    this.buildGround(previous, reuseIsland);
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
     }

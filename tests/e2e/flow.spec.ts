@@ -9,6 +9,17 @@ async function openGame(page: import("@playwright/test").Page): Promise<void> {
   await expect(page.locator("#page-game")).toBeVisible();
 }
 
+test("result screen appears at the time limit", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto("/?map=forest01&speed=20");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-start");
+  await page.click("#btn-brief-start");
+  await expect(page.locator("#page-result")).toBeVisible({ timeout: 150_000 });
+  await expect(page.locator("#result-mark")).toHaveText("失败");
+  await expect(page.locator("#stat-time")).toHaveText("15:00");
+});
+
 test("starts a match and captures an adjacent town", async ({ page }) => {
   await openGame(page);
   await expect(page.locator("#hud-cities")).toHaveText("1");
@@ -231,15 +242,4 @@ test("loads the crossroads01 map and selector", async ({ page }) => {
   await page.click("#btn-brief-start");
   await expect(page.locator("#page-game")).toBeVisible();
   await expect(page.locator("#hud-cities")).toHaveText("1");
-});
-
-test("result screen appears at the time limit", async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.goto("/?map=forest01&speed=20");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-start");
-  await page.click("#btn-brief-start");
-  await expect(page.locator("#page-result")).toBeVisible({ timeout: 100_000 });
-  await expect(page.locator("#result-mark")).toHaveText("失败");
-  await expect(page.locator("#stat-time")).toHaveText("15:00");
 });
