@@ -64,7 +64,7 @@ export class GameSession {
     const requested = Number(new URLSearchParams(window.location.search).get("speed") ?? "1");
     this.timeScale = import.meta.env.DEV ? Math.max(1, Math.min(20, Number.isFinite(requested) ? requested : 1)) : 1;
     this.ai = createAi(2);
-    this.state = createGame(options.map, Math.floor(Math.random() * 1_000_000_000), options.rules);
+    this.state = createGame(options.map, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
     this.scene = new BattleScene(options.canvas, options.map);
     this.routeOverlay = new RouteOverlay({
       canvas: options.canvas,
@@ -74,6 +74,14 @@ export class GameSession {
     this.bindInput();
     this.select("c1");
     this.updateHud();
+  }
+
+  private slowRules() {
+    if (!this.options.rules) return undefined;
+    return {
+      ...this.options.rules,
+      speedDmPerSecond: Math.max(1, this.options.rules.speedDmPerSecond * 0.7),
+    };
   }
 
   start(): void {
@@ -99,7 +107,7 @@ export class GameSession {
   restart(): void {
     this.routeOverlay.dispose();
     this.scene.dispose();
-    this.state = createGame(this.options.map, Math.floor(Math.random() * 1_000_000_000), this.options.rules);
+    this.state = createGame(this.options.map, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
     this.scene = new BattleScene(this.options.canvas, this.options.map);
     this.routeOverlay = new RouteOverlay({
       canvas: this.options.canvas,

@@ -3,13 +3,13 @@ import { buildTown, buildWall, paletteFor } from "./buildings";
 
 const PITCH = (55 * Math.PI) / 180;
 const DISTANCE = 96;
-const VIEW_HEIGHT = 20;
+const VIEW_HEIGHT = 16;
 const TARGET = new THREE.Vector3(0, 1.2, 0);
 
 const TOWNS = [
-  { x: -9.8, level: 1, owner: 0, title: "L1 村庄 · 中立", color: "#c2bcaa" },
-  { x: 0, level: 2, owner: 1, title: "L2 城镇 · 绿方", color: "#8ed9a0" },
-  { x: 9.8, level: 3, owner: 2, title: "L3 要塞 · 红方", color: "#ef9278" },
+  { x: -7.4, level: 1, owner: 0, title: "L1 据点 · 中立", color: "#c2bcaa", kind: "infantry" as const },
+  { x: 0, level: 2, owner: 1, title: "L2 据点 · 绿方", color: "#8ed9a0", kind: "elite" as const },
+  { x: 7.4, level: 3, owner: 2, title: "L3 据点 · 红方", color: "#ef9278", kind: "cavalry" as const },
 ];
 
 export function runTownShowcase(host: HTMLElement): void {
@@ -17,7 +17,7 @@ export function runTownShowcase(host: HTMLElement): void {
     '<canvas id="town-canvas"></canvas>',
     '<div class="hud">',
     '  <div class="hud-left">',
-    '    <div class="chip">城镇组合 <b>L1 / L2 / L3</b></div>',
+    '    <div class="chip">单建筑据点 <b>L1 / L2 / L3</b></div>',
     '    <div class="chip">屋顶与旗帜 <b>阵营色</b></div>',
     '    <div class="chip">建筑外形 <b>类型</b></div>',
     '  </div>',
@@ -105,13 +105,13 @@ class TownShowcase {
     this.scene.add(grid);
 
     for (const town of TOWNS) {
-      const group = buildTown(town.level, paletteFor(town.owner), town.owner * 31 + town.level);
-      group.add(buildWall(town.level, paletteFor(town.owner), 4.5));
+      const group = buildTown(town.level, paletteFor(town.owner), town.owner * 31 + town.level, town.kind);
+      group.add(buildWall(town.level, paletteFor(town.owner), 3.3));
       group.position.set(town.x, 0, 0);
       this.scene.add(group);
 
       const shadow = new THREE.Mesh(
-        new THREE.CircleGeometry(5.8, 30),
+        new THREE.CircleGeometry(4.2, 30),
         new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }),
       );
       shadow.rotation.x = -Math.PI / 2;
@@ -119,7 +119,7 @@ class TownShowcase {
       this.scene.add(shadow);
 
       const apron = new THREE.Mesh(
-        new THREE.CylinderGeometry(4.95, 5.25, 0.16, 12),
+        new THREE.CylinderGeometry(3.7, 3.9, 0.16, 12),
         new THREE.MeshStandardMaterial({ color: 0x3d4f34, roughness: 1, flatShading: true }),
       );
       apron.position.set(town.x, 0.08, 0);
@@ -127,12 +127,12 @@ class TownShowcase {
 
       const side = new THREE.MeshStandardMaterial({ color: 0x6a6150, roughness: 1, flatShading: true });
       const top = new THREE.MeshStandardMaterial({ color: 0x8a8270, roughness: 0.95 });
-      const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.7, 5.0, 0.22, 10), [side, top, side]);
+      const platform = new THREE.Mesh(new THREE.CylinderGeometry(3.45, 3.7, 0.22, 10), [side, top, side]);
       platform.position.set(town.x, 0.11, 0);
       this.scene.add(platform);
 
       const caption = label(town.title, town.color);
-      caption.position.set(town.x, 1.0, 6.0);
+      caption.position.set(town.x, 1.0, 4.6);
       this.scene.add(caption);
     }
   }

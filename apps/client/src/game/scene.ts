@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
 import { art } from "./assets";
-import { buildBuilding, buildTown, buildWall, paletteFor } from "./buildings";
+import { buildBuilding, buildTown, buildWall, paletteFor, townBuildingKind } from "./buildings";
 import { UnitActor } from "./unit-actor";
 import type { UnitKind } from "./unit-models";
 
@@ -121,7 +121,7 @@ export class BattleScene {
   pickCity(clientX: number, clientY: number, state: SimState): CityId | null {
     const rect = this.canvas.getBoundingClientRect();
     let bestId: CityId | null = null;
-    let bestDistance = 48;
+    let bestDistance = 72;
     for (const city of state.cities) {
       const position = this.positions.get(city.id);
       if (!position) continue;
@@ -198,7 +198,7 @@ export class BattleScene {
         this.rebuildCityModel(view, city);
       }
 
-      view.label.position.y = 5.4;
+      view.label.position.y = 3.9;
       const label = `${city.id} · L${city.level}\n${city.pop}/${city.maxPop}`;
       if (label !== view.labelText) {
         view.labelText = label;
@@ -279,7 +279,7 @@ export class BattleScene {
     group.position.copy(position);
 
     const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(5.8, 30),
+      new THREE.CircleGeometry(4.2, 30),
       new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }),
     );
     shadow.rotation.x = -Math.PI / 2;
@@ -287,7 +287,7 @@ export class BattleScene {
     group.add(shadow);
 
     const apron = new THREE.Mesh(
-      new THREE.CylinderGeometry(4.95, 5.25, 0.16, 12),
+      new THREE.CylinderGeometry(3.7, 3.9, 0.16, 12),
       new THREE.MeshStandardMaterial({ color: 0x3d4f34, roughness: 1, flatShading: true }),
     );
     apron.position.y = 0.08;
@@ -295,7 +295,7 @@ export class BattleScene {
 
     const platformSide = new THREE.MeshStandardMaterial({ color: 0x6a6150, roughness: 1, flatShading: true });
     const platformTop = new THREE.MeshStandardMaterial({ map: flagstoneTexture(), roughness: 0.95 });
-    const platform = new THREE.Mesh(new THREE.CylinderGeometry(4.7, 5.0, 0.22, 10), [
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(3.45, 3.7, 0.22, 10), [
       platformSide,
       platformTop,
       platformSide,
@@ -315,8 +315,8 @@ export class BattleScene {
     const label = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
-    label.scale.set(5.8, 1.85, 1);
-    label.position.y = 5.4;
+    label.scale.set(4.5, 1.45, 1);
+    label.position.y = 3.9;
     group.add(label);
 
     this.scene.add(group);
@@ -343,8 +343,8 @@ export class BattleScene {
     const seed = hashId(city.id) + city.level * 17;
     const palette = paletteFor(city.owner);
     if (city.kind === "town") {
-      const built = buildTown(city.level, palette, seed);
-      built.add(buildWall(city.level, palette, 4.5));
+      const built = buildTown(city.level, palette, seed, townBuildingKind(hashId(city.id)));
+      built.add(buildWall(city.level, palette, 3.3));
       view.model.add(built);
     } else {
       const kind = city.kind === "granary" ? "granary" : "tower";
@@ -467,7 +467,7 @@ export class BattleScene {
   private buildRoads(): void {
     const width = 1.6;
     const centerId = "c3";
-    const cityRadius = () => 5.0;
+    const cityRadius = () => 3.75;
     const roadMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(1, 1), roughness: 1 });
     const plazaMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
     const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xb3aa96, roughness: 1 });
@@ -551,7 +551,7 @@ export class BattleScene {
   private addRoundabout(centerId: string, width: number, plazaMaterial: THREE.Material, curbMaterial: THREE.Material): void {
     const center = this.positions.get(centerId);
     if (!center) return;
-    const inner = 5.0;
+    const inner = 3.75;
     const outer = inner + width;
     const ringMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(10, 2), roughness: 1 });
     const shoulder = new THREE.Mesh(
@@ -643,7 +643,7 @@ export class BattleScene {
       const radius = 15 + random() * 14;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      if (nearCity(this.positions, x, z, 4.7)) continue;
+      if (nearCity(this.positions, x, z, 3.45)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
       plantPlacements.push({ x, z, rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
     }

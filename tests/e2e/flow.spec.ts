@@ -16,8 +16,8 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
 
   await page.waitForTimeout(400);
   await page.mouse.click(420, 352);
-  await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 8_000 });
-  await expect(page.locator("#toast")).toContainText("c4 已占领");
+  await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 20_000 });
+  await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
 });
 
 test("pauses and resumes without losing the match", async ({ page }) => {
