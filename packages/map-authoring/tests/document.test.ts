@@ -255,6 +255,20 @@ describe("map authoring", () => {
     expect(grid.surface[center]).toBe(Surface.Road);
   });
 
+  it("builds bridge surface when a road crosses water", () => {
+    const document = createGridDocument();
+    const grid = document.grid!;
+    for (let x = 20; x <= 50; x += 1) grid.surface[35 * grid.width + x] = Surface.DeepWater;
+    const withRoad = addRoad(document, [
+      [-200, 0],
+      [200, 0],
+    ], { widthDm: 20 });
+    const compiled = compileDocument(withRoad.document);
+    const packed = unpackGridDef(compiled.map.grid!);
+    expect(packed.surface[35 * packed.width + 35]).toBe(Surface.Bridge);
+    expect(Number.isFinite(packed.heightCm[35 * packed.width + 35])).toBe(true);
+  });
+
   it("compiles a grid document with packed heights, footprints and a map hash", () => {
     const document = createGridDocument();
     const result = compileDocument(document);

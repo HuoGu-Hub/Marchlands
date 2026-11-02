@@ -206,13 +206,37 @@ export function gridNavigationIssues(
   return issues;
 }
 
-/** 把道路栅格化为运行时地表层，不改动编辑器文档。 */
+/** 把道路栅格化为运行时地表层，不改动编辑器文档；跨水时生成桥面。 */
+export interface RoadSurfaceResult {
+  surface: Uint8Array;
+  heightCm: number[];
+}
+
+function nearestLandHeight(grid: GridDraft, cx: number, cz: number): number | null {
+  for (let radius = 0; radius <= 5; radius += 1) {
+    for (let dz = -radius; dz <= radius; dz += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (radius > 0 && Math.max(Math.abs(dx), Math.abs(dz)) !== radius) continue;
+        const x = cx + dx;
+        const z = cz + dz;
+        if (x < 0 || z < 0 || x >= grid.width || z >= grid.height) continue;
+        const index = z * grid.width + x;
+        const surface = grid.surface[index];
+        if (surface === Surface.ShallowWater || surface === Surface.DeepWater) continue;
+        return grid.heightCm[index];
+      }
+    }
+  }
+  return null;
+}
+
 export function rasterizeRoadSurface(
   grid: GridDraft,
   size: [number, number],
   roads: ReadonlyArray<{ path?: Array<[number, number]>; widthDm?: number }>,
-): Uint8Array {
+): RoadSurfaceResult {
   const surface = Uint8Array.from(grid.surface);
+  const heightCm = [...grid.heightCm];
   const halfW = size[0] / 2;
   const halfH = size[1] / 2;
   const cell = grid.cellSizeDm;
@@ -224,12 +248,26 @@ export function rasterizeRoadSurface(
       const [bx, bz] = road.path[index + 1];
       const length = Math.hypot(bx - ax, bz - az);
       const steps = Math.max(1, Math.ceil((length / cell) * 2));
+      const startCellX = Math.floor((ax + halfW) / cell);
+      const startCellZ = Math.floor((az + halfH) / cell);
+      const endCellX = Math.floor((bx + halfW) / cell);
+      const endCellZ = Math.floor((bz + halfH) / cell);
+      const startHeight = nearestLandHeight(grid, startCellX, startCellZ);
+      const endHeight = nearestLandHeight(grid, endCellX, endCellZ);
       for (let step = 0; step <= steps; step += 1) {
         const t = step / steps;
         const x = ax + (bx - ax) * t;
         const z = az + (bz - az) * t;
         const cx = Math.floor((x + halfW) / cell);
         const cz = Math.floor((z + halfH) / cell);
+        const bridgeHeight =
+          startHeight === null && endHeight === null
+            ? null
+            : startHeight === null
+              ? endHeight
+              : endHeight === null
+                ? startHeight
+                : Math.round(startHeight + (endHeight - startHeight) * t);
         for (let dz = -Math.ceil(radius); dz <= Math.ceil(radius); dz += 1) {
           for (let dx = -Math.ceil(radius); dx <= Math.ceil(radius); dx += 1) {
             if (Math.hypot(dx, dz) > radius) continue;
@@ -238,12 +276,16 @@ export function rasterizeRoadSurface(
             if (nx < 0 || nz < 0 || nx >= grid.width || nz >= grid.height) continue;
             const cellIndex = nz * grid.width + nx;
             const current = surface[cellIndex];
-            if (current === Surface.ShallowWater || current === Surface.DeepWater) continue;
-            surface[cellIndex] = Surface.Road;
+            if (current === Surface.ShallowWater || current === Surface.DeepWater || current === Surface.Bridge) {
+              surface[cellIndex] = Surface.Bridge;
+              if (bridgeHeight !== null) heightCm[cellIndex] = bridgeHeight;
+            } else {
+              surface[cellIndex] = Surface.Road;
+            }
           }
         }
       }
     }
   }
-  return surface;
+  return { surface, heightCm };
 }

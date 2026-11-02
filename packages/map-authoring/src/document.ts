@@ -750,9 +750,11 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
   let packedGrid: MapGridDef | undefined;
   if (document.navigation === "grid" && document.grid && gridProblems.length === 0) {
     try {
+      const rasterized = rasterizeRoadSurface(document.grid, document.size, document.roads);
       const packed = {
         ...document.grid,
-        surface: Array.from(rasterizeRoadSurface(document.grid, document.size, document.roads)),
+        surface: Array.from(rasterized.surface),
+        heightCm: rasterized.heightCm,
       };
       packedGrid = packGridDraft(packed);
     } catch (caught) {
