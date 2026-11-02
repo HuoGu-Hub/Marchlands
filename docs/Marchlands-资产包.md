@@ -147,9 +147,10 @@ node tools/asset-convert/run.mjs
 
 输出：
 
-- `release/Marchlands-models-converted.mlpack`：105 个资产的完整快照。
+- `release/Marchlands-models-converted.mlpack`：118 个资产的完整快照。
 - `release/converted-models/`：逐个 GLB 与 `manifest.json`。
 - `apps/client/src/assets/kenney/castle-glb/`：城堡运行时使用的 17 个 GLB。
+- `apps/client/src/assets/converted/buildings/`：城镇、塔楼、粮仓与城墙 GLB。
 
 覆盖范围：
 
@@ -157,8 +158,8 @@ node tools/asset-convert/run.mjs
 |---|---|---|
 | 城堡 OBJ | 17 | 已转 GLB，运行时已切换 |
 | 程序化建筑 | 8 类 × 3 级 | 单建筑 GLB |
-| 城墙 / 城镇组合 | 3 + 3 | 含墙体的城镇快照 |
-| 单位 | 5 | 保留 `torso/head/leftArm/rightArm/leftLeg/rightLeg/mount` 节点名 |
+| 城墙 / 城镇组合 | 3 + 15 | 含墙体的城镇按 5 种大厅 × 3 级导出 |
+| 单位 | 6 | 5 个命名部件单位 + 1 个蒙皮骨骼演示单位 |
 | 地形块 | 8 | 边境风格快照 |
 | Kenney GLB | 45 | 原样复制 |
 
@@ -166,6 +167,11 @@ node tools/asset-convert/run.mjs
 
 运行时现状：城堡、城镇、塔楼、粮仓和城墙已直接读取 GLB；地形仍使用程序化构建以保持风格配色。单位 GLB 带有 idle/walk 动画，客户端用 AnimationMixer 播放，并通过 SkeletonUtils 克隆骨骼实例。
 
+## 当前限制
+
+- 地形块仍走程序化构建，风格切换与高度场共享同一套噪声。
+- 地形资产不提供自由瓦片寻路；行军仍由据点图决定，坡度只改变边的寻路代价。
+- 单位动画支持 GLB 骨骼或命名节点动画；未指定单位资产时使用程序化三兵模型。
 ## 当前限制
 
 - 内置建筑、单位、地形仍走程序化构建；转换后的 GLB 快照在 `release` 中，尚未全部替换运行时。

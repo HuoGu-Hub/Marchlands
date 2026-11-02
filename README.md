@@ -51,7 +51,7 @@ release/Marchlands-win32-x64/Marchlands.exe
 - 单位资产：地图可为绿方/红方指定 GLB 单位；支持骨骼动画与命名节点动画，优先播放 `walk`/`idle` 剪辑，缺失时回退程序化单位。
 - 地形高度：城市、道路、装饰、兵团贴地；道路随地形起伏；编辑器点击射线命中地形网格。
 - 坡度寻路：地图编译时采样每条边的爬升写入 `grade`，Dijkstra 与 ETA 使用 `length × (1 + grade × 3)` 的代价，平地路线优先。
-- 模型格式：城堡 17 个 OBJ 已转 GLB 并切换运行时；建筑、城墙、城镇、单位、地形与 Kenney 资源已生成 105 个 GLB 的统一转换包，见 release/Marchlands-models-converted.mlpack。
+- 模型格式：城堡 17 个 OBJ 已转 GLB 并切换运行时；建筑、城墙、城镇、单位、地形与 Kenney 资源已生成 118 个 GLB 的统一转换包，见 release/Marchlands-models-converted.mlpack。
 - HUD：资源卡、等级刻度、人口条、城镇归属色条。
 - 美术许可：ASSETS.md。
 - PC：Electron 打包，启动、菜单、开局 smoke 通过。
