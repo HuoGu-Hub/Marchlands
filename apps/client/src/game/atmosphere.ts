@@ -225,7 +225,7 @@ export function buildAtmosphere(options: AtmosphereOptions): Atmosphere {
   group.name = "atmosphere";
 
   const sky = skyTexture(profile);
-  const cloudSeaY = options.topY - options.depth * 0.58;
+  const cloudSeaY = options.topY - options.depth * 0.78;
   const layers: THREE.Mesh[] = [];
   const layerSpeeds: number[] = [];
   const layerConfigs: Array<{ size: number; opacity: number; y: number; rotate: number }> = [

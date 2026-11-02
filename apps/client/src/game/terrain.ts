@@ -353,10 +353,10 @@ export function buildTerrain(
       minZ = Math.min(minZ, city.z);
       maxZ = Math.max(maxZ, city.z);
     }
-    minX -= 11;
-    maxX += 11;
-    minZ -= 11;
-    maxZ += 11;
+    minX -= 14;
+    maxX += 14;
+    minZ -= 14;
+    maxZ += 14;
   }
 
   const width = maxX - minX;
@@ -648,9 +648,9 @@ function buildIslandBase(
   const rings: Array<Array<{ x: number; y: number; z: number; theta: number }>> = [];
   for (let layer = 0; layer <= layers; layer += 1) {
     const t = layer / layers;
-    const ledge = (valueNoise(t * 9.3, 0.5, seed + 3) - 0.5) * 3.8;
-    const taperT = Math.max(0, (t - 0.5) / 0.5);
-    const shrink = 0.86 * Math.pow(taperT, 1.7);
+    const ledge = (valueNoise(t * 9.3, 0.5, seed + 3) - 0.5) * 2.1;
+    const taperT = Math.pow(t, 0.9);
+    const shrink = 0.8 * taperT;
     const ring: Array<{ x: number; y: number; z: number; theta: number }> = [];
     for (const point of rim) {
       const theta = point.theta;
@@ -692,12 +692,12 @@ function buildIslandBase(
       const strata = valueNoise(2.3, (a.y - d.y) * 0.34 + tMid * 2.4, seed + 8);
       const crevice = valueNoise(Math.cos(a.theta) * 9.5 + 9, Math.sin(a.theta) * 9.5 + tMid * 3.1, seed + 61);
       const rib = valueNoise(Math.cos(a.theta) * 17 + 2, Math.sin(a.theta) * 17 - 5, seed + 83);
-      color.copy(rock).lerp(mesa, strata * 0.85);
-      if (strata > 0.62) color.offsetHSL(0, -0.02, 0.06);
-      if (crevice < 0.34) color.lerp(dark, 0.62);
+      color.copy(rock).lerp(mesa, strata * 0.95);
+      if (strata > 0.58) color.offsetHSL(0, -0.03, 0.1);
+      if (crevice < 0.38) color.lerp(dark, 0.72);
       if (rib < 0.3) color.multiplyScalar(0.82);
       if (layer === 0) color.lerp(soil, 0.6);
-      color.multiplyScalar(0.46 + (1 - tMid) * 0.58);
+      color.multiplyScalar(0.66 + (1 - tMid) * 0.5);
       pushQuad(
         positions,
         colors,
@@ -710,7 +710,7 @@ function buildIslandBase(
     }
   }
 
-  const tipY = Math.min(...rings[layers].map((point) => point.y)) - 3.4;
+  const tipY = Math.min(...rings[layers].map((point) => point.y)) - 6;
   const tip: [number, number, number] = [centerX + 1.6, tipY, centerZ - 1.2];
   const bottom = rings[layers];
   for (let index = 0; index < bottom.length; index += 1) {
@@ -733,42 +733,20 @@ function buildIslandBase(
   group.add(mesh);
 
   const random = seeded(seed + 733);
-  const ribMaterial = new THREE.MeshStandardMaterial({
+  const rockMaterial = new THREE.MeshStandardMaterial({
     color: palette.ridge,
     roughness: 1,
     flatShading: true,
   });
-  const ribMaterialDark = new THREE.MeshStandardMaterial({
+  const rockMaterialDark = new THREE.MeshStandardMaterial({
     color: palette.ridgeDark,
     roughness: 1,
     flatShading: true,
   });
-  for (let index = 0; index < rim.length; index += 9) {
-    const point = rim[(index + Math.floor(random() * 6)) % rim.length];
-    const height = point.depth * (0.34 + random() * 0.28);
-    const width = 2.0 + random() * 3.6;
-    const geometryRib = new THREE.CylinderGeometry(width * 0.55, width, height, 5, 1);
-    const position = geometryRib.getAttribute("position") as THREE.BufferAttribute;
-    for (let vertex = 0; vertex < position.count; vertex += 1) {
-      position.setX(vertex, position.getX(vertex) * (0.82 + random() * 0.3));
-      position.setZ(vertex, position.getZ(vertex) * (0.82 + random() * 0.3));
-    }
-    geometryRib.computeVertexNormals();
-    const rib = new THREE.Mesh(geometryRib, random() > 0.65 ? ribMaterial : ribMaterialDark);
-    const outX = Math.cos(point.theta);
-    const outZ = Math.sin(point.theta);
-    rib.position.set(
-      point.x - outX * width * 0.85,
-      point.y - height * 0.5 + 1.1,
-      point.z - outZ * width * 0.85,
-    );
-    rib.rotation.y = random() * Math.PI;
-    group.add(rib);
-  }
-  for (let index = 0; index < 26; index += 1) {
+  for (let index = 0; index < 16; index += 1) {
     const point = rim[Math.floor(random() * rim.length)];
-    const size = 1.4 + random() * 3.6;
-    const height = size * (0.9 + random() * 1.6);
+    const size = 1.2 + random() * 2.6;
+    const height = size * (0.8 + random() * 1.2);
     const geometryRock = new THREE.CylinderGeometry(size * 0.32, size * 0.62, height, 6, 1);
     const position = geometryRock.getAttribute("position") as THREE.BufferAttribute;
     for (let vertex = 0; vertex < position.count; vertex += 1) {
@@ -777,16 +755,11 @@ function buildIslandBase(
       position.setZ(vertex, position.getZ(vertex) * factor);
     }
     geometryRock.computeVertexNormals();
-    const material = new THREE.MeshStandardMaterial({
-      color: random() > 0.5 ? palette.ridge : palette.ridgeDark,
-      roughness: 1,
-      flatShading: true,
-    });
-    const rock = new THREE.Mesh(geometryRock, material);
-    const inset = 0.82 + random() * 0.28;
+    const rock = new THREE.Mesh(geometryRock, random() > 0.5 ? rockMaterial : rockMaterialDark);
+    const inset = 0.8 + random() * 0.14;
     rock.position.set(
       centerX + (point.x - centerX) * inset,
-      point.y - height * (0.35 + random() * 0.25),
+      point.y - height * (0.2 + random() * 0.2),
       centerZ + (point.z - centerZ) * inset,
     );
     rock.rotation.y = random() * Math.PI;
@@ -826,7 +799,7 @@ function buildIsland(
   const halfX = Math.max(1, (maxX - minX) / 2);
   const halfZ = Math.max(1, (maxZ - minZ) / 2);
   const span = Math.max(halfX, halfZ) * 2;
-  const depth = THREE.MathUtils.clamp(span * 0.46, 17, 38);
+  const depth = THREE.MathUtils.clamp(span * 0.5, 24, 80);
   const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt);
   const group = new THREE.Group();
   group.name = "island";

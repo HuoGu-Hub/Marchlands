@@ -20,14 +20,14 @@ const PLAYER_COLORS: Record<Owner, number> = {
   2: 0xe06a4a,
 };
 
-const PITCH = (42 * Math.PI) / 180;
+const PITCH = (34 * Math.PI) / 180;
 const FIELD_OF_VIEW = 26;
 const CAMERA_DISTANCE = 260;
 const VIEW_HEIGHT = 58;
 const ZOOM_MIN = 0.34;
 const ZOOM_MAX = 2.4;
 const DEFAULT_ZOOM = 1.12;
-const GAMEPLAY_ZOOM = 0.56;
+const GAMEPLAY_ZOOM = 0.45;
 const CITY_BASE_RADIUS = 2.3;
 const CITY_BASE_HEIGHT = 0.26;
 const CITY_LABEL_HEIGHT = 4.3;
@@ -89,8 +89,8 @@ export class BattleScene {
   private lastSquadUpdate = 0;
 
   private yawIndex = 0;
-  private yaw = Math.PI / 4;
-  private targetYaw = Math.PI / 4;
+  private yaw = 0;
+  private targetYaw = 0;
   private zoom = 1.12;
   private frameY = 0;
   private readonly focus = new THREE.Vector3();
@@ -171,7 +171,7 @@ export class BattleScene {
 
   rotate(direction: 1 | -1): void {
     this.yawIndex = (this.yawIndex + direction + 4) % 4;
-    this.targetYaw = Math.PI / 4 + (this.yawIndex * Math.PI) / 2;
+    this.targetYaw = (this.yawIndex * Math.PI) / 2;
   }
 
   zoomBy(delta: number): void {
@@ -232,7 +232,7 @@ export class BattleScene {
     this.focus.set(state.focus[0], 0, state.focus[1]);
     this.zoom = THREE.MathUtils.clamp(state.zoom, ZOOM_MIN, ZOOM_MAX);
     this.yawIndex = state.yawIndex;
-    this.targetYaw = Math.PI / 4 + (state.yawIndex * Math.PI) / 2;
+    this.targetYaw = (state.yawIndex * Math.PI) / 2;
     this.yaw = this.targetYaw;
     this.clampFocus();
     this.resize();
@@ -718,8 +718,8 @@ export class BattleScene {
   }
 
   private buildLights(): void {
-    const hemisphere = new THREE.HemisphereLight(0xe4edcf, 0x1b2618, 1.5);
-    this.scene.add(new THREE.AmbientLight(0xcfc6ad, 0.35));
+    const hemisphere = new THREE.HemisphereLight(0xe4edcf, 0x7d8474, 1.35);
+    this.scene.add(new THREE.AmbientLight(0xcfc6ad, 0.32));
     this.scene.add(hemisphere);
     const sun = new THREE.DirectionalLight(0xffd39c, 2.2);
     sun.position.set(26, 42, 18);
@@ -727,6 +727,9 @@ export class BattleScene {
     const rim = new THREE.DirectionalLight(0x6d9bff, 0.65);
     rim.position.set(-30, 18, -24);
     this.scene.add(rim);
+    const bounce = new THREE.DirectionalLight(0xd6d8d0, 1.15);
+    bounce.position.set(-14, -46, 42);
+    this.scene.add(bounce);
   }
 
   private buildGround(previous?: Terrain, reuseIsland = false): void {

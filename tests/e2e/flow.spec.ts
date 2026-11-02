@@ -26,7 +26,7 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   await expect(page.locator("#city-panel")).toHaveClass(/on/);
 
   await page.waitForTimeout(400);
-  await page.mouse.click(519, 322);
+  await page.mouse.click(530, 361);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 20_000 });
   await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
 });
