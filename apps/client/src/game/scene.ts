@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
 import type { MapVisual } from "@marchlands/map-authoring";
+import { Surface, decodeInt16Base64, decodeUint8Base64 } from "@marchlands/nav";
 import { art } from "./assets";
 import { assetRegistry } from "./asset-registry";
 import { CITY_HALL_SCALE, buildBuilding, paletteFor, townBuildingKind } from "./buildings";
@@ -19,13 +20,13 @@ const PLAYER_COLORS: Record<Owner, number> = {
   2: 0xe06a4a,
 };
 
-const PITCH = (54 * Math.PI) / 180;
+const PITCH = (68 * Math.PI) / 180;
 const CAMERA_DISTANCE = 96;
 const VIEW_HEIGHT = 58;
 const ZOOM_MIN = 0.34;
 const ZOOM_MAX = 2.4;
 const DEFAULT_ZOOM = 1.12;
-const GAMEPLAY_ZOOM = 0.62;
+const GAMEPLAY_ZOOM = 0.56;
 const CITY_BASE_RADIUS = 2.3;
 const CITY_BASE_HEIGHT = 0.26;
 const CITY_LABEL_HEIGHT = 4.3;
@@ -103,6 +104,18 @@ export class BattleScene {
   private readonly propGroup = new THREE.Group();
   private readonly propObjects = new Map<string, THREE.Object3D>();
   private readonly sceneryGroup = new THREE.Group();
+  private readonly sceneryInstances: Array<{
+    mesh: THREE.InstancedMesh;
+    placements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }>;
+    partMatrix: THREE.Matrix4;
+  }> = [];
+  private roadGrid: {
+    surface: Uint8Array;
+    heights: Int16Array;
+    width: number;
+    height: number;
+    cellCm: number;
+  } | null = null;
   private atmosphere: Atmosphere | null = null;
 
   constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
@@ -714,7 +727,7 @@ export class BattleScene {
       this.atmosphere = null;
     }
     const island = this.terrain.island;
-    this.frameY = -island.depth * 0.34;
+    this.frameY = -island.depth * 0.22;
     const atmosphere = buildAtmosphere({
       centerX: island.centerX,
       centerZ: island.centerZ,
@@ -762,7 +775,7 @@ export class BattleScene {
       view.group.position.set(position.x, position.y, position.z);
     }
     this.buildRoads();
-    this.buildScenery();
+    this.updateSceneryHeights();
     this.regroundProps();
     if (this.selected) {
       const position = this.positions.get(this.selected);
@@ -785,6 +798,7 @@ export class BattleScene {
 
   private buildRoads(): void {
     this.clearGroup(this.roadGroup);
+    this.prepareRoadGrid();
     const width = this.visual?.roads.width ?? 1.6;
     const centerId = "c3";
     const cityRadius = () => 1.95;
@@ -839,6 +853,38 @@ export class BattleScene {
     if (this.map.slug === "crossroads01") this.addRoundabout(centerId, width, plazaMaterial, curbMaterial);
   }
 
+  private prepareRoadGrid(): void {
+    this.roadGrid = null;
+    if (!this.map.grid) return;
+    const grid = this.map.grid;
+    const cells = grid.width * grid.height;
+    try {
+      this.roadGrid = {
+        surface: decodeUint8Base64(grid.surface, cells),
+        heights: decodeInt16Base64(grid.heightCm, cells),
+        width: grid.width,
+        height: grid.height,
+        cellCm: grid.cellSizeCm,
+      };
+    } catch {
+      this.roadGrid = null;
+    }
+  }
+
+  /** 道路经过桥面格时抬到编译后的桥面高度，其余情况贴地形。 */
+  private roadGroundAt(x: number, z: number): number {
+    const grid = this.roadGrid;
+    if (grid) {
+      const cx = Math.floor((x * 100 + this.map.size[0] * 5) / grid.cellCm);
+      const cz = Math.floor((z * 100 + this.map.size[1] * 5) / grid.cellCm);
+      if (cx >= 0 && cz >= 0 && cx < grid.width && cz < grid.height) {
+        const index = cz * grid.width + cx;
+        if (grid.surface[index] === Surface.Bridge) return grid.heights[index] / 100;
+      }
+    }
+    return this.terrain.heightAt(x, z);
+  }
+
   private addRoad(start: THREE.Vector3, end: THREE.Vector3, length: number, width: number, material: THREE.Material): void {
     const dx = end.x - start.x;
     const dz = end.z - start.z;
@@ -852,7 +898,7 @@ export class BattleScene {
       end.clone(),
     ], false, "catmullrom", 0.18);
     const points = curve.getSpacedPoints(72);
-    for (const point of points) point.y = this.terrain.heightAt(point.x, point.z);
+    for (const point of points) point.y = this.roadGroundAt(point.x, point.z);
     this.addRoadRibbon(points, width, material);
   }
 
@@ -864,7 +910,7 @@ export class BattleScene {
       .getSpacedPoints(Math.max(64, points.length * 26))
       .filter((point) => point.distanceTo(first) > 1.95 && point.distanceTo(last) > 1.95);
     if (samples.length < 2) return;
-    for (const point of samples) point.y = this.terrain.heightAt(point.x, point.z);
+    for (const point of samples) point.y = this.roadGroundAt(point.x, point.z);
     this.addRoadRibbon(samples, width, material);
   }
 
@@ -974,6 +1020,7 @@ export class BattleScene {
 
   private buildScenery(): void {
     this.clearGroup(this.sceneryGroup);
+    this.sceneryInstances.length = 0;
     if (this.visual?.scatter === false) return;
     this.propPoints = (this.visual?.props ?? []).map((prop) => {
       const info = assetRegistry.info(prop.assetId);
@@ -1028,6 +1075,28 @@ export class BattleScene {
     this.instanceSpecies(PLANT_SPECIES, plantPlacements, 2);
   }
 
+  private updateSceneryHeights(): void {
+    if (this.visual?.scatter === false) return;
+    if (this.sceneryInstances.length === 0) {
+      this.buildScenery();
+      return;
+    }
+    const dummy = new THREE.Object3D();
+    const combined = new THREE.Matrix4();
+    for (const record of this.sceneryInstances) {
+      record.placements.forEach((placement, index) => {
+        placement.y = this.terrain.heightAt(placement.x, placement.z);
+        dummy.position.set(placement.x, placement.y, placement.z);
+        dummy.rotation.set(0, placement.rotation, 0);
+        dummy.scale.setScalar(placement.scale);
+        dummy.updateMatrix();
+        combined.multiplyMatrices(dummy.matrix, record.partMatrix);
+        record.mesh.setMatrixAt(index, combined);
+      });
+      record.mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   private instanceSpecies(
     names: string[],
     placements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }>,
@@ -1069,6 +1138,7 @@ export class BattleScene {
         });
         instanced.instanceMatrix.needsUpdate = true;
         this.sceneryGroup.add(instanced);
+        this.sceneryInstances.push({ mesh: instanced, placements: bucket, partMatrix: part.matrix.clone() });
       }
     });
   }

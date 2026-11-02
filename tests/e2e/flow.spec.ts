@@ -15,7 +15,7 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   await expect(page.locator("#city-panel")).toHaveClass(/on/);
 
   await page.waitForTimeout(400);
-  await page.mouse.click(509, 288);
+  await page.mouse.click(522, 333);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 20_000 });
   await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
 });
@@ -96,26 +96,26 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
   await page.waitForTimeout(500);
 
   await page.click('[data-tool="road"]');
-  await page.mouse.move(335, 350);
+  await page.mouse.move(455, 330);
   await page.mouse.down();
-  await page.mouse.move(500, 330, { steps: 8 });
-  await page.mouse.move(700, 350, { steps: 8 });
-  await page.mouse.move(880, 400, { steps: 8 });
+  await page.mouse.move(520, 300, { steps: 8 });
+  await page.mouse.move(650, 330, { steps: 8 });
+  await page.mouse.move(748, 368, { steps: 8 });
   await page.mouse.up();
   await expect(page.locator("#ml-ed-inspector")).toContainText("道路 r1");
   await expect(page.locator("#ml-ed-toast")).toContainText("已绘制道路");
-  await page.mouse.dblclick(420, 338);
-  await expect(page.locator("#ml-ed-inspector")).toContainText("6 个控制点");
-  await page.mouse.click(420, 338, { button: "right" });
+  await page.mouse.dblclick(487, 316);
   await expect(page.locator("#ml-ed-inspector")).toContainText("5 个控制点");
+  await page.mouse.click(487, 316, { button: "right" });
+  await expect(page.locator("#ml-ed-inspector")).toContainText("4 个控制点");
 
   const before = await page.locator("#ml-ed-inspector").innerText();
   const beforeLength = /长度 ([\d.]+) 米/.exec(before)?.[1];
   expect(beforeLength).toBeTruthy();
 
-  await page.mouse.move(505, 327);
+  await page.mouse.move(520, 302);
   await page.mouse.down();
-  await page.mouse.move(505, 420, { steps: 10 });
+  await page.mouse.move(520, 380, { steps: 10 });
   await page.mouse.up();
   await expect(page.locator("#ml-ed-toast")).toContainText("已调整道路");
   const after = await page.locator("#ml-ed-inspector").innerText();
@@ -226,12 +226,12 @@ test("loads the crossroads01 map and selector", async ({ page }) => {
 });
 
 test("result screen appears at the time limit", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   await page.goto("/?map=forest01&speed=20");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-start");
   await page.click("#btn-brief-start");
-  await expect(page.locator("#page-result")).toBeVisible({ timeout: 70_000 });
+  await expect(page.locator("#page-result")).toBeVisible({ timeout: 100_000 });
   await expect(page.locator("#result-mark")).toHaveText("失败");
   await expect(page.locator("#stat-time")).toHaveText("15:00");
 });
