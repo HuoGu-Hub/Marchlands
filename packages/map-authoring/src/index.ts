@@ -58,6 +58,7 @@ export {
   gridIssues,
   gridNavigationIssues,
   packGridDraft,
+  rasterizeRoadSurface,
   unpackGridDef,
 } from "./grid";
 export type { CompileOptions } from "./document";

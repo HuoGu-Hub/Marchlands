@@ -1,5 +1,6 @@
 import {
   NavGrid,
+  Surface,
   decodeBitmapBase64,
   decodeInt16Base64,
   decodeUint8Base64,
@@ -203,4 +204,46 @@ export function gridNavigationIssues(
     }
   }
   return issues;
+}
+
+/** 把道路栅格化为运行时地表层，不改动编辑器文档。 */
+export function rasterizeRoadSurface(
+  grid: GridDraft,
+  size: [number, number],
+  roads: ReadonlyArray<{ path?: Array<[number, number]>; widthDm?: number }>,
+): Uint8Array {
+  const surface = Uint8Array.from(grid.surface);
+  const halfW = size[0] / 2;
+  const halfH = size[1] / 2;
+  const cell = grid.cellSizeDm;
+  for (const road of roads) {
+    if (!road.path || road.path.length < 2) continue;
+    const radius = Math.max(0.5, (road.widthDm ?? 16) / cell / 2);
+    for (let index = 0; index < road.path.length - 1; index += 1) {
+      const [ax, az] = road.path[index];
+      const [bx, bz] = road.path[index + 1];
+      const length = Math.hypot(bx - ax, bz - az);
+      const steps = Math.max(1, Math.ceil((length / cell) * 2));
+      for (let step = 0; step <= steps; step += 1) {
+        const t = step / steps;
+        const x = ax + (bx - ax) * t;
+        const z = az + (bz - az) * t;
+        const cx = Math.floor((x + halfW) / cell);
+        const cz = Math.floor((z + halfH) / cell);
+        for (let dz = -Math.ceil(radius); dz <= Math.ceil(radius); dz += 1) {
+          for (let dx = -Math.ceil(radius); dx <= Math.ceil(radius); dx += 1) {
+            if (Math.hypot(dx, dz) > radius) continue;
+            const nx = cx + dx;
+            const nz = cz + dz;
+            if (nx < 0 || nz < 0 || nx >= grid.width || nz >= grid.height) continue;
+            const cellIndex = nz * grid.width + nx;
+            const current = surface[cellIndex];
+            if (current === Surface.ShallowWater || current === Surface.DeepWater) continue;
+            surface[cellIndex] = Surface.Road;
+          }
+        }
+      }
+    }
+  }
+  return surface;
 }

@@ -23,6 +23,7 @@ import {
   gridIssues,
   gridNavigationIssues,
   packGridDraft,
+  rasterizeRoadSurface,
   unpackGridDef,
 } from "./grid";
 import {
@@ -749,7 +750,11 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
   let packedGrid: MapGridDef | undefined;
   if (document.navigation === "grid" && document.grid && gridProblems.length === 0) {
     try {
-      packedGrid = packGridDraft(document.grid);
+      const packed = {
+        ...document.grid,
+        surface: Array.from(rasterizeRoadSurface(document.grid, document.size, document.roads)),
+      };
+      packedGrid = packGridDraft(packed);
     } catch (caught) {
       error("grid", caught instanceof Error ? caught.message : "网格数据打包失败");
     }

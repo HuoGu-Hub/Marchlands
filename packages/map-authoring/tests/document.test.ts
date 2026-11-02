@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateMap } from "@marchlands/content";
 import { createGame } from "@marchlands/sim";
-import { decodeBitmapBase64, encodeBitmapBase64 } from "@marchlands/nav";
+import { decodeBitmapBase64, encodeBitmapBase64, Surface } from "@marchlands/nav";
 import {
   addProp,
   addRoad,
@@ -25,6 +25,7 @@ import {
   updateSite,
   updateTerrain,
   updateUnitVisual,
+  unpackGridDef,
 } from "../src";
 
 describe("map authoring", () => {
@@ -237,6 +238,21 @@ describe("map authoring", () => {
     const parsed = parseDocument(JSON.parse(serializeDocument(result.document)));
     expect(parsed.document.roads[0].from).toBeUndefined();
     expect(parsed.document.roads[0].path).toEqual(path);
+  });
+
+  it("rasterizes roads into the runtime grid surface", () => {
+    const before = compileDocument(createGridDocument());
+    const beforeGrid = unpackGridDef(before.map.grid!);
+    const center = 35 * beforeGrid.width + 35;
+    expect(beforeGrid.surface[center]).not.toBe(Surface.Road);
+
+    const withRoad = addRoad(createGridDocument(), [
+      [-150, 0],
+      [150, 0],
+    ], { widthDm: 16 });
+    const compiled = compileDocument(withRoad.document);
+    const grid = unpackGridDef(compiled.map.grid!);
+    expect(grid.surface[center]).toBe(Surface.Road);
   });
 
   it("compiles a grid document with packed heights, footprints and a map hash", () => {

@@ -1092,8 +1092,66 @@ export class BattleScene {
 
 
   updateProps(visual: MapVisual | null): void {
+    this.syncProps(visual);
+  }
+
+  private applyPropTransform(prop: MapVisual["props"][number], object: THREE.Object3D): void {
+    const x = prop.pos[0] / 10;
+    const z = prop.pos[1] / 10;
+    const offset = (object.userData.groundOffset as number | undefined) ?? 0;
+    const baseScale = object.userData.baseScale as THREE.Vector3 | undefined;
+    object.position.set(x, this.terrain.heightAt(x, z) - offset, z);
+    object.rotation.y = (prop.rotation * Math.PI) / 180;
+    if (baseScale) object.scale.copy(baseScale).multiplyScalar(prop.scale);
+  }
+
+  private syncProps(visual: MapVisual | null): void {
     this.visual = visual;
-    this.buildExplicitProps();
+    const props = visual?.props ?? [];
+    const ids = new Set(props.map((prop) => prop.id));
+    for (const [id, object] of this.propObjects) {
+      if (ids.has(id)) continue;
+      this.propObjects.delete(id);
+      this.propGroup.remove(object);
+      disposeObject(object);
+    }
+    for (const prop of props) {
+      const existing = this.propObjects.get(prop.id);
+      if (existing) {
+        this.applyPropTransform(prop, existing);
+        continue;
+      }
+      this.buildProp(prop);
+    }
+  }
+
+  private buildProp(prop: MapVisual["props"][number]): void {
+    const info = assetRegistry.info(prop.assetId);
+    if (!info) {
+      this.missingAssets.add(prop.assetId);
+      return;
+    }
+    const token = this.propBuildToken;
+    void assetRegistry
+      .build(prop.assetId, { seed: hashId(prop.id), terrainStyle: this.visual?.terrain.style })
+      .then((object) => {
+        if (this.disposed || token !== this.propBuildToken) {
+          disposeObject(object);
+          return;
+        }
+        if (!this.visual?.props.some((entry) => entry.id === prop.id) || this.propObjects.has(prop.id)) {
+          disposeObject(object);
+          return;
+        }
+        object.userData.baseScale = object.scale.clone();
+        object.userData.groundOffset = info.kind === "terrain" ? 0.04 : 0;
+        this.propObjects.set(prop.id, object);
+        this.propGroup.add(object);
+        this.applyPropTransform(prop, object);
+      })
+      .catch(() => {
+        this.missingAssets.add(prop.assetId);
+      });
   }
 
   private regroundProps(): void {
@@ -1111,38 +1169,8 @@ export class BattleScene {
     this.clearGroup(this.propGroup);
     this.propObjects.clear();
     this.propBuildToken += 1;
-    const props = this.visual?.props ?? [];
-    if (props.length === 0) return;
-    const group = this.propGroup;
-    group.name = "map-props";
-    const token = this.propBuildToken;
-    for (const prop of props) {
-      const info = assetRegistry.info(prop.assetId);
-      if (!info) {
-        this.missingAssets.add(prop.assetId);
-        continue;
-      }
-      void assetRegistry
-        .build(prop.assetId, { seed: hashId(prop.id), terrainStyle: this.visual?.terrain.style })
-        .then((object) => {
-          if (this.disposed || token !== this.propBuildToken) {
-            disposeObject(object);
-            return;
-          }
-          const x = prop.pos[0] / 10;
-          const z = prop.pos[1] / 10;
-          const y = this.terrain.heightAt(x, z) - (info.kind === "terrain" ? 0.04 : 0);
-          object.position.set(x, y, z);
-          object.rotation.y = (prop.rotation * Math.PI) / 180;
-          object.scale.multiplyScalar(prop.scale);
-          object.userData.groundOffset = info.kind === "terrain" ? 0.04 : 0;
-          this.propObjects.set(prop.id, object);
-          group.add(object);
-        })
-        .catch(() => {
-          this.missingAssets.add(prop.assetId);
-        });
-    }
+    this.propGroup.name = "map-props";
+    for (const prop of this.visual?.props ?? []) this.buildProp(prop);
   }
 
   private buildRing(): THREE.Mesh {
