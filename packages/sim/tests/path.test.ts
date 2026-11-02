@@ -15,6 +15,22 @@ describe("MapGraph", () => {
     expect(graph.route("a", "d")?.path.join("")).toBe("abd");
   });
 
+  it("prefers flatter routes and charges grade cost", () => {
+    const map = {
+      ...SQUARE_MAP,
+      edges: [
+        { from: "a" as const, to: "b" as const, length: 100 },
+        { from: "b" as const, to: "d" as const, length: 100 },
+        { from: "a" as const, to: "c" as const, length: 100, grade: 0.8 },
+        { from: "c" as const, to: "d" as const, length: 100, grade: 0.8 },
+      ],
+    };
+    const graph = new MapGraph(map);
+    expect(graph.route("a", "d")?.path).toEqual(["a", "b", "d"]);
+    expect(graph.route("a", "d")?.distance).toBe(200);
+    expect(graph.edgeCost("a", "c")).toBe(340);
+  });
+
   it("returns null for disconnected nodes", () => {
     const map = {
       ...SQUARE_MAP,

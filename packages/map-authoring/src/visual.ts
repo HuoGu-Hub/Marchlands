@@ -248,6 +248,7 @@ export function createStarterVisual(document: MapDocument): VisualDraft {
     terrain: { style: "frontier", seed: STARTER_SEED, amplitude: 1 },
     roads: { style: "cobble", width: 1.6 },
     props,
+    units: {},
     scatter: true,
   };
 }
@@ -257,6 +258,7 @@ export function createDefaultVisual(seed = STARTER_SEED): VisualDraft {
     terrain: { style: "frontier", seed, amplitude: 1 },
     roads: { style: "cobble", width: 1.6 },
     props: [],
+    units: {},
     scatter: true,
   };
 }
@@ -267,6 +269,7 @@ export function defaultVisualForMap(map: MapDef): MapVisual {
     terrain: { style, seed: hashText(map.slug) % 1_000_000, amplitude: 1 },
     roads: { style: map.biome === "forest" ? "dirt" : "cobble", width: 1.6 },
     props: [],
+    units: {},
     scatter: true,
     sites: {},
   };
@@ -280,6 +283,7 @@ export function cloneVisual(visual: VisualDraft): VisualDraft {
       ...entry,
       pos: [entry.pos[0], entry.pos[1]],
     })),
+    units: { ...visual.units },
     scatter: visual.scatter,
   };
 }
@@ -301,6 +305,7 @@ export function compileVisual(document: MapDocument): MapVisual {
       ...entry,
       pos: [entry.pos[0], entry.pos[1]],
     })),
+    units: { ...document.visual.units },
     scatter: document.visual.scatter,
     sites,
   };

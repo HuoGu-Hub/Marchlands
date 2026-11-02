@@ -35,6 +35,8 @@ export interface MapEdge {
   from: CityId;
   to: CityId;
   length: number;
+  /** 0..1 的相对爬升，供寻路代价使用；缺省为平地。 */
+  grade?: number;
 }
 
 export interface MapObjective {

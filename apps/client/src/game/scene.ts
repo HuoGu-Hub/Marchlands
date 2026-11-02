@@ -4,6 +4,8 @@ import type { MapVisual } from "@marchlands/map-authoring";
 import { art } from "./assets";
 import { assetRegistry } from "./asset-registry";
 import { buildBuilding, buildTown, buildWall, paletteFor, townBuildingKind } from "./buildings";
+import { GlbUnitActor } from "./unit-glb";
+import type { UnitActorView } from "./unit-glb";
 import { UnitActor } from "./unit-actor";
 import { buildTerrain, terrainAtmosphere } from "./terrain";
 import type { Terrain } from "./terrain";
@@ -46,11 +48,12 @@ export interface SceneViewState {
 
 interface SquadView {
   group: THREE.Group;
-  units: UnitActor[];
+  units: UnitActorView[];
   label: THREE.Sprite;
   canvas: HTMLCanvasElement;
   texture: THREE.CanvasTexture;
   labelText: string;
+  disposed: boolean;
 }
 
 export class BattleScene {
@@ -105,6 +108,9 @@ export class BattleScene {
 
     this.buildLights();
     this.buildGround();
+    for (const position of this.positions.values()) {
+      position.y = this.terrain.heightAt(position.x, position.z);
+    }
     this.buildRoads();
     this.buildScenery();
     this.buildExplicitProps();
@@ -166,7 +172,7 @@ export class BattleScene {
     const position = this.positions.get(cityId);
     if (!position) return null;
     const rect = this.canvas.getBoundingClientRect();
-    const projected = position.clone().setY(4.8).project(this.camera);
+    const projected = position.clone().setY(position.y + 4.8).project(this.camera);
     return {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
@@ -206,6 +212,12 @@ export class BattleScene {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(ndc, this.camera);
     const point = new THREE.Vector3();
+    this.terrain.mesh.updateMatrixWorld(true);
+    const hits = raycaster.intersectObject(this.terrain.mesh, false);
+    if (hits.length > 0) {
+      point.copy(hits[0].point);
+      return [point.x * 10, point.z * 10];
+    }
     if (!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), point)) return null;
     return [point.x * 10, point.z * 10];
   }
@@ -217,7 +229,7 @@ export class BattleScene {
     for (const city of state.cities) {
       const position = this.positions.get(city.id);
       if (!position) continue;
-      const projected = position.clone().setY(2).project(this.camera);
+      const projected = position.clone().setY(position.y + 2).project(this.camera);
       const x = rect.left + ((projected.x + 1) / 2) * rect.width;
       const y = rect.top + ((1 - projected.y) / 2) * rect.height;
       const distance = Math.hypot(clientX - x, clientY - y);
@@ -237,7 +249,7 @@ export class BattleScene {
     this.ring.visible = this.selected !== null;
     if (this.selected) {
       const position = this.positions.get(this.selected);
-      if (position) this.ring.position.set(position.x, 0.09, position.z);
+      if (position) this.ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
       const material = this.ring.material as THREE.MeshBasicMaterial;
       material.opacity = 0.5 + Math.sin(this.elapsed / 260) * 0.18;
     }
@@ -319,7 +331,8 @@ export class BattleScene {
         this.squadViews.set(squad.id, view);
       }
       const point = this.squadPoint(squad, state.tick);
-      view.group.position.set(point.x, 0.06, point.z);
+      point.y = this.terrain.heightAt(point.x, point.z);
+      view.group.position.set(point.x, point.y + 0.06, point.z);
       const from = this.positions.get(squad.path[squad.pathIndex] ?? squad.from);
       const to = this.positions.get(squad.path[squad.pathIndex + 1] ?? squad.to);
       if (from && to) {
@@ -336,6 +349,7 @@ export class BattleScene {
     }
     for (const [id, view] of this.squadViews) {
       if (seen.has(id)) continue;
+      view.disposed = true;
       for (const unit of view.units) unit.dispose();
       view.label.material.dispose();
       view.texture.dispose();
@@ -374,6 +388,7 @@ export class BattleScene {
     const group = new THREE.Group();
     const position = this.positions.get(city.id) ?? new THREE.Vector3();
     group.position.copy(position);
+    group.position.y = this.terrain.heightAt(position.x, position.z);
 
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(4.2, 30),
@@ -454,8 +469,12 @@ export class BattleScene {
     view.level = city.level;
 
     const siteVisual = this.visual?.sites[city.id];
-    if (!siteVisual?.assetId) return;
-    const assetId = siteVisual.assetId;
+    const defaultAssetId = city.kind === "town"
+      ? "builtin:building.town"
+      : city.kind === "granary"
+        ? "builtin:building.granary"
+        : "builtin:building.tower";
+    const assetId = siteVisual?.assetId ?? defaultAssetId;
     if (!assetRegistry.has(assetId)) {
       this.missingAssets.add(assetId);
       return;
@@ -471,8 +490,8 @@ export class BattleScene {
           disposeObject(child);
           view.model.remove(child);
         }
-        object.rotation.y = ((siteVisual.rotation ?? 0) * Math.PI) / 180;
-        object.scale.multiplyScalar(siteVisual.scale ?? 1);
+        object.rotation.y = ((siteVisual?.rotation ?? 0) * Math.PI) / 180;
+        object.scale.multiplyScalar(siteVisual?.scale ?? 1);
         view.model.add(object);
       })
       .catch(() => {
@@ -482,28 +501,13 @@ export class BattleScene {
 
   private createSquadView(squad: SquadState): SquadView {
     const group = new THREE.Group();
-    const color = PLAYER_COLORS[squad.owner];
     const explicit = (squad as SquadState & { unitKind?: UnitKind }).unitKind;
     const fallback: UnitKind[] = ["shield", "infantry", "archer"];
     const kinds: UnitKind[] = explicit ? [explicit, explicit, explicit] : fallback;
-    const units: UnitActor[] = [];
 
     const offsets: Array<[number, number]> = explicit === "cavalry"
       ? [[-0.65, -0.25], [0.65, -0.25], [0, 0.7]]
       : [[-0.75, -0.12], [0.75, -0.08], [0, 0.72]];
-    kinds.forEach((kind, index) => {
-      const [x, z] = offsets[index];
-      const unit = new UnitActor({
-        kind,
-        palette: paletteFor(squad.owner),
-        variant: index,
-        phase: index * 2.1 + 0.4,
-      });
-      unit.position.set(x, 0, z);
-      unit.scale.setScalar(kind === "cavalry" ? 1.28 : 1.55);
-      group.add(unit);
-      units.push(unit);
-    });
 
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -519,7 +523,74 @@ export class BattleScene {
     group.add(label);
 
     this.scene.add(group);
-    return { group, units, label, canvas, texture, labelText: String(squad.count) };
+    const view: SquadView = {
+      group,
+      units: [],
+      label,
+      canvas,
+      texture,
+      labelText: String(squad.count),
+      disposed: false,
+    };
+
+    const unitAssetId = this.visual?.units?.[squad.owner === 1 ? "player1" : "player2"];
+    if (unitAssetId && assetRegistry.has(unitAssetId)) {
+      void this.populateGlbUnits(view, unitAssetId, squad, offsets, kinds);
+    } else {
+      this.populateProceduralUnits(view, squad, offsets, kinds);
+    }
+    return view;
+  }
+
+  private populateProceduralUnits(
+    view: SquadView,
+    squad: SquadState,
+    offsets: Array<[number, number]>,
+    kinds: UnitKind[],
+  ): void {
+    kinds.forEach((kind, index) => {
+      const [x, z] = offsets[index];
+      const unit = new UnitActor({
+        kind,
+        palette: paletteFor(squad.owner),
+        variant: index,
+        phase: index * 2.1 + 0.4,
+      });
+      unit.position.set(x, 0, z);
+      unit.scale.setScalar(kind === "cavalry" ? 1.28 : 1.55);
+      view.group.add(unit);
+      view.units.push(unit);
+    });
+  }
+
+  private async populateGlbUnits(
+    view: SquadView,
+    assetId: string,
+    squad: SquadState,
+    offsets: Array<[number, number]>,
+    kinds: UnitKind[],
+  ): Promise<void> {
+    try {
+      for (let index = 0; index < offsets.length; index += 1) {
+        const built = await assetRegistry.buildAnimated(assetId, {
+          owner: squad.owner,
+          seed: index + 1,
+        });
+        if (this.disposed || view.disposed) {
+          disposeObject(built.object);
+          return;
+        }
+        const [x, z] = offsets[index];
+        const unit = new GlbUnitActor(built.object, built.animations);
+        unit.position.set(x, 0, z);
+        unit.scale.setScalar(1.4);
+        view.group.add(unit);
+        view.units.push(unit);
+      }
+    } catch {
+      if (this.disposed || view.disposed || view.units.length > 0) return;
+      this.populateProceduralUnits(view, squad, offsets, kinds);
+    }
   }
 
   private paintLabel(
@@ -586,7 +657,7 @@ export class BattleScene {
       const from = this.positions.get(edge.from);
       const to = this.positions.get(edge.to);
       if (!from || !to) continue;
-      const direction = new THREE.Vector3().subVectors(to, from).normalize();
+      const direction = new THREE.Vector3(to.x - from.x, 0, to.z - from.z).normalize();
       const start = from.clone().addScaledVector(direction, cityRadius());
       const end = to.clone().addScaledVector(direction, -cityRadius());
       const length = start.distanceTo(end);
@@ -620,6 +691,7 @@ export class BattleScene {
       end.clone(),
     ], false, "catmullrom", 0.18);
     const points = curve.getSpacedPoints(28);
+    for (const point of points) point.y = this.terrain.heightAt(point.x, point.z);
 
     const shoulder = new THREE.Mesh(
       this.ribbonGeometry(points, width + 0.55),
@@ -668,7 +740,7 @@ export class BattleScene {
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
       if (index > 0) distance += point.distanceTo(points[index - 1]);
       for (const side of [-1, 1]) {
-        positions.push(point.x + normal.x * side * width / 2, 0, point.z + normal.z * side * width / 2);
+        positions.push(point.x + normal.x * side * width / 2, point.y, point.z + normal.z * side * width / 2);
         uvs.push(distance / 3.2, side < 0 ? 0 : 1);
       }
       if (index > 0) {
@@ -687,7 +759,7 @@ export class BattleScene {
   private addPlaza(position: THREE.Vector3, material: THREE.Material): void {
     const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.85, 22), material);
     plaza.rotation.x = -Math.PI / 2;
-    plaza.position.set(position.x, 0.04, position.z);
+    plaza.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.04, position.z);
     this.scene.add(plaza);
   }
 
@@ -702,18 +774,19 @@ export class BattleScene {
       new THREE.MeshStandardMaterial({ color: 0x4b4a36, roughness: 1 }),
     );
     shoulder.rotation.x = -Math.PI / 2;
-    shoulder.position.set(center.x, 0.035, center.z);
+    const ground = this.terrain.heightAt(center.x, center.z);
+    shoulder.position.set(center.x, ground + 0.035, center.z);
     this.scene.add(shoulder);
 
     const ring = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 64), ringMaterial);
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(center.x, 0.05, center.z);
+    ring.position.set(center.x, ground + 0.05, center.z);
     this.scene.add(ring);
 
     for (const radius of [inner, outer]) {
       const curb = new THREE.Mesh(new THREE.RingGeometry(radius - 0.09, radius + 0.09, 64), curbMaterial);
       curb.rotation.x = -Math.PI / 2;
-      curb.position.set(center.x, 0.11, center.z);
+      curb.position.set(center.x, ground + 0.11, center.z);
       this.scene.add(curb);
     }
 
@@ -724,7 +797,7 @@ export class BattleScene {
       const direction = new THREE.Vector3().subVectors(position, center).normalize();
       const pad = new THREE.Mesh(new THREE.CircleGeometry(1.55, 20), plazaMaterial);
       pad.rotation.x = -Math.PI / 2;
-      pad.position.set(center.x + direction.x * outer, 0.055, center.z + direction.z * outer);
+      pad.position.set(center.x + direction.x * outer, ground + 0.055, center.z + direction.z * outer);
       this.scene.add(pad);
 
       if (index % 2 === 0) {
@@ -733,7 +806,7 @@ export class BattleScene {
           const perp = new THREE.Vector3(-direction.z, 0, direction.x);
           lamp.position.set(
             center.x + direction.x * (outer + 1.2) + perp.x * 1.4,
-            0,
+            ground,
             center.z + direction.z * (outer + 1.2) + perp.z * 1.4,
           );
           lamp.scale.setScalar(2.5);
@@ -742,7 +815,7 @@ export class BattleScene {
             new THREE.CylinderGeometry(0.34, 0.42, 0.42, 8),
             new THREE.MeshStandardMaterial({ color: 0x8a8170, roughness: 1 }),
           );
-          base.position.set(lamp.position.x, 0.21, lamp.position.z);
+          base.position.set(lamp.position.x, ground + 0.21, lamp.position.z);
           this.scene.add(base);
         }
       }

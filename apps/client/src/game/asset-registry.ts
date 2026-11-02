@@ -5,10 +5,25 @@ import { readAssetPack } from "@marchlands/asset-pack";
 import type { AssetEntry, AssetKind, AssetManifest } from "@marchlands/asset-pack";
 import type { Level, Owner } from "@marchlands/sim";
 import { art } from "./assets";
-import { buildBuilding, buildTown, paletteFor } from "./buildings";
+import { TOWN_BUILDINGS, buildBuilding, buildTown, paletteFor } from "./buildings";
 import { deleteStoredPack, listStoredPacks, saveStoredPack } from "./asset-pack-store";
 import { buildTerrainAsset, TERRAIN_ASSETS } from "./visual-assets";
 import type { TerrainAssetKind } from "./visual-assets";
+
+const BUILDING_URLS = import.meta.glob("../assets/converted/buildings/*.glb", {
+  query: "?inline",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+function buildingKey(path: string): string {
+  return (path.split("/").pop() ?? path).replace(/\.glb$/i, "");
+}
+
+const BUILDING_TEMPLATES = new Map<string, string>();
+for (const [path, url] of Object.entries(BUILDING_URLS)) {
+  BUILDING_TEMPLATES.set(buildingKey(path), url);
+}
 
 export const TEAM_COLORS: Record<Owner, number> = {
   0: 0x97917f,
@@ -44,6 +59,7 @@ interface BuiltinAsset extends AssetInfo {
 interface PackAsset {
   entry: AssetEntry;
   prototype: THREE.Object3D;
+  animations: THREE.AnimationClip[];
   packId: string;
 }
 
@@ -148,10 +164,19 @@ function markShared(object: THREE.Object3D): void {
   });
 }
 
-function tintMaterial(material: THREE.Material, color: number): THREE.Material {
-  const name = material.name.toLowerCase();
-  const wants = name.startsWith("team") || material.userData.teamColor === true;
-  if (!wants) return material;
+function teamColorFor(role: string, owner: Owner): number | null {
+  const palette = paletteFor(owner);
+  if (role === "team_roof") return palette.roof;
+  if (role === "team_edge") return palette.roofEdge;
+  if (role === "team_cloth") return palette.cloth;
+  if (role.startsWith("team") || role === "team") return TEAM_COLORS[owner];
+  return null;
+}
+
+function tintMaterial(material: THREE.Material, owner: Owner): THREE.Material {
+  const role = material.name.toLowerCase();
+  const color = teamColorFor(role, owner);
+  if (color === null) return material;
   const clone = material.clone();
   const tinted = clone as THREE.MeshStandardMaterial;
   if (tinted.color instanceof THREE.Color) tinted.color.setHex(color);
@@ -161,14 +186,13 @@ function tintMaterial(material: THREE.Material, color: number): THREE.Material {
 }
 
 function applyTeamColor(object: THREE.Object3D, owner: Owner): void {
-  const color = TEAM_COLORS[owner];
   object.traverse((entry) => {
     const mesh = entry as THREE.Mesh;
     if (!mesh.isMesh) return;
     if (Array.isArray(mesh.material)) {
-      mesh.material = mesh.material.map((material) => tintMaterial(material, color));
+      mesh.material = mesh.material.map((material) => tintMaterial(material, owner));
     } else {
-      mesh.material = tintMaterial(mesh.material, color);
+      mesh.material = tintMaterial(mesh.material, owner);
     }
   });
 }
@@ -187,6 +211,8 @@ export class AssetRegistry {
   private readonly packAssets = new Map<string, PackAsset>();
   private readonly packs = new Map<string, AssetManifest>();
   private readonly warnings: string[] = [];
+  private readonly buildingTemplates = new Map<string, THREE.Object3D>();
+  private readonly buildingLoads = new Map<string, Promise<THREE.Object3D | null>>();
   private registered = false;
   private loading: Promise<number> | null = null;
 
@@ -225,10 +251,23 @@ export class AssetRegistry {
         footprint: spec.kind === "town" ? 8 : 4,
         height: spec.kind === "town" ? 6 : 5,
         source: "builtin",
-        build: (context) => {
+        build: async (context) => {
+          const level = context.level;
+          const kind = spec.kind === "town"
+            ? TOWN_BUILDINGS[Math.abs(context.seed) % TOWN_BUILDINGS.length]
+            : spec.kind;
+          const file = spec.kind === "town"
+            ? `town-${kind}-L${level}`
+            : `${kind}-L${level}`;
+          const prototype = await this.buildingTemplate(file);
+          if (prototype) {
+            const object = cloneSkeleton(prototype);
+            applyTeamColor(object, context.owner);
+            return object;
+          }
           const palette = paletteFor(context.owner);
-          if (spec.kind === "town") return buildTown(context.level, palette, context.seed);
-          return buildBuilding(spec.kind, palette, context.level, context.seed);
+          if (spec.kind === "town") return buildTown(level, palette, context.seed);
+          return buildBuilding(spec.kind, palette, level, context.seed);
         },
       });
     }
@@ -296,6 +335,28 @@ export class AssetRegistry {
     this.builtins.set(asset.id, asset);
   }
 
+  private buildingTemplate(file: string): Promise<THREE.Object3D | null> {
+    const cached = this.buildingTemplates.get(file);
+    if (cached) return Promise.resolve(cached);
+    const pending = this.buildingLoads.get(file);
+    if (pending) return pending;
+    const url = BUILDING_TEMPLATES.get(file);
+    if (!url) return Promise.resolve(null);
+    const load = new GLTFLoader()
+      .loadAsync(url)
+      .then((gltf) => {
+        markShared(gltf.scene);
+        this.buildingTemplates.set(file, gltf.scene);
+        return gltf.scene;
+      })
+      .catch(() => null)
+      .finally(() => {
+        this.buildingLoads.delete(file);
+      });
+    this.buildingLoads.set(file, load);
+    return load;
+  }
+
   has(id: string): boolean {
     return this.builtins.has(id) || this.packAssets.has(id);
   }
@@ -349,12 +410,7 @@ export class AssetRegistry {
     return [...this.warnings];
   }
 
-  async build(id: string, context: AssetBuildContext = {}): Promise<THREE.Object3D> {
-    const frame = normalizeContext(context);
-    const builtin = this.builtins.get(id);
-    if (builtin) return builtin.build(frame);
-    const asset = this.packAssets.get(id);
-    if (!asset) throw new Error(`未知资产：${id}`);
+  private packObject(asset: PackAsset, frame: Required<AssetBuildContext>): THREE.Object3D {
     const model = cloneSkeleton(asset.prototype);
     const wrapper = new THREE.Group();
     wrapper.add(model);
@@ -362,6 +418,24 @@ export class AssetRegistry {
     if (asset.entry.rotation) model.rotation.y += (asset.entry.rotation * Math.PI) / 180;
     if (asset.entry.teamColor) applyTeamColor(model, frame.owner);
     return wrapper;
+  }
+
+  async build(id: string, context: AssetBuildContext = {}): Promise<THREE.Object3D> {
+    const frame = normalizeContext(context);
+    const builtin = this.builtins.get(id);
+    if (builtin) return builtin.build(frame);
+    const asset = this.packAssets.get(id);
+    if (!asset) throw new Error(`未知资产：${id}`);
+    return this.packObject(asset, frame);
+  }
+
+  async buildAnimated(
+    id: string,
+    context: AssetBuildContext = {},
+  ): Promise<{ object: THREE.Object3D; animations: THREE.AnimationClip[] }> {
+    const asset = this.packAssets.get(id);
+    if (!asset) throw new Error(`未知资产：${id}`);
+    return { object: this.packObject(asset, normalizeContext(context)), animations: asset.animations };
   }
 
   async loadPack(
@@ -382,14 +456,16 @@ export class AssetRegistry {
       if (!data) throw new Error(`${entry.file} 不存在`);
       const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
       let prototype: THREE.Object3D;
+      let animations: THREE.AnimationClip[] = [];
       try {
         const gltf = await loader.parseAsync(buffer, "");
         prototype = gltf.scene;
+        animations = gltf.animations;
       } catch (error) {
         throw new Error(`${entry.file} 无法解析：${error instanceof Error ? error.message : "未知错误"}`);
       }
       markShared(prototype);
-      next.set(entry.id, { entry, prototype, packId: pack.manifest.id });
+      next.set(entry.id, { entry, prototype, animations, packId: pack.manifest.id });
     }
 
     for (const [id, asset] of next) this.packAssets.set(id, asset);

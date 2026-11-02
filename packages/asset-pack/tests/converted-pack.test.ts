@@ -8,11 +8,11 @@ const PACK = path.resolve(__dirname, "..", "..", "..", "release", "Marchlands-mo
 describe("converted model pack", () => {
   it.skipIf(!fs.existsSync(PACK))("contains every converted model family", async () => {
     const pack = await readAssetPack(new Uint8Array(fs.readFileSync(PACK)));
-    expect(pack.manifest.assets).toHaveLength(105);
+    expect(pack.manifest.assets).toHaveLength(118);
     const count = (kind: string): number => pack.manifest.assets.filter((asset) => asset.kind === kind).length;
     expect(count("prop")).toBe(45 + 17 + 3);
-    expect(count("building")).toBe(24 + 3);
-    expect(count("unit")).toBe(5);
+    expect(count("building")).toBe(24 + 15);
+    expect(count("unit")).toBe(6);
     expect(count("terrain")).toBe(8);
     expect(pack.manifest.assets.filter((asset) => asset.id.startsWith("converted:castle."))).toHaveLength(17);
   });

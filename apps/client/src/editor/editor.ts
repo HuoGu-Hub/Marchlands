@@ -22,6 +22,7 @@ import {
   updateScatter,
   updateSite,
   updateTerrain,
+  updateUnitVisual,
   watchCandidates,
 } from "@marchlands/map-authoring";
 import type {
@@ -1033,6 +1034,7 @@ export class EditorController {
   private mapSettingsHtml(): string {
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
+    const unitAssets = assetRegistry.list("unit");
     const packRows = assetRegistry.packList
       .map(
         (pack) => `<div class="ml-ed-pack-row"><span>${escapeHtml(pack.name)}</span><button data-pack-remove="${escapeHtml(pack.id)}">移除</button></div>`,
@@ -1073,6 +1075,20 @@ export class EditorController {
         <label class="ml-ed-field"><span>宽度</span><input data-field="roadWidth" type="number" min="0.6" max="6" step="0.1" value="${this.doc.visual.roads.width}"></label>
       </div>
       <label class="ml-ed-check"><input data-field="scatter" type="checkbox" ${this.doc.visual.scatter ? "checked" : ""}><span>自动补树、石头与草丛</span></label>
+      <div class="ml-ed-section-label">单位外观</div>
+      <label class="ml-ed-field"><span>绿方兵团</span>
+        <select data-field="unitPlayer1">
+          ${option("", this.doc.visual.units.player1 ?? "", "默认程序化单位")}
+          ${unitAssets.map((asset) => option(asset.id, this.doc.visual.units.player1 ?? "", `${asset.label}${asset.source === "pack" ? " · 资产包" : ""}`)).join("")}
+        </select>
+      </label>
+      <label class="ml-ed-field"><span>红方兵团</span>
+        <select data-field="unitPlayer2">
+          ${option("", this.doc.visual.units.player2 ?? "", "默认程序化单位")}
+          ${unitAssets.map((asset) => option(asset.id, this.doc.visual.units.player2 ?? "", `${asset.label}${asset.source === "pack" ? " · 资产包" : ""}`)).join("")}
+        </select>
+      </label>
+      ${unitAssets.length === 0 ? `<p class="ml-ed-note">当前没有单位资产。导入含 unit 资产的 .mlpack 后，可在这里替换兵团外观。</p>` : ""}
       ${packRows ? `<div class="ml-ed-pack-list">${packRows}</div>` : ""}
       <div class="ml-ed-meta">目标：占领全部城镇<br>时限：15 分钟<br>资产包：${assetRegistry.counts().packs} 个${missing > 0 ? ` · ${missing} 个装饰缺失` : ""}</div>
       <p class="ml-ed-note">从左侧拖入地形、树木与城镇装饰；拖动装饰可移动，选中后可旋转和缩放。</p>
@@ -1221,6 +1237,13 @@ export class EditorController {
     }
     if (field === "scatter") {
       this.commit(updateScatter(this.doc, value === "true"), value === "true" ? "已开启自动补景" : "已关闭自动补景");
+      return;
+    }
+    if (field === "unitPlayer1" || field === "unitPlayer2") {
+      this.commit(
+        updateUnitVisual(this.doc, field === "unitPlayer1" ? "player1" : "player2", value || undefined),
+        value ? "已替换兵团外观" : "已恢复默认兵团",
+      );
     }
   }
 

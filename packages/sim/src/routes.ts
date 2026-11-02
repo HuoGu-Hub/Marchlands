@@ -43,7 +43,7 @@ export function pathTicks(
 ): number {
   let total = 0;
   for (let index = startIndex; index < path.length - 1; index += 1) {
-    const length = graph.edgeLength(path[index], path[index + 1]);
+    const length = graph.edgeCost(path[index], path[index + 1]);
     if (length === null) return Number.POSITIVE_INFINITY;
     total += travelTicks(length, rules, speedMilli);
   }
@@ -61,7 +61,7 @@ export function routeOptions(graph: MapGraph, squad: SquadState, blocked?: Reado
 
   for (const via of graph.neighbors(anchor)) {
     if (via === anchor) continue;
-    const edge = graph.edgeLength(anchor, via);
+    const edge = graph.edgeCost(anchor, via);
     if (edge === null) continue;
     let path: CityId[];
     let distance: number;
@@ -82,7 +82,7 @@ export function routeOptions(graph: MapGraph, squad: SquadState, blocked?: Reado
     let distance = 0;
     let valid = true;
     for (let index = anchorIndex; index < squad.path.length - 1; index += 1) {
-      const length = graph.edgeLength(squad.path[index], squad.path[index + 1]);
+      const length = graph.edgeCost(squad.path[index], squad.path[index + 1]);
       if (length === null) {
         valid = false;
         break;
@@ -124,7 +124,7 @@ export function buildRetargetPath(
 
   if (via !== undefined) {
     if (via === anchor) return "invalid_via";
-    const edge = graph.edgeLength(anchor, via);
+    const edge = graph.edgeCost(anchor, via);
     if (edge === null) return "invalid_via";
     const route = graph.route(via, to, blocked);
     if (!route) return "no_route";

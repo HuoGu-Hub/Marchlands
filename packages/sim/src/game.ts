@@ -90,7 +90,7 @@ function interceptTick(state: SimState, squad: SquadState, outpost: CityState): 
   for (let index = squad.pathIndex; index < squad.path.length - 1; index += 1) {
     const from = squad.path[index];
     const to = squad.path[index + 1];
-    const length = state.graph.edgeLength(from, to);
+    const length = state.graph.edgeCost(from, to);
     if (length === null) return null;
     const startTick = index === squad.pathIndex ? squad.legStartTick : cursor;
     const endTick =
@@ -267,7 +267,7 @@ function applyCommand(
     const strengthMilli = granaryStrengthMilli(state.rules, hasGranary);
     const path = route.path.slice();
     const arrivalTick = state.tick + travelTicks(route.distance, state.rules, speedMilli);
-    const firstLength = state.graph.edgeLength(path[0], path[1]);
+    const firstLength = state.graph.edgeCost(path[0], path[1]);
     const firstTicks =
       path.length === 2
         ? arrivalTick - state.tick
@@ -392,7 +392,7 @@ function advanceSquads(state: SimState, events: SimEvent[]): void {
         squad.arrivalTick = squad.legEndTick;
         continue;
       }
-      const length = state.graph.edgeLength(squad.path[nextIndex], squad.path[nextIndex + 1]);
+      const length = state.graph.edgeCost(squad.path[nextIndex], squad.path[nextIndex + 1]);
       if (length === null) {
         removed.add(squad.id);
         break;

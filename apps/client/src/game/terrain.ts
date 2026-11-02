@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { CityId, MapDef } from "@marchlands/sim";
+import { createHeightField } from "@marchlands/map-authoring";
 
 const CITY_PAD = 4.2;
 const CITY_FADE = 7.4;
@@ -167,6 +168,7 @@ export function terrainAtmosphere(style: string | undefined): { background: numb
 
 export interface Terrain {
   group: THREE.Group;
+  mesh: THREE.Mesh;
   heightAt(x: number, z: number): number;
 }
 
@@ -189,21 +191,6 @@ export function buildTerrain(
     })
     .filter((edge): edge is { from: THREE.Vector3; to: THREE.Vector3 } => edge !== null);
 
-  const roadPaths = edges.map((edge) => {
-    const direction = new THREE.Vector3().subVectors(edge.to, edge.from);
-    const length = direction.length();
-    direction.normalize();
-    const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x);
-    const bend = Math.sin(edge.from.x * 0.73 + edge.from.z * 0.41 + edge.to.x * 0.29 + edge.to.z * 0.17) * Math.min(2.8, length * 0.2);
-    const curve = new THREE.CatmullRomCurve3([
-      edge.from.clone(),
-      edge.from.clone().addScaledVector(direction, length / 3).addScaledVector(perpendicular, bend),
-      edge.from.clone().addScaledVector(direction, (length * 2) / 3).addScaledVector(perpendicular, bend),
-      edge.to.clone(),
-    ], false, "catmullrom", 0.18);
-    return curve.getSpacedPoints(10);
-  });
-
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minZ = Number.POSITIVE_INFINITY;
@@ -225,31 +212,11 @@ export function buildTerrain(
   const segmentsX = Math.max(24, Math.round(width / cell));
   const segmentsZ = Math.max(18, Math.round(depth / cell));
 
-  function clearHeight(x: number, z: number): number {
-    let cityFade = 1;
-    for (const city of cities) {
-      const distance = Math.hypot(x - city.x, z - city.z);
-      cityFade = Math.min(cityFade, smoothstep(CITY_PAD, CITY_FADE, distance));
-    }
-    let roadFade = 1;
-    for (const path of roadPaths) {
-      let distance = Number.POSITIVE_INFINITY;
-      for (let index = 0; index < path.length - 1; index += 1) {
-        distance = Math.min(distance, segmentDistance(x, z, path[index].x, path[index].z, path[index + 1].x, path[index + 1].z));
-      }
-      roadFade = Math.min(roadFade, smoothstep(ROAD_PAD, ROAD_FADE, distance));
-      if (roadFade === 0) break;
-    }
-    const broad =
-      valueNoise(x / 13 + noiseShift, z / 13 - noiseShift, 17) * 1.25 +
-      valueNoise(x / 5.5 - noiseShift, z / 5.5 + noiseShift, 31) * 0.34;
-    const ridge = Math.max(0, valueNoise(x / 9 + noiseShift, z / 9, 71) - 0.5) * 1.7;
-    return Math.max(0, (broad - 0.32 + ridge) * cityFade * roadFade * amplitude);
-  }
-
-  function heightAt(x: number, z: number): number {
-    return clearHeight(x, z);
-  }
+  const heightField = createHeightField({
+    cities: [...positions.values()].map((city) => [city.x, city.z] as [number, number]),
+    terrain: { seed, amplitude },
+  });
+  const heightAt = (x: number, z: number): number => heightField.heightAt(x, z);
 
   const geometry = new THREE.PlaneGeometry(width, depth, segmentsX, segmentsZ);
   geometry.rotateX(-Math.PI / 2);
@@ -348,7 +315,7 @@ export function buildTerrain(
     group.add(buildMesa(site.x, site.z, 1.1 + random() * 0.2, heightAt, random, palette));
   }
 
-  return { group, heightAt };
+  return { group, mesh: terrainMesh, heightAt };
 }
 
 function isClear(

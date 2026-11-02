@@ -13,6 +13,7 @@ import type {
   VisualDraft,
 } from "./types";
 import { TERRAIN_STYLE_IDS } from "./types";
+import { createHeightField, edgeGrade } from "./height";
 import {
   cloneVisual,
   compileVisual,
@@ -196,7 +197,17 @@ function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
       ids.add(entry.id);
     }
   }
-  return { terrain, roads, props, scatter };
+  const units: VisualDraft["units"] = {};
+  if (value.units !== undefined) {
+    if (!asRecord(value.units)) throw new Error("单位外观配置必须是对象");
+    for (const key of ["player1", "player2"] as const) {
+      const assetId = value.units[key];
+      if (assetId === undefined || assetId === "") continue;
+      if (!isAssetId(assetId)) throw new Error(`${key} 的单位资产 ID 无效`);
+      units[key] = assetId;
+    }
+  }
+  return { terrain, roads, props, units, scatter };
 }
 
 export function fromMapDef(map: MapDef): MapDocument {
@@ -345,6 +356,10 @@ export function compileDocument(document: MapDocument): CompileResult {
   if (!towns.some((site) => site.owner === 1)) warning("no-player-town", "绿方没有起始城镇");
   if (!towns.some((site) => site.owner === 2)) warning("no-enemy-town", "红方没有起始城镇");
 
+  const heightField = createHeightField({
+    cities: document.sites.map((site) => [site.pos[0] / 10, site.pos[1] / 10] as [number, number]),
+    terrain: document.visual.terrain,
+  });
   const roadKeys = new Set<string>();
   const edges: MapDef["edges"] = [];
   const adjacency = new Map<string, string[]>();
@@ -367,7 +382,18 @@ export function compileDocument(document: MapDocument): CompileResult {
     const a = siteById.get(road.from) as SiteDraft;
     const b = siteById.get(road.to) as SiteDraft;
     const length = Math.max(1, Math.round(Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])));
-    edges.push({ from: road.from, to: road.to, length });
+    const grade = edgeGrade(
+      heightField,
+      [a.pos[0] / 10, a.pos[1] / 10],
+      [b.pos[0] / 10, b.pos[1] / 10],
+      length,
+    );
+    edges.push({
+      from: road.from,
+      to: road.to,
+      length,
+      ...(grade > 0.01 ? { grade: Math.round(grade * 1000) / 1000 } : {}),
+    });
     adjacency.get(road.from)?.push(road.to);
     adjacency.get(road.to)?.push(road.from);
   }

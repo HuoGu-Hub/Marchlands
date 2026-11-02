@@ -17,6 +17,7 @@ import {
   updateProp,
   updateSite,
   updateTerrain,
+  updateUnitVisual,
 } from "../src";
 
 describe("map authoring", () => {
@@ -124,11 +125,27 @@ describe("map authoring", () => {
     expect(removed.visual.props.some((prop) => prop.id === propId)).toBe(false);
   });
 
-  it("updates terrain settings without touching simulation data", () => {
+  it("stores unit visuals and round-trips them", () => {
+    const starter = createStarterDocument();
+    const next = updateUnitVisual(starter, "player1", "com.example:unit");
+    expect(next.visual.units.player1).toBe("com.example:unit");
+    const parsed = parseDocument(JSON.parse(serializeDocument(next)));
+    expect(parsed.document.visual.units.player1).toBe("com.example:unit");
+    expect(compileDocument(next).visual.units.player1).toBe("com.example:unit");
+    const bad = updateUnitVisual(next, "player2", "not-an-asset");
+    expect(() => parseDocument(JSON.parse(serializeDocument(bad)))).toThrow();
+  });
+
+  it("updates terrain settings and recomputes edge grades", () => {
     const starter = createStarterDocument();
     const next = updateTerrain(starter, { style: "autumn", amplitude: 1.2 });
     expect(next.visual.terrain.style).toBe("autumn");
-    expect(compileDocument(next).map).toEqual(compileDocument(starter).map);
+    const before = compileDocument(starter).map;
+    const after = compileDocument(next).map;
+    expect(after.cities).toEqual(before.cities);
+    expect(after.edges.map((edge) => edge.length)).toEqual(before.edges.map((edge) => edge.length));
+    expect(after.edges.some((edge) => edge.grade !== undefined)).toBe(true);
+    expect(after.edges.map((edge) => edge.grade)).not.toEqual(before.edges.map((edge) => edge.grade));
   });
 
   it("reports props outside the map bounds", () => {

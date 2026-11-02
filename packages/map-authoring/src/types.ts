@@ -43,10 +43,16 @@ export interface PropDraft {
   scale: number;
 }
 
+export interface UnitVisualDraft {
+  player1?: string;
+  player2?: string;
+}
+
 export interface VisualDraft {
   terrain: TerrainDraft;
   roads: RoadVisualDraft;
   props: PropDraft[];
+  units: UnitVisualDraft;
   /** 是否在空白处自动补树、石头与草丛。 */
   scatter: boolean;
 }
@@ -96,6 +102,7 @@ export interface MapVisual {
   terrain: TerrainDraft;
   roads: RoadVisualDraft;
   props: PropDraft[];
+  units: UnitVisualDraft;
   scatter: boolean;
   sites: Record<string, SiteVisual>;
 }

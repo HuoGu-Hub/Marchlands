@@ -8,6 +8,11 @@ export interface Route {
 interface Adjacency {
   to: CityId;
   length: number;
+  cost: number;
+}
+
+function edgeCost(length: number, grade = 0): number {
+  return Math.max(1, Math.round(length * (1 + grade * 3)));
 }
 
 const SEP = "\u0000";
@@ -23,8 +28,9 @@ export class MapGraph {
       const from = adjacency.get(edge.from);
       const to = adjacency.get(edge.to);
       if (!from || !to) throw new Error(`edge references unknown city: ${edge.from}-${edge.to}`);
-      from.push({ to: edge.to, length: edge.length });
-      to.push({ to: edge.from, length: edge.length });
+      const cost = edgeCost(edge.length, edge.grade);
+      from.push({ to: edge.to, length: edge.length, cost });
+      to.push({ to: edge.from, length: edge.length, cost });
     }
     for (const list of adjacency.values()) {
       list.sort((a, b) => (a.to < b.to ? -1 : a.to > b.to ? 1 : 0));
@@ -35,6 +41,13 @@ export class MapGraph {
   edgeLength(from: CityId, to: CityId): number | null {
     for (const edge of this.adjacency.get(from) ?? []) {
       if (edge.to === to) return edge.length;
+    }
+    return null;
+  }
+
+  edgeCost(from: CityId, to: CityId): number | null {
+    for (const edge of this.adjacency.get(from) ?? []) {
+      if (edge.to === to) return edge.cost;
     }
     return null;
   }
@@ -85,7 +98,7 @@ export class MapGraph {
       for (const edge of this.adjacency.get(current) ?? []) {
         if (visited.has(edge.to)) continue;
         if (blocked?.has(edge.to) && edge.to !== to) continue;
-        const candidateDistance = bestDistance + edge.length;
+        const candidateDistance = bestDistance + edge.cost;
         const candidatePath = [...base, edge.to];
         const existing = distance.get(edge.to);
         if (existing === undefined || candidateDistance < existing) {

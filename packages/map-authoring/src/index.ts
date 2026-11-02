@@ -25,6 +25,7 @@ export {
   updateScatter,
   updateSite,
   updateTerrain,
+  updateUnitVisual,
   watchCandidates,
 } from "./ops";
 export {
@@ -40,6 +41,8 @@ export {
   roadDraft,
   terrainDraft,
 } from "./visual";
+export { createHeightField, edgeGrade } from "./height";
+export type { HeightField, HeightFieldOptions } from "./height";
 export { TERRAIN_STYLE_IDS, TERRAIN_STYLES } from "./types";
 export type {
   CompileResult,
@@ -56,5 +59,6 @@ export type {
   SiteVisual,
   TerrainDraft,
   TerrainStyle,
+  UnitVisualDraft,
   VisualDraft,
 } from "./types";

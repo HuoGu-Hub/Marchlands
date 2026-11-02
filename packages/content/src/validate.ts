@@ -154,6 +154,10 @@ export function validateMap(input: unknown): MapDef {
     if (typeof to !== "string" || !cityIds.has(to)) issues.push(`edges[${index}].to unknown`);
     if (from === to) issues.push(`edges[${index}] is a self loop`);
     const length = requireInt(entry.length, `edges[${index}].length`, issues, 1);
+    if (entry.grade !== undefined) {
+      const grade = requireNumber(entry.grade, `edges[${index}].grade`, issues);
+      if (grade < 0 || grade > 1) issues.push(`edges[${index}].grade must be in [0, 1]`);
+    }
     if (typeof from === "string" && typeof to === "string") {
       const key = edgeKey(from, to);
       if (edgeKeys.has(key)) issues.push(`edges[${index}] duplicated: ${key}`);

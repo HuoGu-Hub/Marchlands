@@ -230,6 +230,17 @@ export function updateRoadVisual(document: MapDocument, patch: Partial<RoadVisua
   return next;
 }
 
+export function updateUnitVisual(
+  document: MapDocument,
+  player: "player1" | "player2",
+  assetId: string | undefined,
+): MapDocument {
+  const next = cloneDocument(document);
+  if (!assetId) delete next.visual.units[player];
+  else next.visual.units[player] = assetId;
+  return next;
+}
+
 export function updateScatter(document: MapDocument, scatter: boolean): MapDocument {
   const next = cloneDocument(document);
   next.visual.scatter = scatter;
