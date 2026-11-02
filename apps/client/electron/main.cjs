@@ -166,6 +166,20 @@ ipcMain.handle("map:open", async () => {
   return { name: path.basename(filePath), text: fs.readFileSync(filePath, "utf8") };
 });
 
+ipcMain.handle("pack:open", async () => {
+  if (!win) return null;
+  const result = await dialog.showOpenDialog(win, {
+    title: "导入资产包",
+    properties: ["openFile"],
+    filters: [{ name: "Marchlands 资产包", extensions: ["mlpack", "zip"] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const filePath = result.filePaths[0];
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile() || stat.size > 64 * 1024 * 1024) return null;
+  return { name: path.basename(filePath), bytes: new Uint8Array(fs.readFileSync(filePath)) };
+});
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();

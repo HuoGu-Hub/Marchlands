@@ -1,6 +1,8 @@
 import { createGame } from "@marchlands/sim";
 import type { CityId, MapDef, Owner, Ruleset, SimState, SiteKind, Stance } from "@marchlands/sim";
 import {
+  TERRAIN_STYLES,
+  addProp,
   addSite,
   cloneDocument,
   compileDocument,
@@ -8,26 +10,43 @@ import {
   createStarterDocument,
   disconnect,
   documentLabel,
+  moveProp,
   moveSite,
   parseDocument,
+  removeProp,
   removeSite,
   serializeDocument,
   updateDocument,
+  updateProp,
+  updateRoadVisual,
+  updateScatter,
   updateSite,
+  updateTerrain,
   watchCandidates,
 } from "@marchlands/map-authoring";
-import type { CompileResult, MapDocument, SiteDraft } from "@marchlands/map-authoring";
+import type {
+  CompileResult,
+  MapDocument,
+  MapVisual,
+  PropDraft,
+  RoadStyle,
+  SiteDraft,
+  TerrainStyle,
+} from "@marchlands/map-authoring";
+import { assetRegistry } from "../game/asset-registry";
 import { BattleScene } from "../game/scene";
 import type { SceneViewState } from "../game/scene";
-import { openMapText, saveMapText } from "./map-io";
+import { openAssetPackFile, openMapText, saveMapText } from "./map-io";
 import "./editor.css";
 
-type Tool = "select" | SiteKind | "road" | "erase";
+type Tool = "select" | SiteKind | "road" | "erase" | "asset";
+
+type Selection = { kind: "site"; id: CityId } | { kind: "prop"; id: string } | null;
 
 interface EditorOptions {
   root: HTMLElement;
   rules: Ruleset;
-  onPlaytest: (map: MapDef) => void;
+  onPlaytest: (map: MapDef, visual: MapVisual) => void;
   onExit: () => void;
 }
 
@@ -45,6 +64,14 @@ interface DragState {
   ground: [number, number] | null;
 }
 
+interface PropDragState {
+  id: string;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  ground: [number, number] | null;
+}
+
 const TOOL_LABEL: Record<Tool, string> = {
   select: "选择 / 移动",
   town: "城镇",
@@ -52,6 +79,7 @@ const TOOL_LABEL: Record<Tool, string> = {
   outpost: "驻兵点",
   road: "道路",
   erase: "删除",
+  asset: "放置装饰",
 };
 
 const AUTOSAVE_KEY = "marchlands.editor.autosave.v1";
@@ -75,19 +103,26 @@ const TEMPLATE = `
   <div class="ml-ed-body">
     <aside class="ml-ed-palette">
       <div class="ml-ed-section-label">工具</div>
-      <button class="ml-ed-piece tool active" data-tool="select" draggable="false"><i></i><b>选择 / 移动</b><span>拖动据点</span></button>
+      <button class="ml-ed-piece tool active" data-tool="select" draggable="false"><i></i><b>选择 / 移动</b><span>拖动据点或装饰</span></button>
       <button class="ml-ed-piece tool" data-tool="road" draggable="false"><i></i><b>道路</b><span>连两个据点</span></button>
-      <button class="ml-ed-piece tool" data-tool="erase" draggable="false"><i></i><b>删除</b><span>点据点或道路</span></button>
+      <button class="ml-ed-piece tool" data-tool="erase" draggable="false"><i></i><b>删除</b><span>点据点、道路或装饰</span></button>
       <div class="ml-ed-section-label">据点</div>
       <button class="ml-ed-piece" data-tool="town" draggable="true"><i class="town"></i><b>城镇</b><span>产兵 · 可升级</span></button>
       <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>增幅 · 叶子据点</span></button>
       <button class="ml-ed-piece" data-tool="outpost" draggable="true"><i class="outpost"></i><b>驻兵点</b><span>监视一条路</span></button>
+      <div class="ml-ed-section-label">地形</div>
+      <div class="ml-ed-asset-grid" id="ml-ed-terrain-grid"></div>
+      <div class="ml-ed-section-label">装饰</div>
+      <div id="ml-ed-prop-groups"></div>
+      <div class="ml-ed-section-label">资产包</div>
+      <button class="ml-ed-btn wide" id="ml-ed-import-pack">导入 .mlpack</button>
+      <div class="ml-ed-pack-status" id="ml-ed-pack-status"></div>
     </aside>
     <main class="ml-ed-stage">
       <canvas id="ml-ed-canvas"></canvas>
       <canvas id="ml-ed-overlay"></canvas>
       <div class="ml-ed-stage-badge" id="ml-ed-badge">选择工具开始</div>
-      <div class="ml-ed-stage-hint">拖拽左侧素材到地图 · 右键拖动画面 · 滚轮缩放 · Q/E 旋转</div>
+      <div class="ml-ed-stage-hint">拖拽地形或装饰到地图 · R 旋转 · [ ] 缩放 · 右键拖动 · 滚轮缩放 · Q/E 旋转</div>
       <div class="ml-ed-toast" id="ml-ed-toast"></div>
     </main>
     <aside class="ml-ed-inspector" id="ml-ed-inspector"></aside>
@@ -130,8 +165,9 @@ export class EditorController {
   private compiled: CompileResult = compileDocument(this.doc);
   private undoStack: MapDocument[] = [];
   private redoStack: MapDocument[] = [];
-  private selectedId: CityId | null = null;
+  private selection: Selection = null;
   private tool: Tool = "select";
+  private activeAsset: string | null = null;
   private mounted = false;
   private running = false;
   private dirty = false;
@@ -143,6 +179,7 @@ export class EditorController {
   private roadFrom: CityId | null = null;
   private pointer: PointerState = { x: 0, y: 0, ground: null };
   private drag: DragState | null = null;
+  private propDrag: PropDragState | null = null;
   private pan: { x: number; y: number; moved: boolean } | null = null;
   private suppressClick = false;
   private pointerId: number | null = null;
@@ -156,6 +193,9 @@ export class EditorController {
   private diagnosticsEl!: HTMLElement;
   private toastEl!: HTMLElement;
   private badgeEl!: HTMLElement;
+  private terrainGrid!: HTMLElement;
+  private propGroups!: HTMLElement;
+  private packStatus!: HTMLElement;
   private playButton!: HTMLButtonElement;
   private undoButton!: HTMLButtonElement;
   private redoButton!: HTMLButtonElement;
@@ -202,6 +242,9 @@ export class EditorController {
     this.diagnosticsEl = this.options.root.querySelector("#ml-ed-diagnostics") as HTMLElement;
     this.toastEl = this.options.root.querySelector("#ml-ed-toast") as HTMLElement;
     this.badgeEl = this.options.root.querySelector("#ml-ed-badge") as HTMLElement;
+    this.terrainGrid = this.options.root.querySelector("#ml-ed-terrain-grid") as HTMLElement;
+    this.propGroups = this.options.root.querySelector("#ml-ed-prop-groups") as HTMLElement;
+    this.packStatus = this.options.root.querySelector("#ml-ed-pack-status") as HTMLElement;
     this.playButton = this.options.root.querySelector("#ml-ed-play") as HTMLButtonElement;
     this.undoButton = this.options.root.querySelector("#ml-ed-undo") as HTMLButtonElement;
     this.redoButton = this.options.root.querySelector("#ml-ed-redo") as HTMLButtonElement;
@@ -220,6 +263,9 @@ export class EditorController {
       void this.saveDocument();
     });
     this.playButton.addEventListener("click", () => this.playtest());
+    this.options.root.querySelector("#ml-ed-import-pack")?.addEventListener("click", () => {
+      void this.importAssetPack();
+    });
 
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.addEventListener("click", () => {
@@ -242,7 +288,10 @@ export class EditorController {
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     this.canvas.addEventListener("dragover", (event) => {
-      if (event.dataTransfer?.types.includes("text/ml-site-kind")) {
+      if (
+        event.dataTransfer?.types.includes("text/ml-site-kind") ||
+        event.dataTransfer?.types.includes("text/ml-asset-id")
+      ) {
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
       }
@@ -250,6 +299,7 @@ export class EditorController {
     this.canvas.addEventListener("drop", this.onDrop);
     window.addEventListener("keydown", this.onKeyDown);
     this.badgeEl.textContent = TOOL_LABEL[this.tool];
+    this.renderAssetPalette();
   }
 
   private restoreAutosave(): void {
@@ -270,8 +320,11 @@ export class EditorController {
   private rebuild(preserveView: boolean): void {
     const view = preserveView ? this.scene?.getViewState() ?? this.view : null;
     this.compiled = compileDocument(this.doc);
-    if (this.selectedId && !this.doc.sites.some((site) => site.id === this.selectedId)) {
-      this.selectedId = null;
+    if (this.selection?.kind === "site" && !this.doc.sites.some((site) => site.id === this.selection?.id)) {
+      this.selection = null;
+    }
+    if (this.selection?.kind === "prop" && !this.doc.visual.props.some((prop) => prop.id === this.selection?.id)) {
+      this.selection = null;
     }
 
     let preview: SimState | null = null;
@@ -288,10 +341,10 @@ export class EditorController {
     this.scene = null;
     this.preview = preview;
     if (this.compiled.map.cities.length > 0) {
-      const scene = new BattleScene(this.canvas, this.compiled.map);
+      const scene = new BattleScene(this.canvas, this.compiled.map, this.compiled.visual);
       if (view) scene.setViewState(view);
       if (preview) scene.update(preview, 0);
-      scene.setSelected(this.selectedId);
+      scene.setSelected(this.selection?.kind === "site" ? this.selection.id : null);
       this.scene = scene;
       this.view = scene.getViewState();
     }
@@ -344,13 +397,130 @@ export class EditorController {
 
   private setTool(tool: Tool): void {
     this.tool = tool;
+    if (tool !== "asset") this.activeAsset = null;
     this.roadFrom = null;
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.classList.toggle("active", button.dataset.tool === tool);
     }
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-asset-id]")) {
+      button.classList.toggle("active", this.tool === "asset" && button.dataset.assetId === this.activeAsset);
+    }
     this.canvas.style.cursor = tool === "select" ? "grab" : tool === "erase" ? "not-allowed" : "crosshair";
     this.badgeEl.textContent = TOOL_LABEL[tool];
     this.drawOverlay();
+  }
+
+  private setActiveAsset(assetId: string): void {
+    this.tool = "asset";
+    this.activeAsset = assetId;
+    this.roadFrom = null;
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
+      button.classList.remove("active");
+    }
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-asset-id]")) {
+      button.classList.toggle("active", button.dataset.assetId === assetId);
+    }
+    this.canvas.style.cursor = "crosshair";
+    const info = assetRegistry.info(assetId);
+    this.badgeEl.textContent = `放置 ${info?.label ?? assetId}`;
+    this.drawOverlay();
+  }
+
+  private renderAssetPalette(): void {
+    assetRegistry.registerBuiltins();
+    const terrainOrder = ["hill", "ridge", "mesa", "pond", "field", "grove", "ruin", "camp"];
+    const terrain = assetRegistry
+      .list("terrain")
+      .sort((a, b) => terrainOrder.indexOf(a.id.split(".").pop() ?? "") - terrainOrder.indexOf(b.id.split(".").pop() ?? ""));
+    const props = assetRegistry.list("prop");
+    const counts = assetRegistry.counts();
+    this.terrainGrid.innerHTML = terrain.map((asset) => this.assetButton(asset)).join("");
+    const groups = new Map<string, typeof props>();
+    for (const asset of props) {
+      const tag = asset.tags[0] ?? "其他";
+      const bucket = groups.get(tag) ?? [];
+      bucket.push(asset);
+      groups.set(tag, bucket);
+    }
+    const groupOrder = ["树木", "草木", "岩石", "城镇", "建筑构件", "城堡", "其他"];
+    const orderedGroups = [...groups.entries()].sort(
+      (a, b) => {
+        const left = groupOrder.indexOf(a[0]);
+        const right = groupOrder.indexOf(b[0]);
+        return (left < 0 ? 99 : left) - (right < 0 ? 99 : right);
+      },
+    );
+    this.propGroups.innerHTML = orderedGroups
+      .map(
+        ([tag, assets]) => `
+          <div class="ml-ed-asset-group">
+            <div class="ml-ed-asset-group-label">${escapeHtml(tag)}</div>
+            <div class="ml-ed-asset-grid">${assets.map((asset) => this.assetButton(asset)).join("")}</div>
+          </div>`,
+      )
+      .join("");
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-asset-id]")) {
+      button.addEventListener("click", () => {
+        const id = button.dataset.assetId;
+        if (id) this.setActiveAsset(id);
+      });
+      button.addEventListener("dragstart", (event) => {
+        const id = button.dataset.assetId;
+        if (!id || !event.dataTransfer) return;
+        event.dataTransfer.setData("text/ml-asset-id", id);
+        event.dataTransfer.effectAllowed = "copy";
+      });
+    }
+    const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
+    const packLabel = counts.packs > 0 ? `${counts.packs} 个资产包` : "未导入资产包";
+    this.packStatus.textContent = `${packLabel} · ${counts.prop + counts.terrain} 个可用资产${missing > 0 ? ` · ${missing} 个缺失` : ""}`;
+  }
+
+  private assetButton(asset: { id: string; label: string; kind: string; source: string }): string {
+    const active = this.tool === "asset" && this.activeAsset === asset.id;
+    return `<button class="ml-ed-asset${active ? " active" : ""}" data-asset-id="${escapeHtml(asset.id)}" data-kind="${escapeHtml(asset.kind)}" draggable="true" title="${escapeHtml(asset.label)} · ${asset.source === "builtin" ? "内置" : "资产包"}">
+      <i></i><b>${escapeHtml(asset.label)}</b>
+    </button>`;
+  }
+
+  private addAssetAt(assetId: string, ground: [number, number]): void {
+    const pos = this.snapGround(ground);
+    const result = addProp(this.doc, assetId, pos, 0, 1);
+    this.selection = { kind: "prop", id: result.prop.id };
+    this.commit(result.document, `已放置 ${assetRegistry.info(assetId)?.label ?? "装饰"}`);
+  }
+
+  private async importAssetPack(): Promise<void> {
+    const opened = await openAssetPackFile();
+    if (!opened) return;
+    this.notice("正在导入资产包…");
+    try {
+      const result = await assetRegistry.loadPack(opened.bytes, { persist: true, fileName: opened.name });
+      this.renderAssetPalette();
+      this.renderInspector();
+      this.renderStatus();
+      this.notice(`已导入 ${result.manifest.name} · ${result.count} 个资产`);
+    } catch (error) {
+      this.notice(error instanceof Error ? error.message : "资产包无法读取");
+    }
+  }
+
+  private pickProp(clientX: number, clientY: number): string | null {
+    if (!this.scene) return null;
+    let best: string | null = null;
+    let bestDistance = 26;
+    for (const prop of this.doc.visual.props) {
+      const point = this.scene.projectGround(prop.pos[0], prop.pos[1], 0.5);
+      if (!point) continue;
+      const info = assetRegistry.info(prop.assetId);
+      const radius = Math.max(18, Math.min(46, (info?.footprint ?? 2) * 2.2));
+      const distance = Math.hypot(clientX - point.x, clientY - point.y);
+      if (distance < radius && distance < bestDistance) {
+        bestDistance = distance;
+        best = prop.id;
+      }
+    }
+    return best;
   }
 
   private snapGround(ground: [number, number]): [number, number] {
@@ -366,7 +536,7 @@ export class EditorController {
       return;
     }
     const result = addSite(this.doc, kind, pos, 0);
-    this.selectedId = result.site.id;
+    this.selection = { kind: "site", id: result.site.id };
     this.commit(result.document, `已放置 ${kindLabel(kind)}`);
   }
 
@@ -413,10 +583,22 @@ export class EditorController {
   }
 
   private selectSite(id: CityId | null): void {
-    this.selectedId = id;
+    this.selection = id ? { kind: "site", id } : null;
     this.scene?.setSelected(id);
     this.renderInspector();
     this.drawOverlay();
+  }
+
+  private selectProp(id: string | null): void {
+    this.selection = id ? { kind: "prop", id } : null;
+    this.scene?.setSelected(null);
+    this.renderInspector();
+    this.drawOverlay();
+  }
+
+  private selectedProp(): PropDraft | null {
+    if (this.selection?.kind !== "prop") return null;
+    return this.doc.visual.props.find((prop) => prop.id === this.selection?.id) ?? null;
   }
 
   private removeSiteById(id: CityId): void {
@@ -427,8 +609,15 @@ export class EditorController {
       this.notice("地图至少需要保留一座城镇");
       return;
     }
-    if (this.selectedId === id) this.selectedId = null;
+    if (this.selection?.kind === "site" && this.selection.id === id) this.selection = null;
     this.commit(removeSite(this.doc, id), `已删除 ${id}`);
+  }
+
+  private removePropById(id: string): void {
+    const prop = this.doc.visual.props.find((entry) => entry.id === id);
+    if (!prop) return;
+    if (this.selection?.kind === "prop" && this.selection.id === id) this.selection = null;
+    this.commit(removeProp(this.doc, id), `已删除装饰 ${prop.id}`);
   }
 
   private removeRoad(road: [CityId, CityId]): void {
@@ -442,10 +631,16 @@ export class EditorController {
 
   private readonly onDrop = (event: DragEvent): void => {
     event.preventDefault();
-    const kind = event.dataTransfer?.getData("text/ml-site-kind") as SiteKind | undefined;
-    if (kind !== "town" && kind !== "granary" && kind !== "outpost") return;
     const ground = this.scene?.screenToGround(event.clientX, event.clientY);
     if (!ground) return;
+    const assetId = event.dataTransfer?.getData("text/ml-asset-id");
+    if (assetId) {
+      this.setActiveAsset(assetId);
+      this.addAssetAt(assetId, ground);
+      return;
+    }
+    const kind = event.dataTransfer?.getData("text/ml-site-kind") as SiteKind | undefined;
+    if (kind !== "town" && kind !== "granary" && kind !== "outpost") return;
     this.setTool(kind);
     this.addAt(kind, ground);
   };
@@ -460,19 +655,35 @@ export class EditorController {
     }
     if (event.button !== 0) return;
     this.pointer = { x: event.clientX, y: event.clientY, ground: this.scene.screenToGround(event.clientX, event.clientY) };
-    const hit = this.pickSite(event.clientX, event.clientY);
-    if (hit && this.tool === "select") {
-      this.selectSite(hit);
-      this.drag = {
-        id: hit,
-        startX: event.clientX,
-        startY: event.clientY,
-        moved: false,
-        ground: this.pointer.ground,
-      };
-      this.pointerId = event.pointerId;
-      this.canvas.setPointerCapture(event.pointerId);
-      return;
+    if (this.tool === "select") {
+      const siteHit = this.pickSite(event.clientX, event.clientY);
+      if (siteHit) {
+        this.selectSite(siteHit);
+        this.drag = {
+          id: siteHit,
+          startX: event.clientX,
+          startY: event.clientY,
+          moved: false,
+          ground: this.pointer.ground,
+        };
+        this.pointerId = event.pointerId;
+        this.canvas.setPointerCapture(event.pointerId);
+        return;
+      }
+      const propHit = this.pickProp(event.clientX, event.clientY);
+      if (propHit) {
+        this.selectProp(propHit);
+        this.propDrag = {
+          id: propHit,
+          startX: event.clientX,
+          startY: event.clientY,
+          moved: false,
+          ground: this.pointer.ground,
+        };
+        this.pointerId = event.pointerId;
+        this.canvas.setPointerCapture(event.pointerId);
+        return;
+      }
     }
     this.pan = { x: event.clientX, y: event.clientY, moved: false };
     this.pointerId = event.pointerId;
@@ -496,6 +707,16 @@ export class EditorController {
       return;
     }
 
+    if (this.propDrag) {
+      const dx = event.clientX - this.propDrag.startX;
+      const dy = event.clientY - this.propDrag.startY;
+      if (!this.propDrag.moved && Math.hypot(dx, dy) < 5) return;
+      this.propDrag.moved = true;
+      this.propDrag.ground = this.pointer.ground;
+      this.drawOverlay();
+      return;
+    }
+
     if (this.pan && (event.buttons & 1 || event.buttons & 2 || event.buttons & 4)) {
       const dx = event.clientX - this.pan.x;
       const dy = event.clientY - this.pan.y;
@@ -509,7 +730,9 @@ export class EditorController {
       return;
     }
 
-    if (this.tool !== "select" && this.pointer.ground) {
+    if (this.tool === "asset" && this.pointer.ground) {
+      this.badgeEl.textContent = `放置 ${assetRegistry.info(this.activeAsset ?? "")?.label ?? "装饰"} · ${Math.round(this.pointer.ground[0])}, ${Math.round(this.pointer.ground[1])}`;
+    } else if (this.tool !== "select" && this.pointer.ground) {
       const [x, z] = this.pointer.ground;
       this.badgeEl.textContent = `${TOOL_LABEL[this.tool]} · ${Math.round(x)}, ${Math.round(z)}`;
     }
@@ -528,6 +751,13 @@ export class EditorController {
       }
       this.drag = null;
     }
+    if (this.propDrag) {
+      if (this.propDrag.moved && this.propDrag.ground) {
+        this.commit(moveProp(this.doc, this.propDrag.id, this.propDrag.ground), `已移动装饰 ${this.propDrag.id}`);
+        this.suppressClick = true;
+      }
+      this.propDrag = null;
+    }
     if (this.pan?.moved) this.suppressClick = true;
     this.pan = null;
   };
@@ -543,6 +773,12 @@ export class EditorController {
     }
     const ground = this.scene.screenToGround(event.clientX, event.clientY);
     if (!ground) return;
+
+    if (this.tool === "asset") {
+      if (this.activeAsset) this.addAssetAt(this.activeAsset, ground);
+      else this.notice("先从左侧选择地形或装饰");
+      return;
+    }
 
     if (this.tool === "town" || this.tool === "granary" || this.tool === "outpost") {
       this.addAt(this.tool, ground);
@@ -579,9 +815,14 @@ export class EditorController {
     }
 
     if (this.tool === "erase") {
-      const hit = this.pickSite(event.clientX, event.clientY);
-      if (hit) {
-        this.removeSiteById(hit);
+      const site = this.pickSite(event.clientX, event.clientY);
+      if (site) {
+        this.removeSiteById(site);
+        return;
+      }
+      const prop = this.pickProp(event.clientX, event.clientY);
+      if (prop) {
+        this.removePropById(prop);
         return;
       }
       const road = this.pickRoad(event.clientX, event.clientY);
@@ -590,9 +831,14 @@ export class EditorController {
       return;
     }
 
-    const hit = this.pickSite(event.clientX, event.clientY);
-    if (hit) {
-      this.selectSite(hit);
+    const site = this.pickSite(event.clientX, event.clientY);
+    if (site) {
+      this.selectSite(site);
+      return;
+    }
+    const prop = this.pickProp(event.clientX, event.clientY);
+    if (prop) {
+      this.selectProp(prop);
       return;
     }
     this.selectSite(null);
@@ -622,9 +868,30 @@ export class EditorController {
       return;
     }
     if (event.key === "Delete" || event.key === "Backspace") {
-      if (!this.selectedId) return;
-      event.preventDefault();
-      this.removeSiteById(this.selectedId);
+      if (this.selection?.kind === "site") {
+        event.preventDefault();
+        this.removeSiteById(this.selection.id);
+      } else if (this.selection?.kind === "prop") {
+        event.preventDefault();
+        this.removePropById(this.selection.id);
+      }
+      return;
+    }
+    if (event.key.toLowerCase() === "r") {
+      const prop = this.selectedProp();
+      if (prop) {
+        event.preventDefault();
+        this.commit(updateProp(this.doc, prop.id, { rotation: prop.rotation + (event.shiftKey ? -15 : 15) }), "已旋转装饰");
+      }
+      return;
+    }
+    if (event.key === "[" || event.key === "]") {
+      const prop = this.selectedProp();
+      if (prop) {
+        event.preventDefault();
+        const scale = prop.scale + (event.key === "]" ? 0.1 : -0.1);
+        this.commit(updateProp(this.doc, prop.id, { scale }), "已缩放装饰");
+      }
       return;
     }
     if (event.key === "Escape") {
@@ -638,8 +905,18 @@ export class EditorController {
   };
 
   private renderInspector(): void {
-    const site = this.selectedId
-      ? this.doc.sites.find((entry) => entry.id === this.selectedId) ?? null
+    if (this.selection?.kind === "prop") {
+      const prop = this.selectedProp();
+      if (prop) {
+        this.inspector.innerHTML = this.propInspectorHtml(prop);
+        this.bindInspector();
+        return;
+      }
+      this.selection = null;
+    }
+
+    const site = this.selection?.kind === "site"
+      ? this.doc.sites.find((entry) => entry.id === this.selection?.id) ?? null
       : null;
     if (!site) {
       this.inspector.innerHTML = this.mapSettingsHtml();
@@ -655,6 +932,10 @@ export class EditorController {
     const watchOptions = candidates
       .filter((road) => road.from && road.to)
       .map((road) => option(`${road.from}|${road.to}`, currentWatch, `${road.from} ↔ ${road.to}`))
+      .join("");
+    const buildingOptions = assetRegistry
+      .list("building")
+      .map((asset) => option(asset.id, site.visualAssetId ?? "", `${asset.label}${asset.source === "pack" ? " · 资产包" : ""}`))
       .join("");
 
     this.inspector.innerHTML = `
@@ -698,17 +979,50 @@ export class EditorController {
         </select>
       </label>
       ` : ""}
+      <div class="ml-ed-section-label">外观</div>
+      <label class="ml-ed-field"><span>建筑模型</span>
+        <select data-site="${site.id}" data-field="visualAssetId">
+          ${option("", site.visualAssetId ?? "", "默认外观")}
+          ${buildingOptions}
+        </select>
+      </label>
+      <div class="ml-ed-row">
+        <label class="ml-ed-field"><span>朝向</span><input data-site="${site.id}" data-field="visualRotation" type="number" step="15" value="${site.visualRotation ?? 0}"></label>
+        <label class="ml-ed-field"><span>缩放</span><input data-site="${site.id}" data-field="visualScale" type="number" min="0.1" max="10" step="0.1" value="${site.visualScale ?? 1}"></label>
+      </div>
       <div class="ml-ed-meta">坐标 ${site.pos[0]}, ${site.pos[1]}<br>编号 ${site.id}</div>
       <button class="ml-ed-delete" data-action="delete">删除这个据点</button>
     `;
     this.bindInspector();
   }
 
+  private propInspectorHtml(prop: PropDraft): string {
+    const info = assetRegistry.info(prop.assetId);
+    const missing = info ? "" : `<div class="ml-ed-kind warn">资产包未载入</div>`;
+    return `
+      <h3>${escapeHtml(prop.id)}</h3>
+      <div class="ml-ed-kind">${escapeHtml(info?.label ?? "未知装饰")} · ${info?.source === "pack" ? "资产包" : "内置"}</div>
+      ${missing}
+      <label class="ml-ed-field"><span>资产 ID</span><input value="${escapeHtml(prop.assetId)}" readonly></label>
+      <label class="ml-ed-field"><span>朝向</span><input data-prop="${prop.id}" data-field="rotation" type="number" step="15" value="${Math.round(prop.rotation)}"></label>
+      <label class="ml-ed-field"><span>缩放</span><input data-prop="${prop.id}" data-field="scale" type="number" min="0.1" max="10" step="0.1" value="${prop.scale.toFixed(2)}"></label>
+      <div class="ml-ed-meta">坐标 ${prop.pos[0]}, ${prop.pos[1]}<br>占地 ${info?.footprint ?? "?"} 米</div>
+      <p class="ml-ed-note">拖动可以移动装饰；R 旋转 15°，Shift+R 反向旋转；[ ] 缩放。</p>
+      <button class="ml-ed-delete" data-action="delete-prop">删除这个装饰</button>
+    `;
+  }
+
   private mapSettingsHtml(): string {
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
+    const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
+    const packRows = assetRegistry.packList
+      .map(
+        (pack) => `<div class="ml-ed-pack-row"><span>${escapeHtml(pack.name)}</span><button data-pack-remove="${escapeHtml(pack.id)}">移除</button></div>`,
+      )
+      .join("");
     return `
       <h3>地图设置</h3>
-      <div class="ml-ed-kind">${this.doc.sites.length} 个据点 · ${errors} 个错误</div>
+      <div class="ml-ed-kind">${this.doc.sites.length} 个据点 · ${this.doc.visual.props.length} 个装饰 · ${errors} 个错误</div>
       <label class="ml-ed-field"><span>地图名称</span><input data-field="name" value="${escapeHtml(this.doc.name)}"></label>
       <div class="ml-ed-row">
         <label class="ml-ed-field"><span>宽</span><input data-field="width" type="number" min="100" max="2000" step="10" value="${this.doc.size[0]}"></label>
@@ -720,25 +1034,68 @@ export class EditorController {
           ${option("open", this.doc.transit, "开放通行")}
         </select>
       </label>
-      <div class="ml-ed-meta">目标：占领全部城镇<br>时限：15 分钟<br>玩家：绿方 / 红方</div>
-      <p class="ml-ed-note">从左侧拖入城镇、粮仓与驻兵点。<br>选择据点后可修改归属、等级与驻军；驻兵点必须监视一条相邻道路。</p>
-      <p class="ml-ed-note">城镇至少两座；粮仓与驻兵点只能有一条路；所有据点必须连成一张图。</p>
+      <div class="ml-ed-section-label">地貌</div>
+      <label class="ml-ed-field"><span>风格</span>
+        <select data-field="terrainStyle">
+          ${TERRAIN_STYLES.map((style) => option(style.id, this.doc.visual.terrain.style, style.label)).join("")}
+        </select>
+      </label>
+      <div class="ml-ed-row">
+        <label class="ml-ed-field"><span>起伏</span><input data-field="terrainAmplitude" type="number" min="0.2" max="1.5" step="0.1" value="${this.doc.visual.terrain.amplitude}"></label>
+        <label class="ml-ed-field"><span>种子</span><input data-field="terrainSeed" type="number" step="1" value="${this.doc.visual.terrain.seed}"></label>
+      </div>
+      <div class="ml-ed-section-label">道路</div>
+      <div class="ml-ed-row">
+        <label class="ml-ed-field"><span>风格</span>
+          <select data-field="roadStyle">
+            ${option("cobble", this.doc.visual.roads.style, "石板")}
+            ${option("dirt", this.doc.visual.roads.style, "土路")}
+          </select>
+        </label>
+        <label class="ml-ed-field"><span>宽度</span><input data-field="roadWidth" type="number" min="0.6" max="6" step="0.1" value="${this.doc.visual.roads.width}"></label>
+      </div>
+      <label class="ml-ed-check"><input data-field="scatter" type="checkbox" ${this.doc.visual.scatter ? "checked" : ""}><span>自动补树、石头与草丛</span></label>
+      ${packRows ? `<div class="ml-ed-pack-list">${packRows}</div>` : ""}
+      <div class="ml-ed-meta">目标：占领全部城镇<br>时限：15 分钟<br>资产包：${assetRegistry.counts().packs} 个${missing > 0 ? ` · ${missing} 个装饰缺失` : ""}</div>
+      <p class="ml-ed-note">从左侧拖入地形、树木与城镇装饰；拖动装饰可移动，选中后可旋转和缩放。</p>
+      <p class="ml-ed-note">地形和装饰只影响画面，不进入模拟与回放；据点仍然决定道路与行军。</p>
     `;
   }
 
   private bindInspector(): void {
     for (const field of this.inspector.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-field]")) {
       field.addEventListener("change", () => {
-        const siteId = field.dataset.site;
         const name = field.dataset.field;
         if (!name) return;
-        if (siteId) this.changeSiteField(siteId, name, field.value);
-        else this.changeMapField(name, field.value);
+        const value = field instanceof HTMLInputElement && field.type === "checkbox" ? String(field.checked) : field.value;
+        const siteId = field.dataset.site;
+        const propId = field.dataset.prop;
+        if (siteId) this.changeSiteField(siteId, name, value);
+        else if (propId) this.changePropField(propId, name, value);
+        else this.changeMapField(name, value);
       });
     }
     this.inspector.querySelector<HTMLElement>("[data-action=delete]")?.addEventListener("click", () => {
-      if (this.selectedId) this.removeSiteById(this.selectedId);
+      if (this.selection?.kind === "site") this.removeSiteById(this.selection.id);
     });
+    this.inspector.querySelector<HTMLElement>("[data-action=delete-prop]")?.addEventListener("click", () => {
+      if (this.selection?.kind === "prop") this.removePropById(this.selection.id);
+    });
+    for (const button of this.inspector.querySelectorAll<HTMLElement>("[data-pack-remove]")) {
+      button.addEventListener("click", () => {
+        const packId = button.dataset.packRemove;
+        if (packId) void this.removeAssetPack(packId);
+      });
+    }
+  }
+
+  private async removeAssetPack(packId: string): Promise<void> {
+    if (!window.confirm("移除资产包后，使用其中资产的地图会显示缺失。确定移除？")) return;
+    await assetRegistry.removePack(packId);
+    this.renderAssetPalette();
+    this.renderInspector();
+    this.rebuild(true);
+    this.notice("资产包已移除");
   }
 
   private changeSiteField(id: CityId, field: string, value: string): void {
@@ -777,6 +1134,31 @@ export class EditorController {
         const [from, to] = value.split("|");
         this.commit(updateSite(this.doc, id, { watch: [from, to] }), "已设置监视道路");
       }
+      return;
+    }
+    if (field === "visualAssetId") {
+      this.commit(
+        updateSite(this.doc, id, { visualAssetId: value || undefined }),
+        value ? "已更换建筑外观" : "已恢复默认外观",
+      );
+      return;
+    }
+    if (field === "visualRotation") {
+      this.commit(updateSite(this.doc, id, { visualRotation: Number(value) || 0 }), "已修改外观朝向");
+      return;
+    }
+    if (field === "visualScale") {
+      this.commit(updateSite(this.doc, id, { visualScale: Number(value) || 1 }), "已修改外观缩放");
+    }
+  }
+
+  private changePropField(id: string, field: string, value: string): void {
+    if (field === "rotation") {
+      this.commit(updateProp(this.doc, id, { rotation: Number(value) || 0 }), "已修改装饰朝向");
+      return;
+    }
+    if (field === "scale") {
+      this.commit(updateProp(this.doc, id, { scale: Number(value) || 1 }), "已修改装饰缩放");
     }
   }
 
@@ -797,17 +1179,43 @@ export class EditorController {
     }
     if (field === "transit") {
       this.commit(updateDocument(this.doc, { transit: value === "open" ? "open" : "friendly" }), "已修改通行规则");
+      return;
+    }
+    if (field === "terrainStyle") {
+      this.commit(updateTerrain(this.doc, { style: value as TerrainStyle }), "已修改地貌风格");
+      return;
+    }
+    if (field === "terrainAmplitude") {
+      this.commit(updateTerrain(this.doc, { amplitude: Number(value) || 1 }), "已修改地形起伏");
+      return;
+    }
+    if (field === "terrainSeed") {
+      this.commit(updateTerrain(this.doc, { seed: Math.round(Number(value) || 0) }), "已修改地形种子");
+      return;
+    }
+    if (field === "roadStyle") {
+      this.commit(updateRoadVisual(this.doc, { style: value as RoadStyle }), "已修改道路风格");
+      return;
+    }
+    if (field === "roadWidth") {
+      this.commit(updateRoadVisual(this.doc, { width: Number(value) || 1.6 }), "已修改道路宽度");
+      return;
+    }
+    if (field === "scatter") {
+      this.commit(updateScatter(this.doc, value === "true"), value === "true" ? "已开启自动补景" : "已关闭自动补景");
     }
   }
 
   private renderStatus(): void {
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error");
     const warnings = this.compiled.diagnostics.filter((entry) => entry.severity === "warning");
+    const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
+    const missingText = missing > 0 ? ` · ${missing} 个资产缺失` : "";
     this.statusEl.textContent = errors.length > 0
       ? `${errors.length} 个错误 · ${warnings.length} 个警告`
       : warnings.length > 0
-        ? `可试玩 · ${warnings.length} 个警告`
-        : "地图有效";
+        ? `可试玩 · ${warnings.length} 个警告${missingText}`
+        : `地图有效${missingText}`;
     this.statusEl.className = `ml-ed-status ${errors.length > 0 ? "error" : "ok"}`;
     this.diagnosticsEl.innerHTML = this.compiled.diagnostics
       .slice(0, 4)
@@ -820,7 +1228,7 @@ export class EditorController {
 
   private syncTop(): void {
     const label = this.options.root.querySelector("#ml-ed-map-label");
-    if (label) label.textContent = `${documentLabel(this.doc)} · ${this.doc.sites.length} 据点`;
+    if (label) label.textContent = `${documentLabel(this.doc)} · ${this.doc.sites.length} 据点 · ${this.doc.visual.props.length} 装饰`;
   }
 
   private notice(message: string): void {
@@ -852,7 +1260,7 @@ export class EditorController {
       this.doc = parsed.document;
       this.undoStack = [];
       this.redoStack = [];
-      this.selectedId = null;
+      this.selection = null;
       this.dirty = false;
       this.rebuild(false);
       this.notice(`已载入 ${opened.name}`);
@@ -866,7 +1274,7 @@ export class EditorController {
     this.doc = createStarterDocument();
     this.undoStack = [];
     this.redoStack = [];
-    this.selectedId = null;
+    this.selection = null;
     this.dirty = false;
     this.rebuild(false);
     this.notice("已新建地图");
@@ -878,7 +1286,7 @@ export class EditorController {
       this.notice("先修复地图错误再试玩");
       return;
     }
-    this.options.onPlaytest(this.compiled.map);
+    this.options.onPlaytest(this.compiled.map, this.compiled.visual);
   }
 
   private requestExit(): void {
@@ -939,6 +1347,26 @@ export class EditorController {
       }
     }
 
+    if (this.propDrag?.moved && this.propDrag.ground) {
+      const prop = this.doc.visual.props.find((entry) => entry.id === this.propDrag?.id);
+      const from = prop ? this.scene.projectGround(prop.pos[0], prop.pos[1], 0.5) : null;
+      const to = this.scene.projectGround(this.propDrag.ground[0], this.propDrag.ground[1], 0.5);
+      if (from && to) {
+        const a = local(from);
+        const b = local(to);
+        this.ctx.save();
+        this.ctx.setLineDash([4, 4]);
+        this.ctx.strokeStyle = "#9fc7a4";
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(a.x, a.y);
+        this.ctx.lineTo(b.x, b.y);
+        this.ctx.stroke();
+        this.ctx.restore();
+        this.drawPin(b.x, b.y, "#9fc7a4");
+      }
+    }
+
     if (this.roadFrom && this.pointer.ground) {
       const site = this.doc.sites.find((entry) => entry.id === this.roadFrom);
       const from = site ? sitePoint(site) : null;
@@ -974,6 +1402,41 @@ export class EditorController {
       }
     }
 
+    if (this.tool === "asset" && this.activeAsset && this.pointer.ground) {
+      const info = assetRegistry.info(this.activeAsset);
+      const projected = this.scene.projectGround(this.pointer.ground[0], this.pointer.ground[1], 0.4);
+      if (projected) {
+        const point = local(projected);
+        const radius = Math.max(12, Math.min(52, (info?.footprint ?? 2) * 4));
+        this.ctx.save();
+        this.ctx.strokeStyle = "rgba(159,199,164,.85)";
+        this.ctx.fillStyle = "rgba(159,199,164,.12)";
+        this.ctx.lineWidth = 1.5;
+        this.ctx.setLineDash([4, 4]);
+        this.ctx.beginPath();
+        this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.restore();
+        this.drawPin(point.x, point.y, "#9fc7a4");
+      }
+    }
+
+    const selected = this.selectedProp();
+    if (selected) {
+      const projected = this.scene.projectGround(selected.pos[0], selected.pos[1], 0.5);
+      if (projected) {
+        const point = local(projected);
+        this.ctx.save();
+        this.ctx.strokeStyle = "rgba(198,163,106,.95)";
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.ctx.arc(point.x, point.y, 13, 0, Math.PI * 2);
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+    }
+
     const hovered = this.pickSite(this.pointer.x, this.pointer.y);
     if (hovered) {
       const site = this.doc.sites.find((entry) => entry.id === hovered);
@@ -986,6 +1449,22 @@ export class EditorController {
         this.ctx.arc(point.x, point.y, 9, 0, Math.PI * 2);
         this.ctx.stroke();
         this.ctx.restore();
+      }
+    } else {
+      const hoveredProp = this.pickProp(this.pointer.x, this.pointer.y);
+      if (hoveredProp) {
+        const prop = this.doc.visual.props.find((entry) => entry.id === hoveredProp);
+        const point = prop ? this.scene.projectGround(prop.pos[0], prop.pos[1], 0.5) : null;
+        if (point) {
+          const localPoint = local(point);
+          this.ctx.save();
+          this.ctx.strokeStyle = "rgba(159,199,164,.7)";
+          this.ctx.lineWidth = 1;
+          this.ctx.beginPath();
+          this.ctx.arc(localPoint.x, localPoint.y, 10, 0, Math.PI * 2);
+          this.ctx.stroke();
+          this.ctx.restore();
+        }
       }
     }
   }

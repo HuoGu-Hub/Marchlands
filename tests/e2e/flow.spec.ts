@@ -44,6 +44,26 @@ test("creates a map in the editor and returns from playtest", async ({ page }) =
   await expect(page.locator("#ml-ed-map-label")).toContainText("4 据点");
 });
 
+test("places and rotates a terrain prop in the editor", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+  const label = page.locator("#ml-ed-map-label");
+  const before = await label.textContent();
+  const count = Number(/(\d+) 装饰/.exec(before ?? "")?.[1] ?? "0");
+  const box = await page.locator("#ml-ed-canvas").boundingBox();
+  if (!box) throw new Error("editor canvas has no box");
+  await page.click("#ml-ed-terrain-grid .ml-ed-asset >> nth=0");
+  await page.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.55);
+  await expect(label).toContainText(`${count + 1} 装饰`);
+  await page.keyboard.press("r");
+  await expect(page.locator("#ml-ed-toast")).toContainText("已旋转装饰");
+  await page.click("#ml-ed-undo");
+  await page.click("#ml-ed-undo");
+  await expect(label).toContainText(`${count} 装饰`);
+});
+
 test("pauses and resumes without losing the match", async ({ page }) => {
   await openGame(page);
   const timer = page.locator("#hud-timer");

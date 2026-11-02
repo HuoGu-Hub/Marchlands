@@ -7,6 +7,7 @@ declare global {
       setFullscreen(enabled: boolean): Promise<void>;
       saveMapFile(text: string, name: string): Promise<string | null>;
       openMapFile(): Promise<{ name: string; text: string } | null>;
+      openAssetPack(): Promise<{ name: string; bytes: Uint8Array } | null>;
       quit(): void;
     };
   }

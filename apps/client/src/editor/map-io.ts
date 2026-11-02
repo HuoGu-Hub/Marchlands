@@ -54,3 +54,38 @@ export async function openMapText(): Promise<OpenedMap | null> {
     input.click();
   });
 }
+export interface OpenedAssetPack {
+  name: string;
+  bytes: Uint8Array;
+}
+
+export async function openAssetPackFile(): Promise<OpenedAssetPack | null> {
+  if (window.marchlandsHost?.openAssetPack) {
+    return window.marchlandsHost.openAssetPack();
+  }
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".mlpack,.zip,application/zip";
+    input.addEventListener(
+      "change",
+      () => {
+        const file = input.files?.[0];
+        if (!file) {
+          resolve(null);
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          if (result instanceof ArrayBuffer) resolve({ name: file.name, bytes: new Uint8Array(result) });
+          else resolve(null);
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsArrayBuffer(file);
+      },
+      { once: true },
+    );
+    input.click();
+  });
+}
