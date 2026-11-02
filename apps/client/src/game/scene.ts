@@ -7,8 +7,10 @@ import { buildBuilding, buildTown, buildWall, paletteFor, townBuildingKind } fro
 import { GlbUnitActor } from "./unit-glb";
 import type { UnitActorView } from "./unit-glb";
 import { UnitActor } from "./unit-actor";
-import { buildTerrain, terrainAtmosphere } from "./terrain";
+import { buildTerrain } from "./terrain";
 import type { Terrain } from "./terrain";
+import { buildAtmosphere } from "./atmosphere";
+import type { Atmosphere } from "./atmosphere";
 import type { UnitKind } from "./unit-models";
 
 const PLAYER_COLORS: Record<Owner, number> = {
@@ -17,12 +19,21 @@ const PLAYER_COLORS: Record<Owner, number> = {
   2: 0xe06a4a,
 };
 
-const PITCH = (55 * Math.PI) / 180;
-const CAMERA_DISTANCE = 90;
-const VIEW_HEIGHT = 57;
-const ZOOM_MIN = 0.7;
+const PITCH = (54 * Math.PI) / 180;
+const CAMERA_DISTANCE = 96;
+const VIEW_HEIGHT = 58;
+const ZOOM_MIN = 0.34;
 const ZOOM_MAX = 2.4;
 const DEFAULT_ZOOM = 1.12;
+const GAMEPLAY_ZOOM = 0.62;
+const CITY_PLATFORM_TOP = 4.75;
+const CITY_PLATFORM_BOTTOM = 5.0;
+const CITY_WALL_RADIUS = 3.3;
+const CITY_WALL_SCALE = 1.35;
+const UNIT_SCALE = 1.15;
+const CAVALRY_SCALE = 0.95;
+const GLB_UNIT_SCALE = 1.05;
+const SQUAD_LABEL_HEIGHT = 1.55;
 
 const TREE_SPECIES = ["tree_pineTallA", "tree_oak", "tree_detailed", "tree_default", "tree_pineRoundC"];
 const ROCK_SPECIES = ["rock_largeB", "rock_smallA", "rock_smallB"];
@@ -76,6 +87,7 @@ export class BattleScene {
   private yaw = Math.PI / 4;
   private targetYaw = Math.PI / 4;
   private zoom = 1.12;
+  private frameY = 0;
   private readonly focus = new THREE.Vector3();
   private bounds = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
   private elapsed = 0;
@@ -88,6 +100,7 @@ export class BattleScene {
   private readonly propGroup = new THREE.Group();
   private readonly propObjects = new Map<string, THREE.Object3D>();
   private readonly sceneryGroup = new THREE.Group();
+  private atmosphere: Atmosphere | null = null;
 
   constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
     this.canvas = canvas;
@@ -103,8 +116,7 @@ export class BattleScene {
     this.scene.background = new THREE.Color(0x0c120e);
     this.scene.fog = new THREE.Fog(0x0c120e, 125, 195);
 
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 260);
-    this.zoom = this.fitZoom();
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 380);
 
     for (const city of map.cities) {
       this.positions.set(city.id, new THREE.Vector3(city.pos[0] / 10, 0, city.pos[1] / 10));
@@ -116,6 +128,7 @@ export class BattleScene {
     this.scene.add(this.propGroup);
     this.scene.add(this.sceneryGroup);
     this.buildGround();
+    this.zoom = Math.max(this.fitZoom(), GAMEPLAY_ZOOM);
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
     }
@@ -180,7 +193,7 @@ export class BattleScene {
     const position = this.positions.get(cityId);
     if (!position) return null;
     const rect = this.canvas.getBoundingClientRect();
-    const projected = position.clone().setY(position.y + 4.8).project(this.camera);
+    const projected = position.clone().setY(position.y + 5.6).project(this.camera);
     return {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
@@ -243,7 +256,7 @@ export class BattleScene {
     for (const city of state.cities) {
       const position = this.positions.get(city.id);
       if (!position) continue;
-      const projected = position.clone().setY(position.y + 2).project(this.camera);
+      const projected = position.clone().setY(position.y + 2.6).project(this.camera);
       const x = rect.left + ((projected.x + 1) / 2) * rect.width;
       const y = rect.top + ((1 - projected.y) / 2) * rect.height;
       const distance = Math.hypot(clientX - x, clientY - y);
@@ -267,6 +280,7 @@ export class BattleScene {
       const material = this.ring.material as THREE.MeshBasicMaterial;
       material.opacity = 0.5 + Math.sin(this.elapsed / 260) * 0.18;
     }
+    this.atmosphere?.update(this.elapsed);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -290,6 +304,7 @@ export class BattleScene {
     });
     for (const view of this.cityViews.values()) view.texture.dispose();
     for (const view of this.squadViews.values()) view.texture.dispose();
+    this.atmosphere?.dispose();
     this.renderer.dispose();
   }
 
@@ -304,10 +319,10 @@ export class BattleScene {
     const horizontal = Math.cos(PITCH) * CAMERA_DISTANCE;
     this.camera.position.set(
       this.focus.x + Math.sin(this.yaw) * horizontal,
-      Math.sin(PITCH) * CAMERA_DISTANCE,
+      this.frameY + Math.sin(PITCH) * CAMERA_DISTANCE,
       this.focus.z + Math.cos(this.yaw) * horizontal,
     );
-    this.camera.lookAt(this.focus.x, 2.2, this.focus.z);
+    this.camera.lookAt(this.focus.x, this.frameY, this.focus.z);
   }
 
   private updateCities(state: SimState): void {
@@ -325,7 +340,7 @@ export class BattleScene {
         this.rebuildCityModel(view, city);
       }
 
-      view.label.position.y = 3.9;
+      view.label.position.y = 5.5;
       const label = `${city.id} · L${city.level}\n${city.pop}/${city.maxPop}`;
       if (label !== view.labelText) {
         view.labelText = label;
@@ -432,7 +447,7 @@ export class BattleScene {
     group.position.y = this.terrain.heightAt(position.x, position.z);
 
     const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(4.2, 30),
+      new THREE.CircleGeometry(CITY_PLATFORM_BOTTOM + 0.55, 34),
       new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }),
     );
     shadow.rotation.x = -Math.PI / 2;
@@ -440,24 +455,24 @@ export class BattleScene {
     group.add(shadow);
 
     const apron = new THREE.Mesh(
-      new THREE.CylinderGeometry(3.7, 3.9, 0.16, 12),
+      new THREE.CylinderGeometry(CITY_PLATFORM_BOTTOM, CITY_PLATFORM_BOTTOM + 0.22, 0.18, 16),
       new THREE.MeshStandardMaterial({ color: 0x3d4f34, roughness: 1, flatShading: true }),
     );
-    apron.position.y = 0.08;
+    apron.position.y = 0.09;
     group.add(apron);
 
     const platformSide = new THREE.MeshStandardMaterial({ color: 0x6a6150, roughness: 1, flatShading: true });
     const platformTop = new THREE.MeshStandardMaterial({ map: flagstoneTexture(), roughness: 0.95 });
-    const platform = new THREE.Mesh(new THREE.CylinderGeometry(3.45, 3.7, 0.22, 10), [
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(CITY_PLATFORM_TOP, CITY_PLATFORM_BOTTOM, 0.26, 12), [
       platformSide,
       platformTop,
       platformSide,
     ]);
-    platform.position.y = 0.11;
+    platform.position.y = 0.13;
     group.add(platform);
 
     const model = new THREE.Group();
-    model.position.y = 0.28;
+    model.position.y = 0.3;
     group.add(model);
 
     const labelCanvas = document.createElement("canvas");
@@ -468,8 +483,8 @@ export class BattleScene {
     const label = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
-    label.scale.set(4.5, 1.45, 1);
-    label.position.y = 3.9;
+    label.scale.set(5.4, 1.74, 1);
+    label.position.y = 5.5;
     group.add(label);
 
     this.scene.add(group);
@@ -501,11 +516,16 @@ export class BattleScene {
     const palette = paletteFor(city.owner);
     if (city.kind === "town") {
       const built = buildTown(city.level, palette, seed, townBuildingKind(hashId(city.id)));
-      built.add(buildWall(city.level, palette, 3.3));
+      const wall = buildWall(city.level, palette, CITY_WALL_RADIUS);
+      wall.scale.setScalar(CITY_WALL_SCALE);
+      built.add(wall);
+      built.add(this.buildTownDecor(city.owner, seed));
       view.model.add(built);
     } else {
       const kind = city.kind === "granary" ? "granary" : "tower";
-      view.model.add(buildBuilding(kind, palette, city.level, seed));
+      const fallback = buildBuilding(kind, palette, city.level, seed);
+      fallback.scale.multiplyScalar(1.7);
+      view.model.add(fallback);
     }
     view.owner = city.owner;
     view.level = city.level;
@@ -533,6 +553,12 @@ export class BattleScene {
           disposeObject(child);
           view.model.remove(child);
         }
+        if (city.kind === "town") {
+          const wall = buildWall(city.level, palette, CITY_WALL_RADIUS);
+          wall.scale.setScalar(CITY_WALL_SCALE);
+          view.model.add(wall);
+          view.model.add(this.buildTownDecor(city.owner, seed));
+        }
         object.rotation.y = ((siteVisual?.rotation ?? 0) * Math.PI) / 180;
         object.scale.multiplyScalar(siteVisual?.scale ?? 1);
         view.model.add(object);
@@ -540,6 +566,36 @@ export class BattleScene {
       .catch(() => {
         this.missingAssets.add(assetId);
       });
+  }
+
+  private buildTownDecor(owner: Owner, seed: number): THREE.Group {
+    const group = new THREE.Group();
+    const red = owner === 2;
+    const banner = art.model(red ? "bannerRed" : "bannerGreen");
+    const stall = art.model(red ? "stallRed" : "stallGreen");
+    const cart = art.model("cart");
+    if (banner) {
+      for (const [x, z, rotation] of [[-3.3, 0.9, 0.35], [0.9, -3.4, -0.3]] as Array<[number, number, number]>) {
+        const pole = banner.clone(true);
+        pole.position.set(x, 0, z);
+        pole.rotation.y = rotation + seed * 0.01;
+        pole.scale.setScalar(1.7);
+        group.add(pole);
+      }
+    }
+    if (stall) {
+      stall.position.set(-2.2, 0, 3.0);
+      stall.rotation.y = -0.58;
+      stall.scale.setScalar(1.3);
+      group.add(stall);
+    }
+    if (cart) {
+      cart.position.set(3.1, 0, -2.3);
+      cart.rotation.y = 0.9;
+      cart.scale.setScalar(1.35);
+      group.add(cart);
+    }
+    return group;
   }
 
   private createSquadView(squad: SquadState): SquadView {
@@ -561,8 +617,8 @@ export class BattleScene {
     const label = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
-    label.scale.set(2.4, 1.2, 1);
-    label.position.y = 2.05;
+    label.scale.set(2.1, 1.05, 1);
+    label.position.y = SQUAD_LABEL_HEIGHT;
     group.add(label);
 
     this.scene.add(group);
@@ -600,7 +656,7 @@ export class BattleScene {
         phase: index * 2.1 + 0.4,
       });
       unit.position.set(x, 0, z);
-      unit.scale.setScalar(kind === "cavalry" ? 1.28 : 1.55);
+      unit.scale.setScalar(kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE);
       view.group.add(unit);
       view.units.push(unit);
     });
@@ -626,7 +682,7 @@ export class BattleScene {
         const [x, z] = offsets[index];
         const unit = new GlbUnitActor(built.object, built.animations);
         unit.position.set(x, 0, z);
-        unit.scale.setScalar(1.4);
+        unit.scale.setScalar(GLB_UNIT_SCALE);
         view.group.add(unit);
         view.units.push(unit);
       }
@@ -680,9 +736,30 @@ export class BattleScene {
     const terrain = this.visual?.terrain;
     this.terrain = buildTerrain(this.map, this.positions, terrain);
     this.scene.add(this.terrain.group);
-    const atmosphere = terrainAtmosphere(terrain?.style);
-    this.scene.background = new THREE.Color(atmosphere.background);
-    this.scene.fog = new THREE.Fog(atmosphere.fog, 125, 195);
+    this.rebuildAtmosphere(terrain?.style);
+  }
+
+  private rebuildAtmosphere(style: string | undefined): void {
+    if (this.atmosphere) {
+      this.scene.remove(this.atmosphere.group);
+      this.atmosphere.dispose();
+      this.atmosphere = null;
+    }
+    const island = this.terrain.island;
+    this.frameY = -island.depth * 0.34;
+    const atmosphere = buildAtmosphere({
+      centerX: island.centerX,
+      centerZ: island.centerZ,
+      radius: Math.max(island.radiusX, island.radiusZ),
+      topY: island.topY,
+      depth: island.depth,
+      style,
+      seed: this.visual?.terrain.seed ?? 20261123,
+    });
+    this.atmosphere = atmosphere;
+    this.scene.add(atmosphere.group);
+    this.scene.background = atmosphere.background;
+    this.scene.fog = new THREE.Fog(atmosphere.fogColor, atmosphere.fogNear, atmosphere.fogFar);
   }
 
   updateSites(map: MapDef, visual: MapVisual | null, state: SimState): void {
@@ -742,7 +819,7 @@ export class BattleScene {
     this.clearGroup(this.roadGroup);
     const width = this.visual?.roads.width ?? 1.6;
     const centerId = "c3";
-    const cityRadius = () => 3.75;
+    const cityRadius = () => CITY_PLATFORM_BOTTOM + 0.15;
     const dirt = this.visual?.roads.style === "dirt";
     const roadMaterial = dirt
       ? new THREE.MeshStandardMaterial({ map: dirtTexture(1, 6), roughness: 1 })
@@ -854,7 +931,7 @@ export class BattleScene {
     const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.18);
     const samples = curve
       .getSpacedPoints(Math.max(32, points.length * 14))
-      .filter((point) => point.distanceTo(first) > 3.3 && point.distanceTo(last) > 3.3);
+      .filter((point) => point.distanceTo(first) > 4.95 && point.distanceTo(last) > 4.95);
     if (samples.length < 2) return;
     for (const point of samples) point.y = this.terrain.heightAt(point.x, point.z);
     this.addRoadRibbon(samples, width, material, curbMaterial);
@@ -1008,33 +1085,33 @@ export class BattleScene {
     const plantPlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
 
     let guard = 0;
-    while (treePlacements.length < 120 && guard < 16000) {
+    while (treePlacements.length < 240 && guard < 30000) {
       guard += 1;
       const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
-      if (nearCity(this.positions, x, z, 6.2)) continue;
+      if (nearCity(this.positions, x, z, 7.8)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
       if (nearProp(x, z, 1.2)) continue;
       treePlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 2.6 + random() * 1.1 });
     }
 
     guard = 0;
-    while (rockPlacements.length < 56 && guard < 10000) {
+    while (rockPlacements.length < 80 && guard < 14000) {
       guard += 1;
       const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
-      if (nearCity(this.positions, x, z, 5.3)) continue;
+      if (nearCity(this.positions, x, z, 6.8)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.5)) continue;
       if (nearProp(x, z, 1.0)) continue;
       rockPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.6 + random() * 1.2 });
     }
 
     guard = 0;
-    while (plantPlacements.length < 110 && guard < 16000) {
+    while (plantPlacements.length < 180 && guard < 24000) {
       guard += 1;
       const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
       const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
-      if (nearCity(this.positions, x, z, 3.45)) continue;
+      if (nearCity(this.positions, x, z, 5.4)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
       if (nearProp(x, z, 0.8)) continue;
       plantPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
@@ -1175,7 +1252,7 @@ export class BattleScene {
 
   private buildRing(): THREE.Mesh {
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(5.75, 6.1, 64),
+      new THREE.RingGeometry(CITY_PLATFORM_BOTTOM + 1.55, CITY_PLATFORM_BOTTOM + 1.9, 64),
       new THREE.MeshBasicMaterial({ color: 0xe8c883, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
     );
     ring.rotation.x = -Math.PI / 2;
@@ -1185,11 +1262,15 @@ export class BattleScene {
   }
 
   private fitZoom(): number {
-    let radius = 1;
-    for (const city of this.map.cities) {
-      radius = Math.max(radius, Math.hypot(city.pos[0] / 10, city.pos[1] / 10));
-    }
-    const fit = VIEW_HEIGHT / (radius * 2 * 1.12);
+    const island = this.terrain.island;
+    const cos = Math.abs(Math.cos(this.yaw));
+    const sin = Math.abs(Math.sin(this.yaw));
+    const depth = 2 * (island.radiusZ * cos + island.radiusX * sin);
+    const width = 2 * (island.radiusX * cos + island.radiusZ * sin);
+    const vertical = depth * Math.sin(PITCH) + island.depth * Math.cos(PITCH) + 16;
+    const horizontal = width + 16;
+    const aspect = Math.max(0.6, this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight));
+    const fit = Math.min(VIEW_HEIGHT / vertical, (VIEW_HEIGHT * aspect) / horizontal);
     return THREE.MathUtils.clamp(Math.min(DEFAULT_ZOOM, fit), ZOOM_MIN, ZOOM_MAX);
   }
 

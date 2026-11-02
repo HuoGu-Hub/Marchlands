@@ -5,7 +5,16 @@ import { readAssetPack } from "@marchlands/asset-pack";
 import type { AssetEntry, AssetKind, AssetManifest } from "@marchlands/asset-pack";
 import type { Level, Owner } from "@marchlands/sim";
 import { art } from "./assets";
-import { TOWN_BUILDINGS, buildBuilding, buildTown, paletteFor } from "./buildings";
+import {
+  CITY_ANNEX_SCALE,
+  CITY_HALL_SCALE,
+  CITY_WATCH_SCALE,
+  OUTPOST_BUILDING_SCALE,
+  OUTPOST_TOWER_SCALE,
+  TOWN_BUILDINGS,
+  buildBuilding,
+  paletteFor,
+} from "./buildings";
 import { deleteStoredPack, listStoredPacks, saveStoredPack } from "./asset-pack-store";
 import { buildTerrainAsset, TERRAIN_ASSETS } from "./visual-assets";
 import type { TerrainAssetKind } from "./visual-assets";
@@ -252,22 +261,42 @@ export class AssetRegistry {
         height: spec.kind === "town" ? 6 : 5,
         source: "builtin",
         build: async (context) => {
-          const level = context.level;
-          const kind = spec.kind === "town"
-            ? TOWN_BUILDINGS[Math.abs(context.seed) % TOWN_BUILDINGS.length]
-            : spec.kind;
-          const file = spec.kind === "town"
-            ? `town-${kind}-L${level}`
-            : `${kind}-L${level}`;
-          const prototype = await this.buildingTemplate(file);
-          if (prototype) {
+          const level = context.level ?? 1;
+          const seed = context.seed ?? 0;
+          const palette = paletteFor(context.owner);
+          const prefab = async (file: string) => {
+            const prototype = await this.buildingTemplate(file);
+            if (!prototype) return null;
             const object = cloneSkeleton(prototype);
             applyTeamColor(object, context.owner);
             return object;
+          };
+          if (spec.kind === "town") {
+            const group = new THREE.Group();
+            group.name = "town-settlement";
+            const hallKind = TOWN_BUILDINGS[Math.abs(seed) % TOWN_BUILDINGS.length];
+            const hall = (await prefab(`${hallKind}-L${level}`)) ?? buildBuilding(hallKind, palette, level, seed);
+            hall.scale.multiplyScalar(CITY_HALL_SCALE);
+            group.add(hall);
+            if (level >= 2) {
+              const annex = (await prefab(`granary-L${Math.max(1, level - 1)}`)) ?? buildBuilding("granary", palette, level, seed + 3);
+              annex.scale.multiplyScalar(CITY_ANNEX_SCALE);
+              annex.position.set(2.75, 0, 1.8);
+              annex.rotation.y = -0.62;
+              group.add(annex);
+            }
+            if (level >= 3) {
+              const watch = (await prefab("tower-L1")) ?? buildBuilding("tower", palette, level, seed + 5);
+              watch.scale.multiplyScalar(CITY_WATCH_SCALE);
+              watch.position.set(-2.9, 0, -1.95);
+              watch.rotation.y = 0.48;
+              group.add(watch);
+            }
+            return group;
           }
-          const palette = paletteFor(context.owner);
-          if (spec.kind === "town") return buildTown(level, palette, context.seed);
-          return buildBuilding(spec.kind, palette, level, context.seed);
+          const building = (await prefab(`${spec.kind}-L${level}`)) ?? buildBuilding(spec.kind, palette, level, seed);
+          building.scale.multiplyScalar(spec.kind === "tower" ? OUTPOST_TOWER_SCALE : OUTPOST_BUILDING_SCALE);
+          return building;
         },
       });
     }

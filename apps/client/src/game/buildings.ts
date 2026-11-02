@@ -110,6 +110,12 @@ export function buildWall(level: number, palette: TeamPalette, radius = 4.5): TH
 
 export const TOWN_BUILDINGS: BuildingKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
 
+export const CITY_HALL_SCALE = 1.65;
+export const CITY_ANNEX_SCALE = 0.62;
+export const CITY_WATCH_SCALE = 0.7;
+export const OUTPOST_TOWER_SCALE = 1.7;
+export const OUTPOST_BUILDING_SCALE = 1.55;
+
 export function townBuildingKind(seed: number): BuildingKind {
   return TOWN_BUILDINGS[Math.abs(seed) % TOWN_BUILDINGS.length];
 }
@@ -118,7 +124,7 @@ export function buildTown(level: number, palette: TeamPalette, seed: number, for
   const group = new THREE.Group();
   const kind = forced ?? townBuildingKind(seed);
   const building = buildBuilding(kind, palette, level, Math.abs(seed) % 7);
-  const scale = 1.42;
+  const scale = 2.0;
   building.scale.multiplyScalar(scale);
   building.position.set(0, 0, -0.25);
   group.add(building);
