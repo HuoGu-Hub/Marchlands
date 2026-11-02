@@ -1,0 +1,365 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Marchlands 编辑器与回放架构",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1320,
+      620
+    ],
+    "views": [
+      {
+        "id": "authoring",
+        "label": "编辑与试玩",
+        "focus": [
+          "editor",
+          "authoring",
+          "validator",
+          "sim"
+        ],
+        "note": "地图文档先编译成合法 MapDef，再进入试玩。"
+      },
+      {
+        "id": "replay",
+        "label": "对局与回放",
+        "focus": [
+          "live",
+          "replaycodec",
+          "replayctl",
+          "sim"
+        ],
+        "note": "记录命令而不是录像，回放时重新推进模拟。"
+      },
+      {
+        "id": "storage",
+        "label": "文件与宿主",
+        "focus": [
+          "host",
+          "files",
+          "authoring",
+          "replayctl"
+        ],
+        "note": "文件读写只经过 Electron 主进程。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "editor",
+      "type": "frontend",
+      "label": "地图编辑器",
+      "sublabel": "拖拽 · 连线 · 属性",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "tag": "游戏内页面"
+    },
+    {
+      "id": "authoring",
+      "type": "backend",
+      "label": "MapDocument",
+      "sublabel": "纯数据 · 编译 · 撤销",
+      "pos": [
+        290,
+        70
+      ],
+      "size": [
+        180,
+        68
+      ],
+      "tag": "新增包"
+    },
+    {
+      "id": "validator",
+      "type": "backend",
+      "label": "内容校验",
+      "sublabel": "MapDef · 规则 · 连通性",
+      "pos": [
+        550,
+        70
+      ],
+      "size": [
+        160,
+        68
+      ]
+    },
+    {
+      "id": "sim",
+      "type": "backend",
+      "label": "确定性模拟",
+      "sublabel": "20Hz · step · hash",
+      "pos": [
+        790,
+        70
+      ],
+      "size": [
+        180,
+        68
+      ],
+      "tag": "已有基座"
+    },
+    {
+      "id": "world",
+      "type": "frontend",
+      "label": "WorldScene",
+      "sublabel": "地形 · 道路 · 建筑 · HUD",
+      "pos": [
+        1050,
+        70
+      ],
+      "size": [
+        180,
+        68
+      ]
+    },
+    {
+      "id": "host",
+      "type": "frontend",
+      "label": "Electron Host",
+      "sublabel": "窗口 · 对话框 · IPC",
+      "pos": [
+        40,
+        250
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "files",
+      "type": "database",
+      "label": "地图与回放文件",
+      "sublabel": "用户目录 · JSON",
+      "pos": [
+        290,
+        250
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "live",
+      "type": "backend",
+      "label": "对局控制",
+      "sublabel": "输入 · AI · 计时",
+      "pos": [
+        550,
+        250
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "replaycodec",
+      "type": "backend",
+      "label": "回放编解码",
+      "sublabel": "记录 · 校验 · 读写",
+      "pos": [
+        790,
+        250
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "新增包"
+    },
+    {
+      "id": "replayctl",
+      "type": "backend",
+      "label": "回放控制",
+      "sublabel": "时间轴 · 复算 · 播放",
+      "pos": [
+        1020,
+        250
+      ],
+      "size": [
+        170,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "editor-authoring",
+      "from": "editor",
+      "to": "authoring",
+      "label": "拖拽 / 连线",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelAt": [
+        250,
+        152
+      ]
+    },
+    {
+      "id": "authoring-validator",
+      "from": "authoring",
+      "to": "validator",
+      "label": "编译 MapDef",
+      "route": "straight",
+      "labelAt": [
+        510,
+        152
+      ]
+    },
+    {
+      "id": "validator-sim",
+      "from": "validator",
+      "to": "sim",
+      "label": "试玩",
+      "route": "straight",
+      "labelAt": [
+        750,
+        152
+      ]
+    },
+    {
+      "id": "sim-world",
+      "from": "sim",
+      "to": "world",
+      "label": "SimState",
+      "route": "straight",
+      "labelAt": [
+        1010,
+        152
+      ]
+    },
+    {
+      "id": "host-files",
+      "from": "host",
+      "to": "files",
+      "label": "文件对话框",
+      "route": "straight",
+      "labelAt": [
+        250,
+        230
+      ]
+    },
+    {
+      "id": "files-authoring",
+      "from": "files",
+      "to": "authoring",
+      "label": "导入 / 导出",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        390,
+        190
+      ]
+    },
+    {
+      "id": "live-codec",
+      "from": "live",
+      "to": "replaycodec",
+      "label": "记录命令",
+      "route": "straight",
+      "labelAt": [
+        700,
+        230
+      ]
+    },
+    {
+      "id": "codec-replay",
+      "from": "replaycodec",
+      "to": "replayctl",
+      "label": "载入",
+      "route": "straight",
+      "labelAt": [
+        930,
+        230
+      ]
+    },
+    {
+      "id": "files-codec",
+      "from": "files",
+      "to": "replaycodec",
+      "label": "读写回放",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          380,
+          340
+        ],
+        [
+          875,
+          340
+        ]
+      ],
+      "labelAt": [
+        620,
+        330
+      ]
+    },
+    {
+      "id": "live-sim",
+      "from": "live",
+      "to": "sim",
+      "label": "推进",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        700,
+        205
+      ]
+    },
+    {
+      "id": "replay-sim",
+      "from": "replayctl",
+      "to": "sim",
+      "label": "逐步复算",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        980,
+        205
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "已有基座",
+      "items": [
+        "纯模拟、固定 20Hz、状态哈希",
+        "MapDef 与内容校验",
+        "harness 已有命令回放雏形",
+        "八类建筑模型可复用"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "需要新增",
+      "items": [
+        "MapDocument 与编译器",
+        "ReplayRecorder 与文件格式",
+        "编辑器视口与拖拽交互",
+        "Electron 文件 IPC"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "不能破坏的约束",
+      "items": [
+        "编辑器只产出 MapDef，不直接改实时状态",
+        "回放内嵌地图与生效规则",
+        "先记录全部命令，再考虑压缩",
+        "自由地形需要额外编译器，不能直接套用图地图"
+      ]
+    }
+  ]
+}
