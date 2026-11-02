@@ -103,8 +103,9 @@ export interface SiteDraft {
 
 export interface RoadDraft {
   id: string;
-  from: CityId;
-  to: CityId;
+  /** 可选端点；自由道路没有端点。 */
+  from?: CityId;
+  to?: CityId;
   /** 道路控制点，分米；缺省为两端直线。 */
   path?: [number, number][];
   /** 道路宽度，分米；缺省使用地图道路宽度。 */

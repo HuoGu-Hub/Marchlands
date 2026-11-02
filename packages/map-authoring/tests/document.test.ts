@@ -4,6 +4,7 @@ import { createGame } from "@marchlands/sim";
 import { decodeBitmapBase64, encodeBitmapBase64 } from "@marchlands/nav";
 import {
   addProp,
+  addRoad,
   addSite,
   compileDocument,
   connect,
@@ -216,6 +217,26 @@ describe("map authoring", () => {
     const updatedEdge = compileDocument(updated).map.edges[0];
     expect(updatedEdge.path?.[1]).toEqual([0, 120]);
     expect(updatedEdge.length).not.toBe(edge.length);
+  });
+
+  it("compiles a free road without endpoints", () => {
+    const path: Array<[number, number]> = [
+      [-80, 0],
+      [0, 60],
+      [80, 0],
+    ];
+    const result = addRoad(createGridDocument(), path, { widthDm: 18 });
+    const compiled = compileDocument(result.document);
+    expect(compiled.map.edges).toHaveLength(0);
+    expect(compiled.map.roads).toHaveLength(1);
+    expect(compiled.map.roads?.[0].from).toBeUndefined();
+    expect(compiled.map.roads?.[0].points).toEqual(path);
+    expect(compiled.map.roads?.[0].widthDm).toBe(18);
+    expect(() => validateMap(compiled.map)).not.toThrow();
+
+    const parsed = parseDocument(JSON.parse(serializeDocument(result.document)));
+    expect(parsed.document.roads[0].from).toBeUndefined();
+    expect(parsed.document.roads[0].path).toEqual(path);
   });
 
   it("compiles a grid document with packed heights, footprints and a map hash", () => {

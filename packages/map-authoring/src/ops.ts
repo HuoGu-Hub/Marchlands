@@ -123,13 +123,17 @@ export function updateSite(
   return next;
 }
 
-export function watchCandidates(document: MapDocument, siteId: CityId): RoadDraft[] {
+export function watchCandidates(
+  document: MapDocument,
+  siteId: CityId,
+): Array<RoadDraft & { from: CityId; to: CityId }> {
   const site = document.sites.find((entry) => entry.id === siteId);
   if (!site || site.kind !== "outpost") return [];
   const incident = document.roads.filter((road) => road.from === siteId || road.to === siteId);
   const spurNeighbor =
     incident.length === 1 ? (incident[0].from === siteId ? incident[0].to : incident[0].from) : null;
-  return document.roads.filter((road) => {
+  return document.roads.filter((road): road is RoadDraft & { from: CityId; to: CityId } => {
+    if (!road.from || !road.to) return false;
     if (road.from === siteId || road.to === siteId) return false;
     if (!spurNeighbor) return true;
     return road.from === spurNeighbor || road.to === spurNeighbor;
@@ -166,6 +170,23 @@ export function connect(
     if (candidate) site.watch = [candidate.from, candidate.to];
   }
   return next;
+}
+
+export function addRoad(
+  document: MapDocument,
+  path: Array<[number, number]>,
+  options: { from?: CityId; to?: CityId; widthDm?: number } = {},
+): { document: MapDocument; road: RoadDraft } {
+  const next = cloneDocument(document);
+  const road: RoadDraft = {
+    id: nextRoadId(next),
+    ...(options.from ? { from: options.from } : {}),
+    ...(options.to ? { to: options.to } : {}),
+    path: path.map((point) => [point[0], point[1]] as [number, number]),
+    ...(options.widthDm !== undefined ? { widthDm: options.widthDm } : {}),
+  };
+  next.roads.push(road);
+  return { document: next, road };
 }
 
 export function updateRoad(

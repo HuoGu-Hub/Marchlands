@@ -337,6 +337,45 @@ export function validateMap(input: unknown): MapDef {
     issues.push("objectives must include capture_all");
   }
 
+  if (input.roads !== undefined) {
+    if (!Array.isArray(input.roads)) {
+      issues.push("roads must be an array");
+    } else {
+      input.roads.forEach((road, index) => {
+        if (!isRecord(road)) {
+          issues.push(`roads[${index}] must be an object`);
+          return;
+        }
+        const points = Array.isArray(road.points) ? road.points : [];
+        if (points.length < 2) issues.push(`roads[${index}].points must contain at least 2 points`);
+        for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
+          const point = points[pointIndex];
+          if (
+            !Array.isArray(point) ||
+            point.length !== 2 ||
+            typeof point[0] !== "number" ||
+            typeof point[1] !== "number" ||
+            !Number.isFinite(point[0]) ||
+            !Number.isFinite(point[1])
+          ) {
+            issues.push(`roads[${index}].points[${pointIndex}] must be [x, z]`);
+            break;
+          }
+        }
+        if (typeof road.widthDm !== "number" || road.widthDm < 6 || road.widthDm > 60) {
+          issues.push(`roads[${index}].widthDm must be in [6, 60]`);
+        }
+        for (const key of ["from", "to"] as const) {
+          const value = road[key];
+          if (value === undefined) continue;
+          if (typeof value !== "string" || !cityIds.has(value)) {
+            issues.push(`roads[${index}].${key} references an unknown city`);
+          }
+        }
+      });
+    }
+  }
+
   if (schema === 2 && typeof input.mapHash === "string" && /^[0-9a-f]{16}$/.test(input.mapHash)) {
     try {
       if (mapHashOf(input as unknown as MapDef) !== input.mapHash) issues.push("mapHash does not match map content");

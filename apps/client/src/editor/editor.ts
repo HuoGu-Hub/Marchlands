@@ -3,6 +3,7 @@ import type { CityId, MapDef, Owner, Ruleset, SimState, SiteKind, Stance } from 
 import {
   TERRAIN_STYLES,
   addProp,
+  addRoad,
   addSite,
   applyGridBrush,
   cloneDocument,
@@ -83,7 +84,7 @@ type Selection =
   | null;
 
 interface RoadDrawState {
-  from: CityId;
+  from?: CityId;
   points: Array<[number, number]>;
   ground: [number, number] | null;
 }
@@ -1064,25 +1065,29 @@ export class EditorController {
         target = site;
       }
     }
-    if (!target) {
-      this.notice("道路必须结束在另一个据点上");
+    const points = state.points.map((point) => clampRoadPoint(this.doc, point));
+    if (target) {
+      const last = points[points.length - 1];
+      if (Math.hypot(target.pos[0] - last[0], target.pos[1] - last[1]) > 1) {
+        points.push([target.pos[0], target.pos[1]]);
+      }
+    } else {
+      const last = points[points.length - 1];
+      const end = clampRoadPoint(this.doc, state.ground);
+      if (Math.hypot(end[0] - last[0], end[1] - last[1]) > 1) points.push(end);
+    }
+    if (points.length < 2) {
       this.drawOverlay();
       return;
     }
-    const points = state.points.map((point) => clampRoadPoint(this.doc, point));
-    const last = points[points.length - 1];
-    if (Math.hypot(target.pos[0] - last[0], target.pos[1] - last[1]) > 1) {
-      points.push([target.pos[0], target.pos[1]]);
-    }
     const simplified = simplifyRoad(points);
-    const before = new Set(this.doc.roads.map((road) => road.id));
-    const next = connect(this.doc, state.from, target.id, {
-      path: simplified,
+    const result = addRoad(this.doc, simplified, {
+      ...(state.from ? { from: state.from } : {}),
+      ...(target ? { to: target.id } : {}),
       widthDm: Math.max(6, Math.min(60, Math.round(this.doc.visual.roads.width * 10))),
     });
-    const created = next.roads.find((road) => !before.has(road.id));
-    if (created) this.selection = { kind: "road", id: created.id };
-    this.commit(next, created ? "已绘制道路" : "这两点之间已经有路", { roadOnly: true });
+    this.selection = { kind: "road", id: result.road.id };
+    this.commit(result.document, "已绘制道路", { roadOnly: true });
     this.setTool("select");
     this.suppressClick = true;
   }
@@ -1163,11 +1168,12 @@ export class EditorController {
       if (!this.pointer.ground) return;
       const site = this.pickSite(event.clientX, event.clientY);
       const draft = site ? this.doc.sites.find((entry) => entry.id === site) : null;
-      if (!draft) {
-        this.notice("从据点开始拖动画路");
-        return;
-      }
-      this.roadDraw = { from: draft.id, points: [draft.pos], ground: this.pointer.ground };
+      const start = draft ? draft.pos : clampRoadPoint(this.doc, this.pointer.ground);
+      this.roadDraw = {
+        ...(draft ? { from: draft.id } : {}),
+        points: [start],
+        ground: this.pointer.ground,
+      };
       this.pointerId = event.pointerId;
       this.canvas.setPointerCapture(event.pointerId);
       this.drawOverlay();
@@ -1590,15 +1596,16 @@ export class EditorController {
       lengthDm += Math.hypot(points[index + 1][0] - points[index][0], points[index + 1][1] - points[index][1]);
     }
     const widthDm = road.widthDm ?? this.doc.visual.roads.width * 10;
+    const ends = road.from && road.to ? `${road.from} ↔ ${road.to}` : road.from ? `${road.from} → 自由端点` : road.to ? `自由端点 → ${road.to}` : "自由道路";
     return `
       <h3>道路 ${escapeHtml(road.id)}</h3>
-      <div class="ml-ed-kind">${road.from} ↔ ${road.to} · ${points.length} 个控制点</div>
+      <div class="ml-ed-kind">${ends} · ${points.length} 个控制点</div>
       <label class="ml-ed-field"><span>宽度（米）</span><input data-road="${escapeHtml(road.id)}" data-field="widthM" type="number" min="0.6" max="6" step="0.1" value="${(widthDm / 10).toFixed(1)}"></label>
-      <div class="ml-ed-meta">长度 ${(lengthDm / 10).toFixed(1)} 米<br>起点 ${road.from} · 终点 ${road.to}</div>
+      <div class="ml-ed-meta">长度 ${(lengthDm / 10).toFixed(1)} 米<br>${road.from ? `起点 ${road.from}` : "无起点"} · ${road.to ? `终点 ${road.to}` : "无终点"}</div>
       <p class="ml-ed-note">选中道路后拖动青色控制点即可改形状。宽度不会随拖动改变。</p>
       <div class="ml-ed-road-actions">
         <button class="ml-ed-btn" data-action="reverse-road">反向</button>
-        <button class="ml-ed-btn" data-action="straight-road">拉直</button>
+        ${road.from && road.to ? '<button class="ml-ed-btn" data-action="straight-road">拉直</button>' : ""}
       </div>
       <button class="ml-ed-delete" data-action="delete-road">删除这条道路</button>
     `;
@@ -1719,7 +1726,9 @@ export class EditorController {
       const next = cloneDocument(this.doc);
       const target = next.roads.find((entry) => entry.id === road.id);
       if (!target) return;
-      [target.from, target.to] = [target.to, target.from];
+      const from = target.from;
+      target.from = target.to;
+      target.to = from;
       if (target.path) target.path.reverse();
       this.commit(next, "已反转道路", { roadOnly: true });
     });

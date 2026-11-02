@@ -11,6 +11,7 @@ export {
 } from "./document";
 export {
   addProp,
+  addRoad,
   addSite,
   clampPosition,
   connect,

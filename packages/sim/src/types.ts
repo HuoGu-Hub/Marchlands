@@ -52,6 +52,14 @@ export interface MapGridDef {
   walkableOverride: string;
 }
 
+export interface MapRoadDef {
+  from?: CityId;
+  to?: CityId;
+  /** 控制点，分米。 */
+  points: [number, number][];
+  widthDm: number;
+}
+
 export interface MapEdge {
   from: CityId;
   to: CityId;
@@ -86,6 +94,8 @@ export interface MapDef {
   players: MapPlayer[];
   cities: MapCity[];
   edges: MapEdge[];
+  /** 手动道路与自由道路，供画面与道路速度层使用。 */
+  roads?: MapRoadDef[];
   objectives: MapObjective[];
   /** friendly: 兵团只能穿过己方据点；open: 旧地图，不限制。 */
   transit?: "open" | "friendly";

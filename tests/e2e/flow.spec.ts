@@ -119,6 +119,25 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
   expect(afterLength).not.toBe(beforeLength);
 });
 
+test("draws a free road with empty endpoints", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#page-editor")).toBeVisible();
+  await page.click("#ml-ed-new-grid");
+  await page.waitForTimeout(500);
+
+  await page.click('[data-tool="road"]');
+  await page.mouse.move(400, 470);
+  await page.mouse.down();
+  await page.mouse.move(520, 440, { steps: 6 });
+  await page.mouse.move(700, 480, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator("#ml-ed-inspector")).toContainText("自由道路");
+  await expect(page.locator("#ml-ed-inspector")).toContainText("无起点");
+  await expect(page.locator("#ml-ed-inspector")).toContainText("无终点");
+});
+
 test("places and rotates a terrain prop in the editor", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });

@@ -12,6 +12,7 @@ export type {
   MapEdge,
   MapGridDef,
   MapObjective,
+  MapRoadDef,
   NavigationMode,
   MapPlayer,
   MatchStatus,

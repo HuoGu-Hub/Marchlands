@@ -218,11 +218,13 @@ function siteFromUnknown(value: unknown): SiteDraft | null {
 
 function roadFromUnknown(value: unknown, index: number): RoadDraft | null {
   if (!asRecord(value)) return null;
-  if (typeof value.from !== "string" || typeof value.to !== "string") return null;
+  const from = typeof value.from === "string" && value.from.length > 0 ? value.from : undefined;
+  const to = typeof value.to === "string" && value.to.length > 0 ? value.to : undefined;
+  if (!from && !to && value.path === undefined) return null;
   const road: RoadDraft = {
     id: typeof value.id === "string" && value.id.length > 0 ? value.id : `r${index + 1}`,
-    from: value.from,
-    to: value.to,
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
   };
   if (value.path !== undefined) {
     if (!Array.isArray(value.path)) throw new Error("道路样条必须是点数组");
@@ -368,6 +370,38 @@ function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
   return { terrain, roads, props, units, scatter };
 }
 
+function roadsFromMapDef(map: MapDef): RoadDraft[] {
+  const roads: RoadDraft[] = [];
+  const covered = new Set<string>();
+  let next = 1;
+  for (const road of map.roads ?? []) {
+    roads.push({
+      id: `r${next}`,
+      ...(road.from ? { from: road.from } : {}),
+      ...(road.to ? { to: road.to } : {}),
+      path: road.points.map((point) => [point[0], point[1]] as [number, number]),
+      widthDm: road.widthDm,
+    });
+    if (road.from && road.to) {
+      covered.add(road.from < road.to ? `${road.from}|${road.to}` : `${road.to}|${road.from}`);
+    }
+    next += 1;
+  }
+  for (const edge of map.edges) {
+    const key = edge.from < edge.to ? `${edge.from}|${edge.to}` : `${edge.to}|${edge.from}`;
+    if (covered.has(key)) continue;
+    roads.push({
+      id: `r${next}`,
+      from: edge.from,
+      to: edge.to,
+      ...(edge.path ? { path: edge.path.map((point) => [point[0], point[1]] as [number, number]) } : {}),
+      ...(edge.widthDm !== undefined ? { widthDm: edge.widthDm } : {}),
+    });
+    next += 1;
+  }
+  return roads;
+}
+
 export function fromMapDef(map: MapDef): MapDocument {
   const visual = createDefaultVisual();
   visual.terrain.style = map.biome === "forest" ? "meadow" : "frontier";
@@ -398,13 +432,7 @@ export function fromMapDef(map: MapDef): MapDocument {
       ...(city.footprintCm !== undefined ? { footprintDm: city.footprintCm / 10 } : {}),
       ...(city.captureRadiusCm !== undefined ? { captureRadiusDm: city.captureRadiusCm / 10 } : {}),
     })),
-    roads: map.edges.map((edge, index) => ({
-      id: `r${index + 1}`,
-      from: edge.from,
-      to: edge.to,
-      ...(edge.path ? { path: edge.path.map((point) => [point[0], point[1]] as [number, number]) } : {}),
-      ...(edge.widthDm !== undefined ? { widthDm: edge.widthDm } : {}),
-    })),
+    roads: roadsFromMapDef(map),
     objectives: map.objectives.map((objective) => ({ ...objective })),
     transit: map.transit ?? "open",
     visual,
@@ -583,31 +611,41 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
   const edges: MapDef["edges"] = [];
   const adjacency = new Map<string, string[]>();
   for (const site of document.sites) adjacency.set(site.id, []);
+  const mapRoads: NonNullable<MapDef["roads"]> = [];
   for (const road of document.roads) {
     if (roadIds.has(road.id)) {
-      error("duplicate-road-id", `道路编号重复：${road.id}`, undefined, [road.from, road.to]);
+      error("duplicate-road-id", `道路编号重复：${road.id}`, undefined, [road.from ?? "", road.to ?? ""]);
     }
     roadIds.add(road.id);
-    const key = road.from < road.to ? `${road.from}|${road.to}` : `${road.to}|${road.from}`;
-    if (road.from === road.to) {
-      error("self-road", "道路不能连接自身", road.from, [road.from, road.to]);
+    const from = road.from;
+    const to = road.to;
+    const hasFrom = typeof from === "string" && from.length > 0;
+    const hasTo = typeof to === "string" && to.length > 0;
+    if (hasFrom && !siteById.has(from as string)) {
+      error("unknown-road", `道路引用了不存在的据点：${from}`, undefined, [from as string, to ?? ""]);
       continue;
     }
-    if (!siteById.has(road.from) || !siteById.has(road.to)) {
-      error("unknown-road", `道路引用了不存在的据点：${road.from} → ${road.to}`, undefined, [road.from, road.to]);
+    if (hasTo && !siteById.has(to as string)) {
+      error("unknown-road", `道路引用了不存在的据点：${to}`, undefined, [from ?? "", to as string]);
       continue;
     }
-    if (roadKeys.has(key)) {
-      error("duplicate-road", `道路重复：${road.from} → ${road.to}`, undefined, [road.from, road.to]);
+    if (hasFrom && hasTo && from === to) {
+      error("self-road", "道路不能连接自身", from as string, [from as string, to as string]);
       continue;
     }
-    roadKeys.add(key);
-    const a = siteById.get(road.from) as SiteDraft;
-    const b = siteById.get(road.to) as SiteDraft;
+    if (hasFrom && hasTo) {
+      const key = (from as string) < (to as string) ? `${from}|${to}` : `${to}|${from}`;
+      if (roadKeys.has(key)) {
+        error("duplicate-road", `道路重复：${from} → ${to}`, undefined, [from as string, to as string]);
+        continue;
+      }
+      roadKeys.add(key);
+    }
+
     let path = road.path;
     if (path !== undefined) {
       if (path.length < 2) {
-        error("road-path", `${road.id} 至少需要两个控制点`, undefined, [road.from, road.to]);
+        error("road-path", `${road.id} 至少需要两个控制点`, undefined, [from ?? "", to ?? ""]);
         path = undefined;
       } else {
         for (const point of path) {
@@ -617,36 +655,54 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
             point[1] < -document.size[1] / 2 ||
             point[1] > document.size[1] / 2
           ) {
-            error("road-path", `${road.id} 的控制点超出地图边界`, undefined, [road.from, road.to]);
+            error("road-path", `${road.id} 的控制点超出地图边界`, undefined, [from ?? "", to ?? ""]);
             path = undefined;
             break;
           }
         }
       }
     }
-    if (road.widthDm !== undefined && (road.widthDm < 6 || road.widthDm > 60)) {
-      error("road-width", `${road.id} 的宽度必须在 6 到 60 分米之间`, undefined, [road.from, road.to]);
+    if (path === undefined && (!hasFrom || !hasTo)) {
+      error("road-path", `${road.id} 是自由道路，必须提供控制点`, undefined, [from ?? "", to ?? ""]);
+      continue;
     }
-    const length =
-      path && path.length >= 2
-        ? polylineLengthDm(path)
-        : Math.max(1, Math.round(Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])));
-    const grade = edgeGrade(
-      heightField,
-      [a.pos[0] / 10, a.pos[1] / 10],
-      [b.pos[0] / 10, b.pos[1] / 10],
-      length,
-    );
-    edges.push({
-      from: road.from,
-      to: road.to,
-      length,
-      ...(document.navigation === "graph" && grade > 0.01 ? { grade: Math.round(grade * 1000) / 1000 } : {}),
-      ...(path ? { path: path.map((point) => [point[0], point[1]] as [number, number]) } : {}),
-      ...(road.widthDm !== undefined ? { widthDm: road.widthDm } : {}),
-    });
-    adjacency.get(road.from)?.push(road.to);
-    adjacency.get(road.to)?.push(road.from);
+    if (road.widthDm !== undefined && (road.widthDm < 6 || road.widthDm > 60)) {
+      error("road-width", `${road.id} 的宽度必须在 6 到 60 分米之间`, undefined, [from ?? "", to ?? ""]);
+    }
+
+    if (hasFrom && hasTo) {
+      const a = siteById.get(from as string) as SiteDraft;
+      const b = siteById.get(to as string) as SiteDraft;
+      const length =
+        path && path.length >= 2
+          ? polylineLengthDm(path)
+          : Math.max(1, Math.round(Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])));
+      const grade = edgeGrade(
+        heightField,
+        [a.pos[0] / 10, a.pos[1] / 10],
+        [b.pos[0] / 10, b.pos[1] / 10],
+        length,
+      );
+      edges.push({
+        from: from as string,
+        to: to as string,
+        length,
+        ...(document.navigation === "graph" && grade > 0.01 ? { grade: Math.round(grade * 1000) / 1000 } : {}),
+        ...(path ? { path: path.map((point) => [point[0], point[1]] as [number, number]) } : {}),
+        ...(road.widthDm !== undefined ? { widthDm: road.widthDm } : {}),
+      });
+      adjacency.get(from as string)?.push(to as string);
+      adjacency.get(to as string)?.push(from as string);
+    }
+
+    if (path && path.length >= 2) {
+      mapRoads.push({
+        ...(hasFrom ? { from } : {}),
+        ...(hasTo ? { to } : {}),
+        points: path.map((point) => [point[0], point[1]] as [number, number]),
+        widthDm: road.widthDm ?? Math.round(document.visual.roads.width * 10),
+      });
+    }
   }
 
   for (const site of document.sites) {
@@ -740,6 +796,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
       };
     }),
     edges,
+    ...(mapRoads.length > 0 ? { roads: mapRoads } : {}),
     objectives: document.objectives.map((objective) => ({ ...objective })),
     transit: document.transit,
   };

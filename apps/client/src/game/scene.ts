@@ -749,7 +749,32 @@ export class BattleScene {
     const plazaMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
     const curbMaterial = new THREE.MeshStandardMaterial({ color: dirt ? 0x736348 : 0xb3aa96, roughness: 1 });
 
+    const covered = new Set<string>();
+    for (const road of this.map.roads ?? []) {
+      if (road.points.length < 2) continue;
+      const controls = road.points.map(([x, z]) => new THREE.Vector3(x / 10, 0, z / 10));
+      controls[0].y = this.terrain.heightAt(controls[0].x, controls[0].z);
+      controls[controls.length - 1].y = this.terrain.heightAt(
+        controls[controls.length - 1].x,
+        controls[controls.length - 1].z,
+      );
+      this.addRoadPath(
+        controls,
+        road.widthDm / 10,
+        roadMaterial,
+        curbMaterial,
+        Boolean(road.from && road.from !== centerId),
+        Boolean(road.to && road.to !== centerId),
+        plazaMaterial,
+      );
+      if (road.from && road.to) {
+        covered.add(road.from < road.to ? `${road.from}|${road.to}` : `${road.to}|${road.from}`);
+      }
+    }
+
     for (const edge of this.map.edges) {
+      const edgeKey = edge.from < edge.to ? `${edge.from}|${edge.to}` : `${edge.to}|${edge.from}`;
+      if (covered.has(edgeKey)) continue;
       const from = this.positions.get(edge.from);
       const to = this.positions.get(edge.to);
       if (!from || !to) continue;

@@ -105,6 +105,7 @@ function roadDistance(document: MapDocument, x: number, z: number): number {
   let best = Number.POSITIVE_INFINITY;
   const byId = new Map(document.sites.map((site) => [site.id, site]));
   for (const road of document.roads) {
+    if (!road.from || !road.to) continue;
     const a = byId.get(road.from);
     const b = byId.get(road.to);
     if (!a || !b) continue;
