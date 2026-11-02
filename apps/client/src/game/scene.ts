@@ -363,8 +363,8 @@ export class BattleScene {
     const units: UnitActor[] = [];
 
     const offsets: Array<[number, number]> = explicit === "cavalry"
-      ? [[-0.5, -0.2], [0.5, -0.2], [0, 0.55]]
-      : [[-0.3, -0.16], [0.3, -0.12], [0, 0.35]];
+      ? [[-0.65, -0.25], [0.65, -0.25], [0, 0.7]]
+      : [[-0.75, -0.12], [0.75, -0.08], [0, 0.72]];
     kinds.forEach((kind, index) => {
       const [x, z] = offsets[index];
       const unit = new UnitActor({
@@ -374,6 +374,7 @@ export class BattleScene {
         phase: index * 2.1 + 0.4,
       });
       unit.position.set(x, 0, z);
+      unit.scale.setScalar(kind === "cavalry" ? 1.28 : 1.55);
       group.add(unit);
       units.push(unit);
     });
@@ -387,8 +388,8 @@ export class BattleScene {
     const label = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
     );
-    label.scale.set(2.2, 1.1, 1);
-    label.position.y = 1.35;
+    label.scale.set(2.4, 1.2, 1);
+    label.position.y = 2.05;
     group.add(label);
 
     this.scene.add(group);
