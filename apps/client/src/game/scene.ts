@@ -195,7 +195,9 @@ export class BattleScene {
 
   projectGround(x: number, z: number, height = 0): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
-    const point = new THREE.Vector3(x / 10, height, z / 10).project(this.camera);
+    const worldX = x / 10;
+    const worldZ = z / 10;
+    const point = new THREE.Vector3(worldX, this.terrain.heightAt(worldX, worldZ) + height, worldZ).project(this.camera);
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
     return {
       x: rect.left + ((point.x + 1) / 2) * rect.width,
