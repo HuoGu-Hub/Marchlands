@@ -51,6 +51,7 @@ test("creates a grid map, sculpts terrain and previews navigation", async ({ pag
   await expect(page.locator("#page-editor")).toBeVisible();
   await page.click("#ml-ed-new-grid");
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+  await page.click('[data-mode="terrain"]');
   await expect(page.locator("#ml-ed-grid-enable")).toBeDisabled();
 
   const box = await page.locator("#ml-ed-canvas").boundingBox();
@@ -128,6 +129,7 @@ test("places and rotates a terrain prop in the editor", async ({ page }) => {
   const count = Number(/(\d+) 装饰/.exec(before ?? "")?.[1] ?? "0");
   const box = await page.locator("#ml-ed-canvas").boundingBox();
   if (!box) throw new Error("editor canvas has no box");
+  await page.click('[data-mode="terrain"]');
   await page.click("#ml-ed-terrain-grid .ml-ed-asset >> nth=0");
   await page.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.55);
   await expect(label).toContainText(`${count + 1} 装饰`);

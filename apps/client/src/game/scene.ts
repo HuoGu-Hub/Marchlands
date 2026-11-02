@@ -37,6 +37,7 @@ interface CityView {
   labelText: string;
   owner: Owner;
   level: number;
+  kind: string;
   buildToken: number;
 }
 
@@ -309,13 +310,17 @@ export class BattleScene {
   }
 
   private updateCities(state: SimState): void {
+    const seen = new Set<CityId>();
     for (const city of state.cities) {
+      seen.add(city.id);
       let view = this.cityViews.get(city.id);
       if (!view) {
         view = this.createCityView(city);
         this.cityViews.set(city.id, view);
       }
-      if (view.owner !== city.owner || view.level !== city.level) {
+      const position = this.positions.get(city.id);
+      if (position) view.group.position.set(position.x, this.terrain.heightAt(position.x, position.z), position.z);
+      if (view.owner !== city.owner || view.level !== city.level || view.kind !== city.kind) {
         this.rebuildCityModel(view, city);
       }
 
@@ -327,6 +332,14 @@ export class BattleScene {
         view.label.material.map = view.texture;
         view.label.material.needsUpdate = true;
       }
+    }
+    for (const [id, view] of this.cityViews) {
+      if (seen.has(id)) continue;
+      this.scene.remove(view.group);
+      for (const unit of view.model.children) disposeObject(unit);
+      view.label.material.dispose();
+      view.texture.dispose();
+      this.cityViews.delete(id);
     }
   }
 
@@ -468,6 +481,7 @@ export class BattleScene {
       labelText: "",
       owner: 255 as Owner,
       level: 0,
+      kind: "",
       buildToken: 0,
     };
     this.rebuildCityModel(view, city);
@@ -494,6 +508,7 @@ export class BattleScene {
     }
     view.owner = city.owner;
     view.level = city.level;
+    view.kind = city.kind;
 
     const siteVisual = this.visual?.sites[city.id];
     const defaultAssetId = city.kind === "town"
@@ -667,6 +682,23 @@ export class BattleScene {
     const atmosphere = terrainAtmosphere(terrain?.style);
     this.scene.background = new THREE.Color(atmosphere.background);
     this.scene.fog = new THREE.Fog(atmosphere.fog, 125, 195);
+  }
+
+  updateSites(map: MapDef, visual: MapVisual | null, state: SimState): void {
+    this.map = map;
+    this.visual = visual;
+    this.positions.clear();
+    for (const city of map.cities) {
+      const position = new THREE.Vector3(city.pos[0] / 10, 0, city.pos[1] / 10);
+      position.y = this.terrain.heightAt(position.x, position.z);
+      this.positions.set(city.id, position);
+    }
+    this.updateCities(state);
+    this.updateRoads(map, visual);
+    if (this.selected) {
+      const position = this.positions.get(this.selected);
+      if (position) this.ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
+    }
   }
 
   updateTerrain(map: MapDef, visual: MapVisual | null): void {

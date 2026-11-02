@@ -173,6 +173,12 @@ const TEMPLATE = `
       <button class="ml-ed-piece tool active" data-tool="select" draggable="false"><i></i><b>选择 / 移动</b><span>拖动据点或装饰</span></button>
       <button class="ml-ed-piece tool" data-tool="road" draggable="false"><i></i><b>道路</b><span>拖动绘制</span></button>
       <button class="ml-ed-piece tool" data-tool="erase" draggable="false"><i></i><b>删除</b><span>点据点、道路或装饰</span></button>
+      <div class="ml-ed-modes">
+        <button class="ml-ed-mode active" data-mode="site">据点</button>
+        <button class="ml-ed-mode" data-mode="terrain">地形</button>
+        <button class="ml-ed-mode" data-mode="decor">装饰</button>
+      </div>
+      <div data-panel="terrain">
       <details class="ml-ed-fold" open>
       <summary>网格地形</summary>
       <div class="ml-ed-grid-tools">
@@ -187,23 +193,24 @@ const TEMPLATE = `
         <button class="ml-ed-grid-tool" data-grid-tool="passable">可走</button>
       </div>
       </details>
+      </div>
       <div class="ml-ed-grid-actions">
         <button class="ml-ed-btn" id="ml-ed-new-grid">新建网格</button>
         <button class="ml-ed-btn" id="ml-ed-grid-enable">启用网格</button>
         <button class="ml-ed-btn" id="ml-ed-nav-preview">导航预览</button>
         <button class="ml-ed-btn" id="ml-ed-path-test">路径测试</button>
       </div>
-      <details class="ml-ed-fold" open>
+      <details class="ml-ed-fold" open data-panel="site">
       <summary>据点</summary>
       <button class="ml-ed-piece" data-tool="town" draggable="true"><i class="town"></i><b>城镇</b><span>产兵 · 可升级</span></button>
       <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>增幅 · 叶子据点</span></button>
       <button class="ml-ed-piece" data-tool="outpost" draggable="true"><i class="outpost"></i><b>驻兵点</b><span>监视一条路</span></button>
       </details>
-      <details class="ml-ed-fold" open>
+      <details class="ml-ed-fold" open data-panel="terrain">
       <summary>地形</summary>
       <div class="ml-ed-asset-grid" id="ml-ed-terrain-grid"></div>
       </details>
-      <details class="ml-ed-fold">
+      <details class="ml-ed-fold" data-panel="decor">
       <summary>装饰</summary>
       <div id="ml-ed-prop-groups"></div>
       </details>
@@ -335,6 +342,7 @@ export class EditorController {
   private roadDraw: RoadDrawState | null = null;
   private roadPointDrag: RoadPointDragState | null = null;
   private validationTimer = 0;
+  private paletteMode: "site" | "terrain" | "decor" = "site";
 
   private canvas!: HTMLCanvasElement;
   private overlay!: HTMLCanvasElement;
@@ -440,6 +448,13 @@ export class EditorController {
         if (tool) this.setTool(tool);
       });
     }
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-mode]")) {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.mode;
+        if (mode === "site" || mode === "terrain" || mode === "decor") this.setPaletteMode(mode);
+      });
+    }
+    this.setPaletteMode("site");
 
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.addEventListener("click", () => {
@@ -564,7 +579,7 @@ export class EditorController {
   private commit(
     next: MapDocument,
     message: string,
-    options: { roadOnly?: boolean; propsOnly?: boolean; terrainOnly?: boolean } = {},
+    options: { roadOnly?: boolean; propsOnly?: boolean; terrainOnly?: boolean; siteOnly?: boolean } = {},
   ): void {
     if (serializeDocument(next) === serializeDocument(this.doc)) return;
     this.undoStack.push(cloneDocument(this.doc));
@@ -572,14 +587,22 @@ export class EditorController {
     this.redoStack = [];
     this.doc = next;
     this.dirty = true;
-    if ((options.roadOnly || options.propsOnly || options.terrainOnly) && this.scene) {
+    if ((options.roadOnly || options.propsOnly || options.terrainOnly || options.siteOnly) && this.scene) {
       this.compiled = compileDocument(next, { validateNavigation: false });
-      if (options.roadOnly) this.scene.updateRoads(this.compiled.map, this.compiled.visual);
+      if (options.siteOnly) {
+        try {
+          this.preview = createGame(this.compiled.map, 1, this.options.rules);
+          this.scene.updateSites(this.compiled.map, this.compiled.visual, this.preview);
+        } catch {
+          this.rebuild(true);
+          this.notice(message);
+          return;
+        }
+      } else if (options.roadOnly) this.scene.updateRoads(this.compiled.map, this.compiled.visual);
       else if (options.terrainOnly) {
         this.scene.updateTerrain(this.compiled.map, this.compiled.visual);
         this.scene.setNavPreview(this.navPreview);
-      }
-      else this.scene.updateProps(this.compiled.visual);
+      } else this.scene.updateProps(this.compiled.visual);
       this.autosave();
       this.renderInspector();
       this.renderStatus();
@@ -642,6 +665,16 @@ export class EditorController {
     this.canvas.style.cursor = tool === "select" ? "grab" : tool === "erase" ? "not-allowed" : "crosshair";
     this.badgeEl.textContent = TOOL_LABEL[tool];
     this.drawOverlay();
+  }
+
+  private setPaletteMode(mode: "site" | "terrain" | "decor"): void {
+    this.paletteMode = mode;
+    for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-mode]")) {
+      button.classList.toggle("active", button.dataset.mode === mode);
+    }
+    for (const panel of this.options.root.querySelectorAll<HTMLElement>("[data-panel]")) {
+      panel.hidden = panel.dataset.panel !== mode;
+    }
   }
 
   private updateGridControls(): void {
@@ -917,7 +950,7 @@ export class EditorController {
     }
     const result = addSite(this.doc, kind, pos, 0);
     this.selection = { kind: "site", id: result.site.id };
-    this.commit(result.document, `已放置 ${kindLabel(kind)}`);
+    this.commit(result.document, `已放置 ${kindLabel(kind)}`, { siteOnly: true });
   }
 
   private pickSite(clientX: number, clientY: number): CityId | null {
@@ -1080,7 +1113,7 @@ export class EditorController {
       return;
     }
     if (this.selection?.kind === "site" && this.selection.id === id) this.selection = null;
-    this.commit(removeSite(this.doc, id), `已删除 ${id}`);
+    this.commit(removeSite(this.doc, id), `已删除 ${id}`, { siteOnly: true });
   }
 
   private removePropById(id: string): void {
@@ -1282,7 +1315,7 @@ export class EditorController {
     }
     if (this.drag) {
       if (this.drag.moved && this.drag.ground) {
-        this.commit(moveSite(this.doc, this.drag.id, this.drag.ground), `已移动 ${this.drag.id}`);
+        this.commit(moveSite(this.doc, this.drag.id, this.drag.ground), `已移动 ${this.drag.id}`, { siteOnly: true });
         this.suppressClick = true;
       }
       this.drag = null;
@@ -1729,31 +1762,31 @@ export class EditorController {
         this.renderInspector();
         return;
       }
-      this.commit(updateSite(this.doc, id, { kind }), "已修改据点类型");
+      this.commit(updateSite(this.doc, id, { kind }), "已修改据点类型", { siteOnly: true });
       return;
     }
     if (field === "owner") {
-      this.commit(updateSite(this.doc, id, { owner: Number(value) as Owner }), "已修改归属");
+      this.commit(updateSite(this.doc, id, { owner: Number(value) as Owner }), "已修改归属", { siteOnly: true });
       return;
     }
     if (field === "level") {
-      this.commit(updateSite(this.doc, id, { level: Number(value) as 1 | 2 | 3 }), "已修改等级");
+      this.commit(updateSite(this.doc, id, { level: Number(value) as 1 | 2 | 3 }), "已修改等级", { siteOnly: true });
       return;
     }
     if (field === "pop") {
-      this.commit(updateSite(this.doc, id, { pop: Number(value) }), "已修改驻军");
+      this.commit(updateSite(this.doc, id, { pop: Number(value) }), "已修改驻军", { siteOnly: true });
       return;
     }
     if (field === "stance") {
-      this.commit(updateSite(this.doc, id, { stance: value as Stance }), "已修改驻守状态");
+      this.commit(updateSite(this.doc, id, { stance: value as Stance }), "已修改驻守状态", { siteOnly: true });
       return;
     }
     if (field === "watch") {
       if (!value) {
-        this.commit(updateSite(this.doc, id, { watch: undefined }), "已清除监视道路");
+        this.commit(updateSite(this.doc, id, { watch: undefined }), "已清除监视道路", { siteOnly: true });
       } else {
         const [from, to] = value.split("|");
-        this.commit(updateSite(this.doc, id, { watch: [from, to] }), "已设置监视道路");
+        this.commit(updateSite(this.doc, id, { watch: [from, to] }), "已设置监视道路", { siteOnly: true });
       }
       return;
     }

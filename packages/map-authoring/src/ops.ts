@@ -65,6 +65,11 @@ export function moveSite(document: MapDocument, id: CityId, pos: [number, number
   const site = next.sites.find((entry) => entry.id === id);
   if (!site) return next;
   site.pos = clampPosition(next, pos);
+  for (const road of next.roads) {
+    if (!road.path || road.path.length < 2) continue;
+    if (road.from === id) road.path[0] = [site.pos[0], site.pos[1]];
+    if (road.to === id) road.path[road.path.length - 1] = [site.pos[0], site.pos[1]];
+  }
   return next;
 }
 

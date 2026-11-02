@@ -470,3 +470,23 @@
 .ml-ed-fold[open] > summary::before { content: "−"; }
 .ml-ed-fold > summary:hover { color: #e2d4ba; }
 .ml-ed-fold > *:not(summary) { margin-top: 4px; }
+
+.ml-ed-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin: 6px 0 4px;
+}
+.ml-ed-mode {
+  height: 26px;
+  border: 1px solid #2f3d31;
+  border-radius: 3px;
+  background: #162018;
+  color: #b8ab95;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.ml-ed-mode:hover { background: #1c2a20; border-color: #4b5f4c; }
+.ml-ed-mode.active { border-color: #c6a36a; background: #2a2c1e; color: #f0e3c9; }
+[data-panel][hidden] { display: none; }
