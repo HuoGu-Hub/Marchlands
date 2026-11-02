@@ -62,7 +62,7 @@ release/Marchlands-win32-x64/Marchlands.exe
 - 美术许可：ASSETS.md。
 - PC：Electron 打包，启动、菜单、开局 smoke 通过。
 - 高低差：`?scene=height`，0 m 谷地、26.6° 坡道、3 m 高台与高台城，四向可见。
-- 未做：美术替换、10 人试玩、正式验收。
+- 未做：官方图迁移、战争迷雾、10 人试玩、正式验收。
 
 ## 测试
 
