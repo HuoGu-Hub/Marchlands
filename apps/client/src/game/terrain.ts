@@ -359,7 +359,7 @@ export function buildTerrain(
 
   const width = maxX - minX;
   const depth = maxZ - minZ;
-  const cell = navGrid ? 1.0 : 3.0;
+  const cell = navGrid ? 1.0 : 1.5;
   const segmentsX = Math.max(24, Math.round(width / cell));
   const segmentsZ = Math.max(18, Math.round(depth / cell));
 

@@ -110,9 +110,7 @@ export function buildWall(level: number, palette: TeamPalette, radius = 4.5): TH
 
 export const TOWN_BUILDINGS: BuildingKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
 
-export const CITY_HALL_SCALE = 1.65;
-export const CITY_ANNEX_SCALE = 0.62;
-export const CITY_WATCH_SCALE = 0.7;
+export const CITY_HALL_SCALE = 1.7;
 export const OUTPOST_TOWER_SCALE = 1.7;
 export const OUTPOST_BUILDING_SCALE = 1.55;
 

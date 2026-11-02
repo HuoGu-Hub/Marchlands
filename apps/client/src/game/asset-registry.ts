@@ -6,9 +6,7 @@ import type { AssetEntry, AssetKind, AssetManifest } from "@marchlands/asset-pac
 import type { Level, Owner } from "@marchlands/sim";
 import { art } from "./assets";
 import {
-  CITY_ANNEX_SCALE,
   CITY_HALL_SCALE,
-  CITY_WATCH_SCALE,
   OUTPOST_BUILDING_SCALE,
   OUTPOST_TOWER_SCALE,
   TOWN_BUILDINGS,
@@ -272,27 +270,10 @@ export class AssetRegistry {
             return object;
           };
           if (spec.kind === "town") {
-            const group = new THREE.Group();
-            group.name = "town-settlement";
             const hallKind = TOWN_BUILDINGS[Math.abs(seed) % TOWN_BUILDINGS.length];
             const hall = (await prefab(`${hallKind}-L${level}`)) ?? buildBuilding(hallKind, palette, level, seed);
             hall.scale.multiplyScalar(CITY_HALL_SCALE);
-            group.add(hall);
-            if (level >= 2) {
-              const annex = (await prefab(`granary-L${Math.max(1, level - 1)}`)) ?? buildBuilding("granary", palette, level, seed + 3);
-              annex.scale.multiplyScalar(CITY_ANNEX_SCALE);
-              annex.position.set(2.75, 0, 1.8);
-              annex.rotation.y = -0.62;
-              group.add(annex);
-            }
-            if (level >= 3) {
-              const watch = (await prefab("tower-L1")) ?? buildBuilding("tower", palette, level, seed + 5);
-              watch.scale.multiplyScalar(CITY_WATCH_SCALE);
-              watch.position.set(-2.9, 0, -1.95);
-              watch.rotation.y = 0.48;
-              group.add(watch);
-            }
-            return group;
+            return hall;
           }
           const building = (await prefab(`${spec.kind}-L${level}`)) ?? buildBuilding(spec.kind, palette, level, seed);
           building.scale.multiplyScalar(spec.kind === "tower" ? OUTPOST_TOWER_SCALE : OUTPOST_BUILDING_SCALE);
