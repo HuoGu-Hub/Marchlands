@@ -86,6 +86,7 @@ export class BattleScene {
   private readonly missingAssets = new Set<string>();
   private readonly roadGroup = new THREE.Group();
   private readonly propGroup = new THREE.Group();
+  private readonly propObjects = new Map<string, THREE.Object3D>();
   private readonly sceneryGroup = new THREE.Group();
 
   constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
@@ -717,7 +718,7 @@ export class BattleScene {
     }
     this.buildRoads();
     this.buildScenery();
-    this.buildExplicitProps();
+    this.regroundProps();
     if (this.selected) {
       const position = this.positions.get(this.selected);
       if (position) this.ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
@@ -1095,8 +1096,20 @@ export class BattleScene {
     this.buildExplicitProps();
   }
 
+  private regroundProps(): void {
+    for (const prop of this.visual?.props ?? []) {
+      const object = this.propObjects.get(prop.id);
+      if (!object) continue;
+      const x = prop.pos[0] / 10;
+      const z = prop.pos[1] / 10;
+      const offset = (object.userData.groundOffset as number | undefined) ?? 0;
+      object.position.set(x, this.terrain.heightAt(x, z) - offset, z);
+    }
+  }
+
   private buildExplicitProps(): void {
     this.clearGroup(this.propGroup);
+    this.propObjects.clear();
     this.propBuildToken += 1;
     const props = this.visual?.props ?? [];
     if (props.length === 0) return;
@@ -1122,6 +1135,8 @@ export class BattleScene {
           object.position.set(x, y, z);
           object.rotation.y = (prop.rotation * Math.PI) / 180;
           object.scale.multiplyScalar(prop.scale);
+          object.userData.groundOffset = info.kind === "terrain" ? 0.04 : 0;
+          this.propObjects.set(prop.id, object);
           group.add(object);
         })
         .catch(() => {

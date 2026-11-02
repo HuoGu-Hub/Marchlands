@@ -475,6 +475,7 @@ export class EditorController {
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
     this.canvas.addEventListener("click", this.onClick);
+    this.canvas.addEventListener("dblclick", this.onDoubleClick);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     this.canvas.addEventListener("dragover", (event) => {
@@ -1015,6 +1016,71 @@ export class EditorController {
     return null;
   }
 
+  private pickRoadSegment(clientX: number, clientY: number): { index: number; point: [number, number] } | null {
+    if (!this.scene) return null;
+    const road = this.selectedRoad();
+    if (!road) return null;
+    const points = this.roadPoints(road);
+    let bestIndex = -1;
+    let bestDistance = 12;
+    let bestT = 0;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const a = this.scene.projectGround(points[index][0], points[index][1], 0.5);
+      const b = this.scene.projectGround(points[index + 1][0], points[index + 1][1], 0.5);
+      if (!a || !b) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lengthSq = dx * dx + dy * dy;
+      if (lengthSq < 1) continue;
+      const t = Math.max(0, Math.min(1, ((clientX - a.x) * dx + (clientY - a.y) * dy) / lengthSq));
+      const distance = Math.hypot(clientX - (a.x + dx * t), clientY - (a.y + dy * t));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+        bestT = t;
+      }
+    }
+    if (bestIndex < 0) return null;
+    const a = points[bestIndex];
+    const b = points[bestIndex + 1];
+    return {
+      index: bestIndex,
+      point: [Math.round(a[0] + (b[0] - a[0]) * bestT), Math.round(a[1] + (b[1] - a[1]) * bestT)],
+    };
+  }
+
+  private removeRoadPoint(index: number): void {
+    const road = this.selectedRoad();
+    if (!road) return;
+    const points = this.roadPoints(road).map((point) => [point[0], point[1]] as [number, number]);
+    const isAttachedStart = index === 0 && Boolean(road.from);
+    const isAttachedEnd = index === points.length - 1 && Boolean(road.to);
+    if (isAttachedStart || isAttachedEnd) {
+      this.notice("已连接据点的端点不能删除");
+      return;
+    }
+    points.splice(index, 1);
+    if (points.length < 2) {
+      this.notice("道路至少需要两个控制点");
+      return;
+    }
+    this.commit(updateRoad(this.doc, road.id, { path: points }), "已删除道路控制点", { roadOnly: true });
+    this.suppressClick = true;
+  }
+
+  private readonly onDoubleClick = (event: MouseEvent): void => {
+    if (!this.scene || this.tool !== "select" || this.selection?.kind !== "road") return;
+    const segment = this.pickRoadSegment(event.clientX, event.clientY);
+    if (!segment) return;
+    event.preventDefault();
+    const road = this.selectedRoad();
+    if (!road) return;
+    const points = this.roadPoints(road).map((point) => [point[0], point[1]] as [number, number]);
+    points.splice(segment.index + 1, 0, segment.point);
+    this.commit(updateRoad(this.doc, road.id, { path: points }), "已添加道路控制点", { roadOnly: true });
+    this.suppressClick = true;
+  };
+
   private selectSite(id: CityId | null): void {
     this.selection = id ? { kind: "site", id } : null;
     this.scene?.setSelected(id);
@@ -1155,6 +1221,14 @@ export class EditorController {
   };
 
   private readonly onPointerDown = (event: PointerEvent): void => {
+    if (event.button === 2 && this.tool === "select" && this.selection?.kind === "road") {
+      const handle = this.pickRoadPoint(event.clientX, event.clientY);
+      if (handle) {
+        event.preventDefault();
+        this.removeRoadPoint(handle.index);
+        return;
+      }
+    }
     if (!this.scene || event.button === 1 || event.button === 2) {
       this.pan = { x: event.clientX, y: event.clientY, moved: false };
       this.pointerId = event.pointerId;

@@ -104,6 +104,11 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
   await page.mouse.up();
   await expect(page.locator("#ml-ed-inspector")).toContainText("道路 r1");
   await expect(page.locator("#ml-ed-toast")).toContainText("已绘制道路");
+  await page.mouse.dblclick(420, 338);
+  await expect(page.locator("#ml-ed-inspector")).toContainText("6 个控制点");
+  await page.mouse.click(420, 338, { button: "right" });
+  await expect(page.locator("#ml-ed-inspector")).toContainText("5 个控制点");
+
   const before = await page.locator("#ml-ed-inspector").innerText();
   const beforeLength = /长度 ([\d.]+) 米/.exec(before)?.[1];
   expect(beforeLength).toBeTruthy();
