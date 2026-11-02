@@ -19,10 +19,12 @@ import {
   moveSite,
   parseDocument,
   removeProp,
+  removeRoad,
   removeSite,
   serializeDocument,
   updateDocument,
   updateProp,
+  updateRoad,
   updateRoadVisual,
   updateScatter,
   updateSite,
@@ -35,6 +37,7 @@ import type {
   MapDocument,
   MapVisual,
   PropDraft,
+  RoadDraft,
   RoadStyle,
   SiteDraft,
   TerrainStyle,
@@ -73,7 +76,23 @@ function isGridTool(tool: Tool): tool is GridTool {
   return GRID_TOOL_SET.has(tool);
 }
 
-type Selection = { kind: "site"; id: CityId } | { kind: "prop"; id: string } | null;
+type Selection =
+  | { kind: "site"; id: CityId }
+  | { kind: "prop"; id: string }
+  | { kind: "road"; id: string }
+  | null;
+
+interface RoadDrawState {
+  from: CityId;
+  points: Array<[number, number]>;
+  ground: [number, number] | null;
+}
+
+interface RoadPointDragState {
+  id: string;
+  index: number;
+  ground: [number, number];
+}
 
 interface EditorOptions {
   root: HTMLElement;
@@ -152,9 +171,10 @@ const TEMPLATE = `
     <aside class="ml-ed-palette">
       <div class="ml-ed-section-label">工具</div>
       <button class="ml-ed-piece tool active" data-tool="select" draggable="false"><i></i><b>选择 / 移动</b><span>拖动据点或装饰</span></button>
-      <button class="ml-ed-piece tool" data-tool="road" draggable="false"><i></i><b>道路</b><span>连两个据点</span></button>
+      <button class="ml-ed-piece tool" data-tool="road" draggable="false"><i></i><b>道路</b><span>拖动绘制</span></button>
       <button class="ml-ed-piece tool" data-tool="erase" draggable="false"><i></i><b>删除</b><span>点据点、道路或装饰</span></button>
-      <div class="ml-ed-section-label">网格地形</div>
+      <details class="ml-ed-fold" open>
+      <summary>网格地形</summary>
       <div class="ml-ed-grid-tools">
         <button class="ml-ed-grid-tool" data-grid-tool="raise">抬高</button>
         <button class="ml-ed-grid-tool" data-grid-tool="lower">降低</button>
@@ -166,26 +186,35 @@ const TEMPLATE = `
         <button class="ml-ed-grid-tool" data-grid-tool="blocker">阻挡</button>
         <button class="ml-ed-grid-tool" data-grid-tool="passable">可走</button>
       </div>
+      </details>
       <div class="ml-ed-grid-actions">
         <button class="ml-ed-btn" id="ml-ed-new-grid">新建网格</button>
         <button class="ml-ed-btn" id="ml-ed-grid-enable">启用网格</button>
         <button class="ml-ed-btn" id="ml-ed-nav-preview">导航预览</button>
         <button class="ml-ed-btn" id="ml-ed-path-test">路径测试</button>
       </div>
-      <div class="ml-ed-section-label">据点</div>
+      <details class="ml-ed-fold" open>
+      <summary>据点</summary>
       <button class="ml-ed-piece" data-tool="town" draggable="true"><i class="town"></i><b>城镇</b><span>产兵 · 可升级</span></button>
       <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>增幅 · 叶子据点</span></button>
       <button class="ml-ed-piece" data-tool="outpost" draggable="true"><i class="outpost"></i><b>驻兵点</b><span>监视一条路</span></button>
-      <div class="ml-ed-section-label">地形</div>
+      </details>
+      <details class="ml-ed-fold" open>
+      <summary>地形</summary>
       <div class="ml-ed-asset-grid" id="ml-ed-terrain-grid"></div>
-      <div class="ml-ed-section-label">装饰</div>
+      </details>
+      <details class="ml-ed-fold">
+      <summary>装饰</summary>
       <div id="ml-ed-prop-groups"></div>
-      <div class="ml-ed-section-label">资产包</div>
+      </details>
+      <details class="ml-ed-fold">
+      <summary>资产包</summary>
       <div class="ml-ed-pack-actions">
         <button class="ml-ed-btn" id="ml-ed-import-pack">导入 .mlpack</button>
         <button class="ml-ed-btn" id="ml-ed-export-pack">导出内置包</button>
       </div>
       <div class="ml-ed-pack-status" id="ml-ed-pack-status"></div>
+      </details>
     </aside>
     <main class="ml-ed-stage">
       <canvas id="ml-ed-canvas"></canvas>
@@ -237,10 +266,42 @@ function toolColor(tool: Tool): string {
   return "#d8ccb8";
 }
 
+function clampRoadPoint(document: MapDocument, point: [number, number]): [number, number] {
+  const halfW = document.size[0] / 2;
+  const halfH = document.size[1] / 2;
+  return [
+    Math.max(-halfW, Math.min(halfW, Math.round(point[0]))),
+    Math.max(-halfH, Math.min(halfH, Math.round(point[1]))),
+  ];
+}
+
+function simplifyRoad(points: Array<[number, number]>, tolerance = 8): Array<[number, number]> {
+  if (points.length <= 2) return points.slice();
+  const first = points[0];
+  const last = points[points.length - 1];
+  let index = -1;
+  let maxDistance = tolerance;
+  const dx = last[0] - first[0];
+  const dz = last[1] - first[1];
+  const length = Math.hypot(dx, dz) || 1;
+  for (let cursor = 1; cursor < points.length - 1; cursor += 1) {
+    const point = points[cursor];
+    const distance = Math.abs(dz * point[0] - dx * point[1] + last[0] * first[1] - last[1] * first[0]) / length;
+    if (distance > maxDistance) {
+      maxDistance = distance;
+      index = cursor;
+    }
+  }
+  if (index < 0) return [first, last];
+  const left = simplifyRoad(points.slice(0, index + 1), tolerance);
+  const right = simplifyRoad(points.slice(index), tolerance);
+  return [...left.slice(0, -1), ...right];
+}
+
 export class EditorController {
   private readonly options: EditorOptions;
   private doc: MapDocument = createStarterDocument();
-  private compiled: CompileResult = compileDocument(this.doc);
+  private compiled: CompileResult = compileDocument(this.doc, { validateNavigation: false });
   private undoStack: MapDocument[] = [];
   private redoStack: MapDocument[] = [];
   private selection: Selection = null;
@@ -271,6 +332,9 @@ export class EditorController {
   private pathFrom: [number, number] | null = null;
   private pathPoints: Array<[number, number]> | null = null;
   private navCache: { hash: string; grid: NavGrid } | null = null;
+  private roadDraw: RoadDrawState | null = null;
+  private roadPointDrag: RoadPointDragState | null = null;
+  private validationTimer = 0;
 
   private canvas!: HTMLCanvasElement;
   private overlay!: HTMLCanvasElement;
@@ -317,6 +381,10 @@ export class EditorController {
 
   dispose(): void {
     this.suspend();
+    if (this.validationTimer !== 0) {
+      window.clearTimeout(this.validationTimer);
+      this.validationTimer = 0;
+    }
     window.removeEventListener("keydown", this.onKeyDown);
     this.scene?.dispose();
     this.scene = null;
@@ -415,22 +483,25 @@ export class EditorController {
       if (!text) return;
       const parsed = parseDocument(JSON.parse(text));
       this.doc = parsed.document;
-      this.compiled = compileDocument(this.doc);
+      this.compiled = compileDocument(this.doc, { validateNavigation: false });
       this.dirty = false;
       this.notice("已恢复上次草稿");
     } catch {
       this.doc = createStarterDocument();
-      this.compiled = compileDocument(this.doc);
+      this.compiled = compileDocument(this.doc, { validateNavigation: false });
     }
   }
 
   private rebuild(preserveView: boolean): void {
     const view = preserveView ? this.scene?.getViewState() ?? this.view : null;
-    this.compiled = compileDocument(this.doc);
+    this.compiled = compileDocument(this.doc, { validateNavigation: false });
     if (this.selection?.kind === "site" && !this.doc.sites.some((site) => site.id === this.selection?.id)) {
       this.selection = null;
     }
     if (this.selection?.kind === "prop" && !this.doc.visual.props.some((prop) => prop.id === this.selection?.id)) {
+      this.selection = null;
+    }
+    if (this.selection?.kind === "road" && !this.doc.roads.some((road) => road.id === this.selection?.id)) {
       this.selection = null;
     }
 
@@ -466,6 +537,20 @@ export class EditorController {
     this.syncTop();
     this.updateGridControls();
     this.drawOverlay();
+    this.scheduleValidation();
+  }
+
+  private scheduleValidation(): void {
+    if (this.validationTimer !== 0) window.clearTimeout(this.validationTimer);
+    this.validationTimer = window.setTimeout(() => {
+      this.validationTimer = 0;
+      try {
+        this.compiled = compileDocument(this.doc);
+        this.renderStatus();
+      } catch {
+        // keep the last compiled result; the next edit retries
+      }
+    }, 300);
   }
 
   private autosave(): void {
@@ -476,13 +561,27 @@ export class EditorController {
     }
   }
 
-  private commit(next: MapDocument, message: string): void {
+  private commit(next: MapDocument, message: string, options: { roadOnly?: boolean; propsOnly?: boolean } = {}): void {
     if (serializeDocument(next) === serializeDocument(this.doc)) return;
     this.undoStack.push(cloneDocument(this.doc));
     if (this.undoStack.length > 50) this.undoStack.shift();
     this.redoStack = [];
     this.doc = next;
     this.dirty = true;
+    if ((options.roadOnly || options.propsOnly) && this.scene) {
+      this.compiled = compileDocument(next, { validateNavigation: false });
+      if (options.roadOnly) this.scene.updateRoads(this.compiled.map, this.compiled.visual);
+      else this.scene.updateProps(this.compiled.visual);
+      this.autosave();
+      this.renderInspector();
+      this.renderStatus();
+      this.syncTop();
+      this.updateGridControls();
+      this.drawOverlay();
+      this.scheduleValidation();
+      this.notice(message);
+      return;
+    }
     this.rebuild(true);
     this.notice(message);
   }
@@ -521,6 +620,8 @@ export class EditorController {
     this.tool = tool;
     if (tool !== "asset") this.activeAsset = null;
     this.roadFrom = null;
+    this.roadDraw = null;
+    this.roadPointDrag = null;
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.classList.toggle("active", button.dataset.tool === tool);
     }
@@ -747,7 +848,7 @@ export class EditorController {
     const pos = this.snapGround(ground);
     const result = addProp(this.doc, assetId, pos, 0, 1);
     this.selection = { kind: "prop", id: result.prop.id };
-    this.commit(result.document, `已放置 ${assetRegistry.info(assetId)?.label ?? "装饰"}`);
+    this.commit(result.document, `已放置 ${assetRegistry.info(assetId)?.label ?? "装饰"}`, { propsOnly: true });
   }
 
   private async importAssetPack(): Promise<void> {
@@ -827,30 +928,49 @@ export class EditorController {
     return best;
   }
 
-  private pickRoad(clientX: number, clientY: number): [CityId, CityId] | null {
+  private roadPoints(road: RoadDraft): Array<[number, number]> {
+    if (road.path && road.path.length >= 2) return road.path;
+    const from = this.doc.sites.find((site) => site.id === road.from);
+    const to = this.doc.sites.find((site) => site.id === road.to);
+    return from && to ? [from.pos, to.pos] : [];
+  }
+
+  private pickRoad(clientX: number, clientY: number): string | null {
     if (!this.scene) return null;
-    const point = { x: clientX, y: clientY };
-    let best: [CityId, CityId] | null = null;
+    let best: string | null = null;
     let bestDistance = 12;
     for (const road of this.doc.roads) {
-      const a = this.doc.sites.find((site) => site.id === road.from);
-      const b = this.doc.sites.find((site) => site.id === road.to);
-      if (!a || !b) continue;
-      const pa = this.scene.projectGround(a.pos[0], a.pos[1], 1);
-      const pb = this.scene.projectGround(b.pos[0], b.pos[1], 1);
-      if (!pa || !pb) continue;
-      const dx = pb.x - pa.x;
-      const dy = pb.y - pa.y;
-      const lengthSq = dx * dx + dy * dy;
-      if (lengthSq < 1) continue;
-      const t = Math.max(0, Math.min(1, ((point.x - pa.x) * dx + (point.y - pa.y) * dy) / lengthSq));
-      const distance = Math.hypot(point.x - (pa.x + dx * t), point.y - (pa.y + dy * t));
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = [road.from, road.to];
+      const points = this.roadPoints(road);
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const pa = this.scene.projectGround(points[index][0], points[index][1], 1);
+        const pb = this.scene.projectGround(points[index + 1][0], points[index + 1][1], 1);
+        if (!pa || !pb) continue;
+        const dx = pb.x - pa.x;
+        const dy = pb.y - pa.y;
+        const lengthSq = dx * dx + dy * dy;
+        if (lengthSq < 1) continue;
+        const t = Math.max(0, Math.min(1, ((clientX - pa.x) * dx + (clientY - pa.y) * dy) / lengthSq));
+        const distance = Math.hypot(clientX - (pa.x + dx * t), clientY - (pa.y + dy * t));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = road.id;
+        }
       }
     }
     return best;
+  }
+
+  private pickRoadPoint(clientX: number, clientY: number): { road: RoadDraft; index: number } | null {
+    if (!this.scene || this.selection?.kind !== "road") return null;
+    const road = this.selectedRoad();
+    if (!road) return null;
+    const points = this.roadPoints(road);
+    for (let index = 0; index < points.length; index += 1) {
+      const projected = this.scene.projectGround(points[index][0], points[index][1], 0.6);
+      if (!projected) continue;
+      if (Math.hypot(clientX - projected.x, clientY - projected.y) <= 10) return { road, index };
+    }
+    return null;
   }
 
   private selectSite(id: CityId | null): void {
@@ -865,6 +985,77 @@ export class EditorController {
     this.scene?.setSelected(null);
     this.renderInspector();
     this.drawOverlay();
+  }
+
+  private selectRoad(id: string | null): void {
+    this.selection = id ? { kind: "road", id } : null;
+    this.scene?.setSelected(null);
+    this.renderInspector();
+    this.drawOverlay();
+  }
+
+  private selectedRoad(): RoadDraft | null {
+    if (this.selection?.kind !== "road") return null;
+    return this.doc.roads.find((road) => road.id === this.selection?.id) ?? null;
+  }
+
+  private extendRoadDraw(ground: [number, number] | null): void {
+    const state = this.roadDraw;
+    if (!state || !ground) return;
+    state.ground = ground;
+    const last = state.points[state.points.length - 1];
+    if (Math.hypot(ground[0] - last[0], ground[1] - last[1]) < 4) return;
+    state.points.push(clampRoadPoint(this.doc, ground));
+    this.drawOverlay();
+  }
+
+  private finishRoadDraw(): void {
+    const state = this.roadDraw;
+    this.roadDraw = null;
+    if (!state || !state.ground) return;
+    let target: SiteDraft | null = null;
+    let bestDistance = 60;
+    for (const site of this.doc.sites) {
+      if (site.id === state.from) continue;
+      const distance = Math.hypot(site.pos[0] - state.ground[0], site.pos[1] - state.ground[1]);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        target = site;
+      }
+    }
+    if (!target) {
+      this.notice("道路必须结束在另一个据点上");
+      this.drawOverlay();
+      return;
+    }
+    const points = state.points.map((point) => clampRoadPoint(this.doc, point));
+    const last = points[points.length - 1];
+    if (Math.hypot(target.pos[0] - last[0], target.pos[1] - last[1]) > 1) {
+      points.push([target.pos[0], target.pos[1]]);
+    }
+    const simplified = simplifyRoad(points);
+    const before = new Set(this.doc.roads.map((road) => road.id));
+    const next = connect(this.doc, state.from, target.id, {
+      path: simplified,
+      widthDm: Math.max(6, Math.min(60, Math.round(this.doc.visual.roads.width * 10))),
+    });
+    const created = next.roads.find((road) => !before.has(road.id));
+    if (created) this.selection = { kind: "road", id: created.id };
+    this.commit(next, created ? "已绘制道路" : "这两点之间已经有路", { roadOnly: true });
+    this.setTool("select");
+    this.suppressClick = true;
+  }
+
+  private finishRoadPointDrag(): void {
+    const drag = this.roadPointDrag;
+    this.roadPointDrag = null;
+    const road = this.selectedRoad();
+    if (!drag || !road || !this.pointer.ground) return;
+    const points = this.roadPoints(road).map((point) => [point[0], point[1]] as [number, number]);
+    if (drag.index < 0 || drag.index >= points.length) return;
+    points[drag.index] = clampRoadPoint(this.doc, this.pointer.ground);
+    this.commit(updateRoad(this.doc, road.id, { path: points }), "已调整道路", { roadOnly: true });
+    this.suppressClick = true;
   }
 
   private selectedProp(): PropDraft | null {
@@ -888,16 +1079,17 @@ export class EditorController {
     const prop = this.doc.visual.props.find((entry) => entry.id === id);
     if (!prop) return;
     if (this.selection?.kind === "prop" && this.selection.id === id) this.selection = null;
-    this.commit(removeProp(this.doc, id), `已删除装饰 ${prop.id}`);
+    this.commit(removeProp(this.doc, id), `已删除装饰 ${prop.id}`, { propsOnly: true });
   }
 
-  private removeRoad(road: [CityId, CityId]): void {
-    const next = disconnect(this.doc, road[0], road[1]);
+  private removeRoadById(id: string): void {
+    const next = removeRoad(this.doc, id);
     if (serializeDocument(next) === serializeDocument(this.doc)) {
       this.notice("没有移除道路");
       return;
     }
-    this.commit(next, "已移除道路");
+    if (this.selection?.kind === "road" && this.selection.id === id) this.selection = null;
+    this.commit(next, "已移除道路", { roadOnly: true });
   }
 
   private readonly onDrop = (event: DragEvent): void => {
@@ -926,6 +1118,20 @@ export class EditorController {
     }
     if (event.button !== 0) return;
     this.pointer = { x: event.clientX, y: event.clientY, ground: this.scene.screenToGround(event.clientX, event.clientY) };
+    if (this.tool === "road") {
+      if (!this.pointer.ground) return;
+      const site = this.pickSite(event.clientX, event.clientY);
+      const draft = site ? this.doc.sites.find((entry) => entry.id === site) : null;
+      if (!draft) {
+        this.notice("从据点开始拖动画路");
+        return;
+      }
+      this.roadDraw = { from: draft.id, points: [draft.pos], ground: this.pointer.ground };
+      this.pointerId = event.pointerId;
+      this.canvas.setPointerCapture(event.pointerId);
+      this.drawOverlay();
+      return;
+    }
     if (isGridTool(this.tool) && !this.pathTest) {
       if (this.doc.navigation !== "grid" || !this.doc.grid) {
         this.notice("先启用网格导航或新建网格地图");
@@ -938,6 +1144,13 @@ export class EditorController {
       return;
     }
     if (this.tool === "select") {
+      const handle = this.pickRoadPoint(event.clientX, event.clientY);
+      if (handle) {
+        this.roadPointDrag = { id: handle.road.id, index: handle.index, ground: this.pointer.ground ?? handle.road.path?.[handle.index] ?? [0, 0] };
+        this.pointerId = event.pointerId;
+        this.canvas.setPointerCapture(event.pointerId);
+        return;
+      }
       const siteHit = this.pickSite(event.clientX, event.clientY);
       if (siteHit) {
         this.selectSite(siteHit);
@@ -978,6 +1191,17 @@ export class EditorController {
       y: event.clientY,
       ground: this.scene?.screenToGround(event.clientX, event.clientY) ?? null,
     };
+
+    if (this.roadDraw) {
+      this.extendRoadDraw(this.pointer.ground);
+      return;
+    }
+
+    if (this.roadPointDrag) {
+      if (this.pointer.ground) this.roadPointDrag.ground = this.pointer.ground;
+      this.drawOverlay();
+      return;
+    }
 
     if (this.gridStroke) {
       this.extendGridStroke();
@@ -1031,6 +1255,14 @@ export class EditorController {
       this.canvas.releasePointerCapture(this.pointerId);
     }
     this.pointerId = null;
+    if (this.roadDraw) {
+      this.finishRoadDraw();
+      return;
+    }
+    if (this.roadPointDrag) {
+      this.finishRoadPointDrag();
+      return;
+    }
     if (this.gridStroke) {
       const stroke = this.gridStroke;
       this.gridStroke = null;
@@ -1049,7 +1281,7 @@ export class EditorController {
     }
     if (this.propDrag) {
       if (this.propDrag.moved && this.propDrag.ground) {
-        this.commit(moveProp(this.doc, this.propDrag.id, this.propDrag.ground), `已移动装饰 ${this.propDrag.id}`);
+        this.commit(moveProp(this.doc, this.propDrag.id, this.propDrag.ground), `已移动装饰 ${this.propDrag.id}`, { propsOnly: true });
         this.suppressClick = true;
       }
       this.propDrag = null;
@@ -1086,34 +1318,7 @@ export class EditorController {
       return;
     }
 
-    if (this.tool === "road") {
-      const hit = this.pickSite(event.clientX, event.clientY);
-      if (!hit) {
-        this.notice("点一个据点作为道路起点");
-        return;
-      }
-      if (!this.roadFrom) {
-        this.roadFrom = hit;
-        this.notice(`道路起点 ${hit}，再点另一个据点`);
-        this.drawOverlay();
-        return;
-      }
-      if (this.roadFrom === hit) {
-        this.roadFrom = null;
-        this.notice("已取消道路起点");
-        this.drawOverlay();
-        return;
-      }
-      const next = connect(this.doc, this.roadFrom, hit);
-      if (serializeDocument(next) === serializeDocument(this.doc)) {
-        this.notice("这两点之间已经有路");
-      } else {
-        this.commit(next, `已连接 ${this.roadFrom} → ${hit}`);
-      }
-      this.roadFrom = null;
-      this.drawOverlay();
-      return;
-    }
+    if (this.tool === "road") return;
 
     if (this.tool === "erase") {
       const site = this.pickSite(event.clientX, event.clientY);
@@ -1127,7 +1332,7 @@ export class EditorController {
         return;
       }
       const road = this.pickRoad(event.clientX, event.clientY);
-      if (road) this.removeRoad(road);
+      if (road) this.removeRoadById(road);
       else this.notice("这里没有可删除的对象");
       return;
     }
@@ -1140,6 +1345,11 @@ export class EditorController {
     const prop = this.pickProp(event.clientX, event.clientY);
     if (prop) {
       this.selectProp(prop);
+      return;
+    }
+    const road = this.pickRoad(event.clientX, event.clientY);
+    if (road) {
+      this.selectRoad(road);
       return;
     }
     this.selectSite(null);
@@ -1175,6 +1385,9 @@ export class EditorController {
       } else if (this.selection?.kind === "prop") {
         event.preventDefault();
         this.removePropById(this.selection.id);
+      } else if (this.selection?.kind === "road") {
+        event.preventDefault();
+        this.removeRoadById(this.selection.id);
       }
       return;
     }
@@ -1182,7 +1395,7 @@ export class EditorController {
       const prop = this.selectedProp();
       if (prop) {
         event.preventDefault();
-        this.commit(updateProp(this.doc, prop.id, { rotation: prop.rotation + (event.shiftKey ? -15 : 15) }), "已旋转装饰");
+        this.commit(updateProp(this.doc, prop.id, { rotation: prop.rotation + (event.shiftKey ? -15 : 15) }), "已旋转装饰", { propsOnly: true });
       }
       return;
     }
@@ -1191,12 +1404,14 @@ export class EditorController {
       if (prop) {
         event.preventDefault();
         const scale = prop.scale + (event.key === "]" ? 0.1 : -0.1);
-        this.commit(updateProp(this.doc, prop.id, { scale }), "已缩放装饰");
+        this.commit(updateProp(this.doc, prop.id, { scale }), "已缩放装饰", { propsOnly: true });
       }
       return;
     }
     if (event.key === "Escape") {
       this.roadFrom = null;
+      this.roadDraw = null;
+      this.roadPointDrag = null;
       this.pathFrom = null;
       this.pathPoints = null;
       if (this.pathTest) {
@@ -1214,6 +1429,12 @@ export class EditorController {
   };
 
   private renderInspector(): void {
+    if (this.selection?.kind === "road") {
+      const road = this.selectedRoad();
+      this.inspector.innerHTML = road ? this.roadInspectorHtml(road) : this.mapSettingsHtml();
+      this.bindInspector();
+      return;
+    }
     if (this.selection?.kind === "prop") {
       const prop = this.selectedProp();
       if (prop) {
@@ -1236,7 +1457,7 @@ export class EditorController {
     const candidates = watchCandidates(this.doc, site.id);
     const currentWatch = site.watch ? `${site.watch[0]}|${site.watch[1]}` : "";
     if (currentWatch && !candidates.some((road) => `${road.from}|${road.to}` === currentWatch || `${road.to}|${road.from}` === currentWatch)) {
-      candidates.push({ from: site.watch?.[0] ?? "", to: site.watch?.[1] ?? "" });
+      candidates.push({ id: "watch", from: site.watch?.[0] ?? "", to: site.watch?.[1] ?? "" });
     }
     const watchOptions = candidates
       .filter((road) => road.from && road.to)
@@ -1318,6 +1539,27 @@ export class EditorController {
       <div class="ml-ed-meta">坐标 ${prop.pos[0]}, ${prop.pos[1]}<br>占地 ${info?.footprint ?? "?"} 米</div>
       <p class="ml-ed-note">拖动可以移动装饰；R 旋转 15°，Shift+R 反向旋转；[ ] 缩放。</p>
       <button class="ml-ed-delete" data-action="delete-prop">删除这个装饰</button>
+    `;
+  }
+
+  private roadInspectorHtml(road: RoadDraft): string {
+    const points = this.roadPoints(road);
+    let lengthDm = 0;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      lengthDm += Math.hypot(points[index + 1][0] - points[index][0], points[index + 1][1] - points[index][1]);
+    }
+    const widthDm = road.widthDm ?? this.doc.visual.roads.width * 10;
+    return `
+      <h3>道路 ${escapeHtml(road.id)}</h3>
+      <div class="ml-ed-kind">${road.from} ↔ ${road.to} · ${points.length} 个控制点</div>
+      <label class="ml-ed-field"><span>宽度（米）</span><input data-road="${escapeHtml(road.id)}" data-field="widthM" type="number" min="0.6" max="6" step="0.1" value="${(widthDm / 10).toFixed(1)}"></label>
+      <div class="ml-ed-meta">长度 ${(lengthDm / 10).toFixed(1)} 米<br>起点 ${road.from} · 终点 ${road.to}</div>
+      <p class="ml-ed-note">选中道路后拖动青色控制点即可改形状。宽度不会随拖动改变。</p>
+      <div class="ml-ed-road-actions">
+        <button class="ml-ed-btn" data-action="reverse-road">反向</button>
+        <button class="ml-ed-btn" data-action="straight-road">拉直</button>
+      </div>
+      <button class="ml-ed-delete" data-action="delete-road">删除这条道路</button>
     `;
   }
 
@@ -1414,8 +1656,10 @@ export class EditorController {
         const value = field instanceof HTMLInputElement && field.type === "checkbox" ? String(field.checked) : field.value;
         const siteId = field.dataset.site;
         const propId = field.dataset.prop;
+        const roadId = field.dataset.road;
         if (siteId) this.changeSiteField(siteId, name, value);
         else if (propId) this.changePropField(propId, name, value);
+        else if (roadId) this.changeRoadField(roadId, name, value);
         else this.changeMapField(name, value);
       });
     }
@@ -1424,6 +1668,24 @@ export class EditorController {
     });
     this.inspector.querySelector<HTMLElement>("[data-action=delete-prop]")?.addEventListener("click", () => {
       if (this.selection?.kind === "prop") this.removePropById(this.selection.id);
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=delete-road]")?.addEventListener("click", () => {
+      if (this.selection?.kind === "road") this.removeRoadById(this.selection.id);
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=reverse-road]")?.addEventListener("click", () => {
+      const road = this.selectedRoad();
+      if (!road) return;
+      const next = cloneDocument(this.doc);
+      const target = next.roads.find((entry) => entry.id === road.id);
+      if (!target) return;
+      [target.from, target.to] = [target.to, target.from];
+      if (target.path) target.path.reverse();
+      this.commit(next, "已反转道路", { roadOnly: true });
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=straight-road]")?.addEventListener("click", () => {
+      const road = this.selectedRoad();
+      if (!road) return;
+      this.commit(updateRoad(this.doc, road.id, { path: undefined }), "已拉直道路", { roadOnly: true });
     });
     for (const button of this.inspector.querySelectorAll<HTMLElement>("[data-pack-remove]")) {
       button.addEventListener("click", () => {
@@ -1440,6 +1702,13 @@ export class EditorController {
     this.renderInspector();
     this.rebuild(true);
     this.notice("资产包已移除");
+  }
+
+  private changeRoadField(id: string, field: string, value: string): void {
+    if (field === "widthM") {
+      const widthM = Math.max(0.6, Math.min(6, Number(value) || 1.6));
+      this.commit(updateRoad(this.doc, id, { widthDm: Math.round(widthM * 10) }), "已修改道路宽度", { roadOnly: true });
+    }
   }
 
   private changeSiteField(id: CityId, field: string, value: string): void {
@@ -1498,11 +1767,11 @@ export class EditorController {
 
   private changePropField(id: string, field: string, value: string): void {
     if (field === "rotation") {
-      this.commit(updateProp(this.doc, id, { rotation: Number(value) || 0 }), "已修改装饰朝向");
+      this.commit(updateProp(this.doc, id, { rotation: Number(value) || 0 }), "已修改装饰朝向", { propsOnly: true });
       return;
     }
     if (field === "scale") {
-      this.commit(updateProp(this.doc, id, { scale: Number(value) || 1 }), "已修改装饰缩放");
+      this.commit(updateProp(this.doc, id, { scale: Number(value) || 1 }), "已修改装饰缩放", { propsOnly: true });
     }
   }
 
@@ -1652,12 +1921,15 @@ export class EditorController {
   }
 
   private playtest(): void {
-    const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error");
+    const full = compileDocument(this.doc);
+    this.compiled = full;
+    const errors = full.diagnostics.filter((entry) => entry.severity === "error");
+    this.renderStatus();
     if (errors.length > 0 || !this.preview) {
-      this.notice("先修复地图错误再试玩");
+      this.notice(errors[0]?.message ?? "先修复地图错误再试玩");
       return;
     }
-    this.options.onPlaytest(this.compiled.map, this.compiled.visual);
+    this.options.onPlaytest(full.map, full.visual);
   }
 
   private requestExit(): void {
@@ -1790,6 +2062,70 @@ export class EditorController {
         this.ctx.stroke();
         this.ctx.restore();
         this.drawPin(point.x, point.y, "#9fc7a4");
+      }
+    }
+
+    if (this.roadDraw) {
+      const points = this.roadDraw.points.slice();
+      if (this.roadDraw.ground) {
+        const last = points[points.length - 1];
+        if (Math.hypot(this.roadDraw.ground[0] - last[0], this.roadDraw.ground[1] - last[1]) > 1) {
+          points.push(this.roadDraw.ground);
+        }
+      }
+      const screen = points
+        .map((point) => this.scene?.projectGround(point[0], point[1], 0.5))
+        .filter((point): point is { x: number; y: number } => point !== null && point !== undefined)
+        .map((point) => local(point));
+      if (screen.length >= 2) {
+        this.ctx.save();
+        this.ctx.lineCap = "round";
+        this.ctx.lineJoin = "round";
+        this.ctx.strokeStyle = "rgba(8,12,9,.72)";
+        this.ctx.lineWidth = 8;
+        this.ctx.beginPath();
+        this.ctx.moveTo(screen[0].x, screen[0].y);
+        for (let index = 1; index < screen.length; index += 1) this.ctx.lineTo(screen[index].x, screen[index].y);
+        this.ctx.stroke();
+        this.ctx.strokeStyle = "#d8c49c";
+        this.ctx.lineWidth = 3;
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+    }
+
+    const roadSelection = this.selectedRoad();
+    if (roadSelection) {
+      const points = this.roadPoints(roadSelection).map((point) => [point[0], point[1]] as [number, number]);
+      if (this.roadPointDrag && this.roadPointDrag.index < points.length) {
+        points[this.roadPointDrag.index] = this.roadPointDrag.ground;
+      }
+      const screen = points
+        .map((point) => this.scene?.projectGround(point[0], point[1], 0.5))
+        .filter((point): point is { x: number; y: number } => point !== null && point !== undefined)
+        .map((point) => local(point));
+      if (screen.length >= 2) {
+        this.ctx.save();
+        this.ctx.strokeStyle = "rgba(127,215,232,.9)";
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([6, 4]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(screen[0].x, screen[0].y);
+        for (let index = 1; index < screen.length; index += 1) this.ctx.lineTo(screen[index].x, screen[index].y);
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+      for (let index = 0; index < screen.length; index += 1) {
+        const point = screen[index];
+        this.ctx.save();
+        this.ctx.fillStyle = "#0d1410";
+        this.ctx.strokeStyle = "#7fd7e8";
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.restore();
       }
     }
 

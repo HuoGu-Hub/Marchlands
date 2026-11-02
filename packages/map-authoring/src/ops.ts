@@ -26,6 +26,13 @@ export function nextSiteId(document: MapDocument, kind: SiteKind): CityId {
   return prefix + String(next);
 }
 
+export function nextRoadId(document: MapDocument): string {
+  const used = new Set(document.roads.map((road) => road.id));
+  let next = 1;
+  while (used.has(`r${next}`)) next += 1;
+  return `r${next}`;
+}
+
 export function nextPropId(document: MapDocument): string {
   const used = new Set(document.visual.props.map((prop) => prop.id));
   let next = 1;
@@ -124,7 +131,12 @@ export function watchCandidates(document: MapDocument, siteId: CityId): RoadDraf
   });
 }
 
-export function connect(document: MapDocument, from: CityId, to: CityId): MapDocument {
+export function connect(
+  document: MapDocument,
+  from: CityId,
+  to: CityId,
+  options: { path?: [number, number][]; widthDm?: number } = {},
+): MapDocument {
   const next = cloneDocument(document);
   if (from === to) return next;
   if (!next.sites.some((site) => site.id === from) || !next.sites.some((site) => site.id === to)) {
@@ -133,12 +145,56 @@ export function connect(document: MapDocument, from: CityId, to: CityId): MapDoc
   if (next.roads.some((road) => (road.from === from && road.to === to) || (road.from === to && road.to === from))) {
     return next;
   }
-  next.roads.push({ from, to });
+  next.roads.push({
+    id: nextRoadId(next),
+    from,
+    to,
+    ...(options.path && options.path.length >= 2
+      ? { path: options.path.map((point) => [point[0], point[1]] as [number, number]) }
+      : {}),
+    ...(options.widthDm !== undefined ? { widthDm: options.widthDm } : {}),
+  });
   for (const id of [from, to]) {
     const site = next.sites.find((entry) => entry.id === id);
     if (site?.kind !== "outpost" || site.watch) continue;
     const candidate = watchCandidates(next, id)[0];
     if (candidate) site.watch = [candidate.from, candidate.to];
+  }
+  return next;
+}
+
+export function updateRoad(
+  document: MapDocument,
+  id: string,
+  patch: Partial<Pick<RoadDraft, "path" | "widthDm">>,
+): MapDocument {
+  const next = cloneDocument(document);
+  const road = next.roads.find((entry) => entry.id === id);
+  if (!road) return next;
+  if ("path" in patch) {
+    if (patch.path) road.path = patch.path.map((point) => [point[0], point[1]] as [number, number]);
+    else delete road.path;
+  }
+  if (patch.widthDm !== undefined) road.widthDm = patch.widthDm;
+  return next;
+}
+
+export function removeRoad(document: MapDocument, id: string): MapDocument {
+  const next = cloneDocument(document);
+  const road = next.roads.find((entry) => entry.id === id);
+  if (!road) return next;
+  next.roads = next.roads.filter((entry) => entry.id !== id);
+  for (const site of next.sites) {
+    if (site.kind !== "outpost" || !site.watch) continue;
+    const watchExists = next.roads.some(
+      (entry) =>
+        (entry.from === site.watch?.[0] && entry.to === site.watch?.[1]) ||
+        (entry.from === site.watch?.[1] && entry.to === site.watch?.[0]),
+    );
+    if (watchExists) continue;
+    const candidate = watchCandidates(next, site.id)[0];
+    if (candidate) site.watch = [candidate.from, candidate.to];
+    else delete site.watch;
   }
   return next;
 }

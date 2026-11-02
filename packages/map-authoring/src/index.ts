@@ -18,11 +18,14 @@ export {
   moveProp,
   moveSite,
   nextPropId,
+  nextRoadId,
   nextSiteId,
   removeProp,
+  removeRoad,
   removeSite,
   updateDocument,
   updateProp,
+  updateRoad,
   updateRoadVisual,
   updateScatter,
   updateSite,
@@ -56,6 +59,7 @@ export {
   packGridDraft,
   unpackGridDef,
 } from "./grid";
+export type { CompileOptions } from "./document";
 export type { GridDraftOptions } from "./grid";
 export { applyGridBrush, gridCellFromGround } from "./grid-ops";
 export type { GridBrushMode, GridBrushOptions } from "./grid-ops";

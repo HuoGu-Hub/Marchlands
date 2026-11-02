@@ -86,6 +86,38 @@ test("creates a grid map, sculpts terrain and previews navigation", async ({ pag
   await expect(page.locator("#page-editor")).toBeVisible();
 });
 
+test("draws and reshapes a road in the editor", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#page-editor")).toBeVisible();
+  await page.click("#ml-ed-new-grid");
+  await page.waitForTimeout(500);
+
+  await page.click('[data-tool="road"]');
+  await page.mouse.move(335, 350);
+  await page.mouse.down();
+  await page.mouse.move(500, 330, { steps: 8 });
+  await page.mouse.move(700, 350, { steps: 8 });
+  await page.mouse.move(880, 400, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("#ml-ed-inspector")).toContainText("道路 r1");
+  await expect(page.locator("#ml-ed-toast")).toContainText("已绘制道路");
+  const before = await page.locator("#ml-ed-inspector").innerText();
+  const beforeLength = /长度 ([\d.]+) 米/.exec(before)?.[1];
+  expect(beforeLength).toBeTruthy();
+
+  await page.mouse.move(505, 327);
+  await page.mouse.down();
+  await page.mouse.move(505, 420, { steps: 10 });
+  await page.mouse.up();
+  await expect(page.locator("#ml-ed-toast")).toContainText("已调整道路");
+  const after = await page.locator("#ml-ed-inspector").innerText();
+  const afterLength = /长度 ([\d.]+) 米/.exec(after)?.[1];
+  expect(afterLength).toBeTruthy();
+  expect(afterLength).not.toBe(beforeLength);
+});
+
 test("places and rotates a terrain prop in the editor", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });

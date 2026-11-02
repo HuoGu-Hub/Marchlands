@@ -58,8 +58,8 @@ interface SquadView {
 
 export class BattleScene {
   private readonly canvas: HTMLCanvasElement;
-  private readonly map: MapDef;
-  private readonly visual: MapVisual | null;
+  private map: MapDef;
+  private visual: MapVisual | null;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.OrthographicCamera;
@@ -83,6 +83,8 @@ export class BattleScene {
   private propBuildToken = 0;
   private propPoints: Array<{ x: number; z: number; radius: number }> = [];
   private readonly missingAssets = new Set<string>();
+  private readonly roadGroup = new THREE.Group();
+  private readonly propGroup = new THREE.Group();
 
   constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
     this.canvas = canvas;
@@ -107,6 +109,8 @@ export class BattleScene {
     this.computeBounds();
 
     this.buildLights();
+    this.scene.add(this.roadGroup);
+    this.scene.add(this.propGroup);
     this.buildGround();
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
@@ -662,7 +666,21 @@ export class BattleScene {
     this.scene.fog = new THREE.Fog(atmosphere.fog, 125, 195);
   }
 
+  updateRoads(map: MapDef, visual: MapVisual | null): void {
+    this.map = map;
+    this.visual = visual;
+    this.buildRoads();
+  }
+
+  private clearGroup(group: THREE.Group): void {
+    for (const child of [...group.children]) {
+      group.remove(child);
+      disposeObject(child);
+    }
+  }
+
   private buildRoads(): void {
+    this.clearGroup(this.roadGroup);
     const width = this.visual?.roads.width ?? 1.6;
     const centerId = "c3";
     const cityRadius = () => 3.75;
@@ -677,12 +695,32 @@ export class BattleScene {
       const from = this.positions.get(edge.from);
       const to = this.positions.get(edge.to);
       if (!from || !to) continue;
+      const edgeWidth = edge.widthDm !== undefined ? edge.widthDm / 10 : width;
+      const path = edge.path;
+      if (path && path.length >= 2) {
+        const controls = path.map(([x, z]) => new THREE.Vector3(x / 10, 0, z / 10));
+        controls[0].y = this.terrain.heightAt(controls[0].x, controls[0].z);
+        controls[controls.length - 1].y = this.terrain.heightAt(
+          controls[controls.length - 1].x,
+          controls[controls.length - 1].z,
+        );
+        this.addRoadPath(
+          controls,
+          edgeWidth,
+          roadMaterial,
+          curbMaterial,
+          edge.from !== centerId,
+          edge.to !== centerId,
+          plazaMaterial,
+        );
+        continue;
+      }
       const direction = new THREE.Vector3(to.x - from.x, 0, to.z - from.z).normalize();
       const start = from.clone().addScaledVector(direction, cityRadius());
       const end = to.clone().addScaledVector(direction, -cityRadius());
       const length = start.distanceTo(end);
       if (length < 0.6) continue;
-      this.addRoad(start, end, length, width, roadMaterial, curbMaterial, edge.from !== centerId, edge.to !== centerId, plazaMaterial);
+      this.addRoad(start, end, length, edgeWidth, roadMaterial, curbMaterial, edge.from !== centerId, edge.to !== centerId, plazaMaterial);
     }
 
     if (this.map.slug === "crossroads01") this.addRoundabout(centerId, width, plazaMaterial, curbMaterial);
@@ -712,27 +750,52 @@ export class BattleScene {
     ], false, "catmullrom", 0.18);
     const points = curve.getSpacedPoints(28);
     for (const point of points) point.y = this.terrain.heightAt(point.x, point.z);
+    this.addRoadRibbon(points, width, material, curbMaterial);
 
+    if (startPlaza) this.addPlaza(start, plazaMaterial);
+    if (endPlaza) this.addPlaza(end, plazaMaterial);
+  }
+
+  private addRoadPath(
+    points: THREE.Vector3[],
+    width: number,
+    material: THREE.Material,
+    curbMaterial: THREE.Material,
+    startPlaza: boolean,
+    endPlaza: boolean,
+    plazaMaterial: THREE.Material,
+  ): void {
+    const first = points[0];
+    const last = points[points.length - 1];
+    const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.18);
+    const samples = curve
+      .getSpacedPoints(Math.max(32, points.length * 14))
+      .filter((point) => point.distanceTo(first) > 3.3 && point.distanceTo(last) > 3.3);
+    if (samples.length < 2) return;
+    for (const point of samples) point.y = this.terrain.heightAt(point.x, point.z);
+    this.addRoadRibbon(samples, width, material, curbMaterial);
+    if (startPlaza) this.addPlaza(first, plazaMaterial);
+    if (endPlaza) this.addPlaza(last, plazaMaterial);
+  }
+
+  private addRoadRibbon(points: THREE.Vector3[], width: number, material: THREE.Material, curbMaterial: THREE.Material): void {
     const shoulder = new THREE.Mesh(
       this.ribbonGeometry(points, width + 0.55),
       new THREE.MeshStandardMaterial({ color: 0x4b4a36, roughness: 1 }),
     );
     shoulder.position.y = 0.035;
-    this.scene.add(shoulder);
+    this.roadGroup.add(shoulder);
 
     const road = new THREE.Mesh(this.ribbonGeometry(points, width), material);
     road.position.y = 0.05;
-    this.scene.add(road);
+    this.roadGroup.add(road);
 
     for (const side of [-1, 1]) {
       const offset = this.offsetPoints(points, side * (width / 2 + 0.08));
       const curb = new THREE.Mesh(this.ribbonGeometry(offset, 0.16), curbMaterial);
       curb.position.y = 0.07;
-      this.scene.add(curb);
+      this.roadGroup.add(curb);
     }
-
-    if (startPlaza) this.addPlaza(start, plazaMaterial);
-    if (endPlaza) this.addPlaza(end, plazaMaterial);
   }
 
   private offsetPoints(points: THREE.Vector3[], offset: number): THREE.Vector3[] {
@@ -780,7 +843,7 @@ export class BattleScene {
     const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.85, 22), material);
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.04, position.z);
-    this.scene.add(plaza);
+    this.roadGroup.add(plaza);
   }
 
   private addRoundabout(centerId: string, width: number, plazaMaterial: THREE.Material, curbMaterial: THREE.Material): void {
@@ -796,18 +859,18 @@ export class BattleScene {
     shoulder.rotation.x = -Math.PI / 2;
     const ground = this.terrain.heightAt(center.x, center.z);
     shoulder.position.set(center.x, ground + 0.035, center.z);
-    this.scene.add(shoulder);
+    this.roadGroup.add(shoulder);
 
     const ring = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 64), ringMaterial);
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(center.x, ground + 0.05, center.z);
-    this.scene.add(ring);
+    this.roadGroup.add(ring);
 
     for (const radius of [inner, outer]) {
       const curb = new THREE.Mesh(new THREE.RingGeometry(radius - 0.09, radius + 0.09, 64), curbMaterial);
       curb.rotation.x = -Math.PI / 2;
       curb.position.set(center.x, ground + 0.11, center.z);
-      this.scene.add(curb);
+      this.roadGroup.add(curb);
     }
 
     const neighbours = this.map.cities.filter((city) => city.id !== centerId);
@@ -818,7 +881,7 @@ export class BattleScene {
       const pad = new THREE.Mesh(new THREE.CircleGeometry(1.55, 20), plazaMaterial);
       pad.rotation.x = -Math.PI / 2;
       pad.position.set(center.x + direction.x * outer, ground + 0.055, center.z + direction.z * outer);
-      this.scene.add(pad);
+      this.roadGroup.add(pad);
 
       if (index % 2 === 0) {
         const lamp = art.model("lantern");
@@ -830,13 +893,13 @@ export class BattleScene {
             center.z + direction.z * (outer + 1.2) + perp.z * 1.4,
           );
           lamp.scale.setScalar(2.5);
-          this.scene.add(lamp);
+          this.roadGroup.add(lamp);
           const base = new THREE.Mesh(
             new THREE.CylinderGeometry(0.34, 0.42, 0.42, 8),
             new THREE.MeshStandardMaterial({ color: 0x8a8170, roughness: 1 }),
           );
           base.position.set(lamp.position.x, ground + 0.21, lamp.position.z);
-          this.scene.add(base);
+          this.roadGroup.add(base);
         }
       }
     });
@@ -943,12 +1006,18 @@ export class BattleScene {
   }
 
 
+  updateProps(visual: MapVisual | null): void {
+    this.visual = visual;
+    this.buildExplicitProps();
+  }
+
   private buildExplicitProps(): void {
+    this.clearGroup(this.propGroup);
+    this.propBuildToken += 1;
     const props = this.visual?.props ?? [];
     if (props.length === 0) return;
-    const group = new THREE.Group();
+    const group = this.propGroup;
     group.name = "map-props";
-    this.scene.add(group);
     const token = this.propBuildToken;
     for (const prop of props) {
       const info = assetRegistry.info(prop.assetId);

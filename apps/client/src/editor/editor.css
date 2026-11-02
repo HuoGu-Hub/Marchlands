@@ -434,3 +434,39 @@
 }
 .ml-ed-grid-actions .ml-ed-btn { padding: 0 4px; font-size: 10px; height: 28px; }
 .ml-ed-grid-actions .ml-ed-btn:last-child { grid-column: span 2; }
+
+.ml-ed-road-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.ml-ed-fold {
+  border-top: 1px solid #263229;
+  padding: 6px 0 4px;
+}
+.ml-ed-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  color: #b8ab95;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.ml-ed-fold > summary::-webkit-details-marker { display: none; }
+.ml-ed-fold > summary::before {
+  content: "+";
+  width: 10px;
+  color: #7d8a75;
+  font-size: 12px;
+  line-height: 1;
+}
+.ml-ed-fold[open] > summary::before { content: "−"; }
+.ml-ed-fold > summary:hover { color: #e2d4ba; }
+.ml-ed-fold > *:not(summary) { margin-top: 4px; }

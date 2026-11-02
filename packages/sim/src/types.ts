@@ -58,6 +58,10 @@ export interface MapEdge {
   length: number;
   /** 0..1 的相对爬升，供寻路代价使用；缺省为平地。 */
   grade?: number;
+  /** 手动道路控制点，分米；缺省为两端直线。 */
+  path?: [number, number][];
+  /** 道路宽度，分米。 */
+  widthDm?: number;
 }
 
 export interface MapObjective {

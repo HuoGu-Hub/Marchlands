@@ -20,6 +20,7 @@ import {
   removeSite,
   serializeDocument,
   updateProp,
+  updateRoad,
   updateSite,
   updateTerrain,
   updateUnitVisual,
@@ -189,6 +190,32 @@ describe("map authoring", () => {
     const disconnected = { ...starter, roads: [] };
     const disconnectedResult = compileDocument(disconnected);
     expect(disconnectedResult.diagnostics.some((entry) => entry.code === "disconnected")).toBe(true);
+  });
+
+  it("compiles and round-trips a manually shaped road", () => {
+    const document = createGridDocument();
+    const path: Array<[number, number]> = [
+      [-200, -150],
+      [0, 0],
+      [-200, 150],
+    ];
+    const connected = connect(document, "c1", "c3", { path, widthDm: 20 });
+    expect(connected.roads).toHaveLength(1);
+    expect(connected.roads[0].id).toBe("r1");
+    const compiled = compileDocument(connected);
+    const edge = compiled.map.edges[0];
+    expect(edge.path).toEqual(path);
+    expect(edge.widthDm).toBe(20);
+    expect(edge.length).toBe(500);
+    expect(() => validateMap(compiled.map)).not.toThrow();
+
+    const parsed = parseDocument(JSON.parse(serializeDocument(connected)));
+    expect(parsed.document.roads[0]).toMatchObject({ id: "r1", path, widthDm: 20 });
+
+    const updated = updateRoad(connected, "r1", { path: [[-200, -150], [0, 120], [-200, 150]] });
+    const updatedEdge = compileDocument(updated).map.edges[0];
+    expect(updatedEdge.path?.[1]).toEqual([0, 120]);
+    expect(updatedEdge.length).not.toBe(edge.length);
   });
 
   it("compiles a grid document with packed heights, footprints and a map hash", () => {

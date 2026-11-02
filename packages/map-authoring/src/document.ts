@@ -55,10 +55,10 @@ function starterSites(): SiteDraft[] {
 
 function starterRoads(): RoadDraft[] {
   return [
-    { from: "c1", to: "c4" },
-    { from: "c4", to: "c2" },
-    { from: "c2", to: "c3" },
-    { from: "c3", to: "c1" },
+    { id: "r1", from: "c1", to: "c4" },
+    { id: "r2", from: "c4", to: "c2" },
+    { id: "r3", from: "c2", to: "c3" },
+    { id: "r4", from: "c3", to: "c1" },
   ];
 }
 
@@ -216,10 +216,14 @@ function siteFromUnknown(value: unknown): SiteDraft | null {
   return site;
 }
 
-function roadFromUnknown(value: unknown): RoadDraft | null {
+function roadFromUnknown(value: unknown, index: number): RoadDraft | null {
   if (!asRecord(value)) return null;
   if (typeof value.from !== "string" || typeof value.to !== "string") return null;
-  const road: RoadDraft = { from: value.from, to: value.to };
+  const road: RoadDraft = {
+    id: typeof value.id === "string" && value.id.length > 0 ? value.id : `r${index + 1}`,
+    from: value.from,
+    to: value.to,
+  };
   if (value.path !== undefined) {
     if (!Array.isArray(value.path)) throw new Error("道路样条必须是点数组");
     const path: Array<[number, number]> = [];
@@ -394,7 +398,13 @@ export function fromMapDef(map: MapDef): MapDocument {
       ...(city.footprintCm !== undefined ? { footprintDm: city.footprintCm / 10 } : {}),
       ...(city.captureRadiusCm !== undefined ? { captureRadiusDm: city.captureRadiusCm / 10 } : {}),
     })),
-    roads: map.edges.map((edge) => ({ from: edge.from, to: edge.to })),
+    roads: map.edges.map((edge, index) => ({
+      id: `r${index + 1}`,
+      from: edge.from,
+      to: edge.to,
+      ...(edge.path ? { path: edge.path.map((point) => [point[0], point[1]] as [number, number]) } : {}),
+      ...(edge.widthDm !== undefined ? { widthDm: edge.widthDm } : {}),
+    })),
     objectives: map.objectives.map((objective) => ({ ...objective })),
     transit: map.transit ?? "open",
     visual,
@@ -425,9 +435,14 @@ export function parseDocument(input: unknown): ParsedDocument {
       .filter((entry): entry is SiteDraft => entry !== null);
     if (sites.length !== input.sites.length) throw new Error("地图文件包含无效据点");
     const roads = input.roads
-      .map(roadFromUnknown)
+      .map((entry, index) => roadFromUnknown(entry, index))
       .filter((entry): entry is RoadDraft => entry !== null);
     if (roads.length !== input.roads.length) throw new Error("地图文件包含无效道路");
+    const roadIds = new Set<string>();
+    for (const road of roads) {
+      if (roadIds.has(road.id)) throw new Error(`道路编号重复：${road.id}`);
+      roadIds.add(road.id);
+    }
     const objectives = Array.isArray(input.objectives)
       ? input.objectives
           .map((entry) => {
@@ -476,7 +491,20 @@ export function parseDocument(input: unknown): ParsedDocument {
   }
 }
 
-export function compileDocument(document: MapDocument): CompileResult {
+function polylineLengthDm(points: ReadonlyArray<readonly [number, number]>): number {
+  let total = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    total += Math.hypot(points[index + 1][0] - points[index][0], points[index + 1][1] - points[index][1]);
+  }
+  return Math.max(1, Math.round(total));
+}
+
+export interface CompileOptions {
+  /** 编辑器拖动时可跳过网格可达性 A*，保存/试玩前再完整校验。 */
+  readonly validateNavigation?: boolean;
+}
+
+export function compileDocument(document: MapDocument, options: CompileOptions = {}): CompileResult {
   const diagnostics: EditorDiagnostic[] = [];
   const seenMessages = new Set<string>();
   const add = (diagnostic: EditorDiagnostic): void => {
@@ -513,7 +541,12 @@ export function compileDocument(document: MapDocument): CompileResult {
   if (document.navigation === "graph" && document.grid) {
     warning("grid-unused", "当前为据点图模式，网格数据不会参与导航");
   }
-  if (document.navigation === "grid" && document.grid && gridProblems.length === 0) {
+  if (
+    options.validateNavigation !== false &&
+    document.navigation === "grid" &&
+    document.grid &&
+    gridProblems.length === 0
+  ) {
     for (const issue of gridNavigationIssues(document.grid, document.size, document.sites)) {
       error("grid-nav", issue.message, issue.siteId);
     }
@@ -546,10 +579,15 @@ export function compileDocument(document: MapDocument): CompileResult {
     terrain: document.visual.terrain,
   });
   const roadKeys = new Set<string>();
+  const roadIds = new Set<string>();
   const edges: MapDef["edges"] = [];
   const adjacency = new Map<string, string[]>();
   for (const site of document.sites) adjacency.set(site.id, []);
   for (const road of document.roads) {
+    if (roadIds.has(road.id)) {
+      error("duplicate-road-id", `道路编号重复：${road.id}`, undefined, [road.from, road.to]);
+    }
+    roadIds.add(road.id);
     const key = road.from < road.to ? `${road.from}|${road.to}` : `${road.to}|${road.from}`;
     if (road.from === road.to) {
       error("self-road", "道路不能连接自身", road.from, [road.from, road.to]);
@@ -566,7 +604,33 @@ export function compileDocument(document: MapDocument): CompileResult {
     roadKeys.add(key);
     const a = siteById.get(road.from) as SiteDraft;
     const b = siteById.get(road.to) as SiteDraft;
-    const length = Math.max(1, Math.round(Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])));
+    let path = road.path;
+    if (path !== undefined) {
+      if (path.length < 2) {
+        error("road-path", `${road.id} 至少需要两个控制点`, undefined, [road.from, road.to]);
+        path = undefined;
+      } else {
+        for (const point of path) {
+          if (
+            point[0] < -document.size[0] / 2 ||
+            point[0] > document.size[0] / 2 ||
+            point[1] < -document.size[1] / 2 ||
+            point[1] > document.size[1] / 2
+          ) {
+            error("road-path", `${road.id} 的控制点超出地图边界`, undefined, [road.from, road.to]);
+            path = undefined;
+            break;
+          }
+        }
+      }
+    }
+    if (road.widthDm !== undefined && (road.widthDm < 6 || road.widthDm > 60)) {
+      error("road-width", `${road.id} 的宽度必须在 6 到 60 分米之间`, undefined, [road.from, road.to]);
+    }
+    const length =
+      path && path.length >= 2
+        ? polylineLengthDm(path)
+        : Math.max(1, Math.round(Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])));
     const grade = edgeGrade(
       heightField,
       [a.pos[0] / 10, a.pos[1] / 10],
@@ -578,6 +642,8 @@ export function compileDocument(document: MapDocument): CompileResult {
       to: road.to,
       length,
       ...(document.navigation === "graph" && grade > 0.01 ? { grade: Math.round(grade * 1000) / 1000 } : {}),
+      ...(path ? { path: path.map((point) => [point[0], point[1]] as [number, number]) } : {}),
+      ...(road.widthDm !== undefined ? { widthDm: road.widthDm } : {}),
     });
     adjacency.get(road.from)?.push(road.to);
     adjacency.get(road.to)?.push(road.from);

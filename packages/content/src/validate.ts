@@ -243,11 +243,43 @@ export function validateMap(input: unknown): MapDef {
       edgeKeys.add(key);
       const a = positions.get(from);
       const b = positions.get(to);
-      if (a && b) {
-        const expected = Math.round(Math.hypot(a[0] - b[0], a[1] - b[1]));
-        if (Math.abs(expected - length) > 1) {
-          issues.push(`edges[${index}].length ${length} does not match positions (expected ${expected})`);
+      if (entry.widthDm !== undefined) {
+        const width = requireNumber(entry.widthDm, `edges[${index}].widthDm`, issues);
+        if (width < 6 || width > 60) issues.push(`edges[${index}].widthDm must be in [6, 60]`);
+      }
+      let expected: number | null = null;
+      if (entry.path !== undefined) {
+        const path = Array.isArray(entry.path) ? entry.path : [];
+        if (path.length < 2) {
+          issues.push(`edges[${index}].path must contain at least 2 points`);
+        } else {
+          let total = 0;
+          let valid = true;
+          for (let pointIndex = 0; pointIndex < path.length; pointIndex += 1) {
+            const point = path[pointIndex];
+            if (
+              !Array.isArray(point) ||
+              point.length !== 2 ||
+              typeof point[0] !== "number" ||
+              typeof point[1] !== "number" ||
+              !Number.isFinite(point[0]) ||
+              !Number.isFinite(point[1])
+            ) {
+              issues.push(`edges[${index}].path[${pointIndex}] must be [x, z]`);
+              valid = false;
+              break;
+            }
+            if (pointIndex > 0) {
+              total += Math.hypot(point[0] - path[pointIndex - 1][0], point[1] - path[pointIndex - 1][1]);
+            }
+          }
+          if (valid) expected = Math.max(1, Math.round(total));
         }
+      } else if (a && b) {
+        expected = Math.round(Math.hypot(a[0] - b[0], a[1] - b[1]));
+      }
+      if (expected !== null && Math.abs(expected - length) > 1) {
+        issues.push(`edges[${index}].length ${length} does not match positions (expected ${expected})`);
       }
     }
   });

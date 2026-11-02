@@ -102,11 +102,12 @@ export interface SiteDraft {
 }
 
 export interface RoadDraft {
+  id: string;
   from: CityId;
   to: CityId;
-  /** 网格地图上的道路样条，分米。 */
+  /** 道路控制点，分米；缺省为两端直线。 */
   path?: [number, number][];
-  /** 道路宽度，分米。 */
+  /** 道路宽度，分米；缺省使用地图道路宽度。 */
   widthDm?: number;
 }
 
