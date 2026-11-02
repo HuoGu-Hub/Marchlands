@@ -59,3 +59,5 @@ export {
 } from "./combat";
 export type { CombatModifiers, CombatOutcome, FieldOutcome } from "./combat";
 export { applyUpgrade, growCity, growGold } from "./economy";
+
+export { gridSpeedCmPerTick, gridTravelTicks, planGridRoute } from "./grid";

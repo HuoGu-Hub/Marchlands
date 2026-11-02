@@ -67,7 +67,7 @@ release/Marchlands-win32-x64/Marchlands.exe
 
 ## 测试
 
-- `packages/sim`：72 项单测与属性测试。
+- `packages/sim`：73 项单测与属性测试。
 - `packages/content`：28 项地图与规则校验。
 - `packages/asset-pack`：5 项资产包格式与转换包测试。
 - `packages/map-authoring`：34 项草稿、编译、网格数据、笔刷、道路、桥梁、可达性、叶子据点与自定义地图测试。

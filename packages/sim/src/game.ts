@@ -665,7 +665,10 @@ function advanceGridSquads(state: SimState, events: SimEvent[]): void {
       removed.add(squad.id);
       continue;
     }
-    const budget = squad.gridSpeedCmPerTick ?? gridSpeedCmPerTick(state.rules, squad.speedMilli);
+    const surface = state.nav
+      ? state.nav.surfaceAtXZ(squad.xCm + state.map.size[0] * 5, squad.zCm + state.map.size[1] * 5)
+      : undefined;
+    const budget = squad.gridSpeedCmPerTick ?? gridSpeedCmPerTick(state.rules, squad.speedMilli, surface);
     const moved = moveAlongGridPath(squad.xCm, squad.zCm, squad.gridPath, squad.gridIndex ?? 0, budget);
     squad.xCm = moved.xCm;
     squad.zCm = moved.zCm;

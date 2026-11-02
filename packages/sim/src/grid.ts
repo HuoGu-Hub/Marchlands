@@ -1,5 +1,6 @@
 import {
   NavGrid,
+  Surface,
   decodeBitmapBase64,
   decodeInt16Base64,
   decodeUint8Base64,
@@ -26,11 +27,13 @@ export function createNavGrid(map: MapDef): NavGrid | null {
   });
 }
 
-export function gridSpeedCmPerTick(rules: Ruleset, speedMilli: number): number {
-  return Math.max(
+export function gridSpeedCmPerTick(rules: Ruleset, speedMilli: number, surface?: number): number {
+  const base = Math.max(
     1,
     Math.floor((rules.speedDmPerSecond * 10 * Math.max(1, speedMilli)) / (rules.tickHz * 1000)),
   );
+  const factor = surface === Surface.Road || surface === Surface.Bridge ? 1250 : 1000;
+  return Math.max(1, Math.floor((base * factor) / 1000));
 }
 
 export function gridTravelTicks(distanceCm: number, rules: Ruleset, speedMilli: number): number {

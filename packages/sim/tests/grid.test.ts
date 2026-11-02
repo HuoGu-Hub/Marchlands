@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { encodeBitmapBase64, encodeInt16Base64, encodeUint8Base64 } from "@marchlands/nav";
-import { createAi, createGame, hash, step } from "../src";
+import { Surface, encodeBitmapBase64, encodeInt16Base64, encodeUint8Base64 } from "@marchlands/nav";
+import { createAi, createGame, gridSpeedCmPerTick, hash, step } from "../src";
 import type { MapDef } from "../src/types";
 
 const WIDTH = 40;
@@ -62,6 +62,15 @@ function gridMap(blockedCells: Array<[number, number]> = [], aiOwner = 2): MapDe
 }
 
 describe("grid simulation", () => {
+  it("moves faster on road and bridge surfaces", () => {
+    const rules = createGame(gridMap(), 1).rules;
+    const grass = gridSpeedCmPerTick(rules, 1000, Surface.Grass);
+    const road = gridSpeedCmPerTick(rules, 1000, Surface.Road);
+    const bridge = gridSpeedCmPerTick(rules, 1000, Surface.Bridge);
+    expect(road).toBeGreaterThan(grass);
+    expect(bridge).toBe(road);
+  });
+
   it("sends a squad along the grid and captures the target", () => {
     let state = createGame(gridMap(), 1);
     expect(state.nav).not.toBeNull();
