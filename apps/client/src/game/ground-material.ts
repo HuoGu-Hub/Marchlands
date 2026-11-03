@@ -28,9 +28,7 @@ export function groundMaterial(name: string | undefined): THREE.MeshStandardMate
   if (!map) return null;
   const material = new THREE.MeshStandardMaterial({
     map,
-    normalMap: load(URLS[`${base}/normal.jpg`], false),
-    roughnessMap: load(URLS[`${base}/rough.jpg`], false),
-    roughness: 1,
+    roughness: 0.95,
     metalness: 0,
   });
   cache.set(key, material);
