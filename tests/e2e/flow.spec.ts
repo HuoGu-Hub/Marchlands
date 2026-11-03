@@ -112,12 +112,19 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
   await page.click("#ml-ed-new-grid");
   await page.waitForTimeout(500);
 
+  const box = await page.locator("#ml-ed-canvas").boundingBox();
+  if (!box) throw new Error("editor canvas has no box");
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const knobX = cx - 10;
+  const knobY = cy - 20;
+
   await page.click('[data-tool="road"]');
-  await page.mouse.move(455, 330);
+  await page.mouse.move(cx - 110, cy + 30);
   await page.mouse.down();
-  await page.mouse.move(520, 300, { steps: 8 });
-  await page.mouse.move(650, 330, { steps: 8 });
-  await page.mouse.move(748, 368, { steps: 8 });
+  await page.mouse.move(cx - 70, cy - 10, { steps: 8 });
+  await page.mouse.move(knobX, knobY, { steps: 8 });
+  await page.mouse.move(cx + 80, cy + 25, { steps: 8 });
   await page.mouse.up();
   await expect(page.locator("#ml-ed-inspector")).toContainText("道路 r1");
   await expect(page.locator("#ml-ed-toast")).toContainText("已绘制道路");
@@ -129,18 +136,18 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
   const drawn = await countOf();
   expect(drawn).toBeGreaterThan(2);
 
-  await page.mouse.dblclick(650, 330);
+  await page.mouse.dblclick(knobX, knobY);
   await expect(page.locator("#ml-ed-inspector")).toContainText(`${drawn + 1} 个控制点`);
-  await page.mouse.click(650, 330, { button: "right" });
+  await page.mouse.click(knobX, knobY, { button: "right" });
   await expect(page.locator("#ml-ed-inspector")).toContainText(`${drawn} 个控制点`);
 
   const before = await page.locator("#ml-ed-inspector").innerText();
   const beforeLength = /长度 ([\d.]+) 米/.exec(before)?.[1];
   expect(beforeLength).toBeTruthy();
 
-  await page.mouse.move(650, 330);
+  await page.mouse.move(knobX, knobY);
   await page.mouse.down();
-  await page.mouse.move(650, 420, { steps: 10 });
+  await page.mouse.move(knobX, cy + 70, { steps: 10 });
   await page.mouse.up();
   await expect(page.locator("#ml-ed-toast")).toContainText("已调整道路");
   const after = await page.locator("#ml-ed-inspector").innerText();
