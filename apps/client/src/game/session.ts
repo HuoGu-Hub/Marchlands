@@ -38,6 +38,8 @@ export interface GameSessionOptions {
   hud: HTMLElement;
   map: MapDef;
   visual?: MapVisual | null;
+  /** 开场前选定的兵团皮肤：兵种 → 资产 id。 */
+  unitSkins?: Record<string, string>;
   rules: Ruleset;
   onFinish: (state: SimState) => void;
   onToast: (text: string) => void;
@@ -72,7 +74,7 @@ export class GameSession {
     this.timeScale = import.meta.env.DEV ? Math.max(1, Math.min(20, Number.isFinite(requested) ? requested : 1)) : 1;
     this.ai = createAi(2);
     this.state = createGame(options.map, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
-    this.scene = new BattleScene(options.canvas, options.map, options.visual ?? null);
+    this.scene = new BattleScene(options.canvas, options.map, options.visual ?? null, options.unitSkins ?? {});
     this.routeOverlay = new RouteOverlay({
       canvas: options.canvas,
       scene: this.scene,
@@ -115,7 +117,7 @@ export class GameSession {
     this.routeOverlay.dispose();
     this.scene.dispose();
     this.state = createGame(this.options.map, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
-    this.scene = new BattleScene(this.options.canvas, this.options.map, this.options.visual ?? null);
+    this.scene = new BattleScene(this.options.canvas, this.options.map, this.options.visual ?? null, this.options.unitSkins ?? {});
     this.routeOverlay = new RouteOverlay({
       canvas: this.options.canvas,
       scene: this.scene,

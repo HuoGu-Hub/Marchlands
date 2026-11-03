@@ -224,11 +224,19 @@ export class BattleScene {
   private foundationToken = 0;
   private atmosphere: Atmosphere | null = null;
   private sun: THREE.DirectionalLight | null = null;
+  /** 开场前选定的兵团皮肤：兵种 → 资产 id。 */
+  private readonly unitSkins: Record<string, string>;
 
-  constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    map: MapDef,
+    visual: MapVisual | null = null,
+    unitSkins: Record<string, string> = {},
+  ) {
     this.canvas = canvas;
     this.map = map;
     this.visual = visual;
+    this.unitSkins = unitSkins;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -760,13 +768,20 @@ export class BattleScene {
       strikeUntil: 0,
     };
 
-    const unitAssetId = this.visual?.units?.[squad.owner === 1 ? "player1" : "player2"];
+    const unitAssetId = this.skinFor(kind, squad.owner);
     if (unitAssetId && assetRegistry.has(unitAssetId)) {
       void this.populateGlbUnits(view, unitAssetId, squad, offsets, kind);
     } else {
       this.populateProceduralUnits(view, squad, offsets, kind);
     }
     return view;
+  }
+
+  /** 兵团外观：玩家开场前选的兵种皮肤优先，其次地图 visual 的整方覆盖，最后程序化模型。 */
+  private skinFor(kind: UnitKind, owner: Owner): string | null {
+    const picked = this.unitSkins[kind];
+    if (picked) return picked;
+    return this.visual?.units?.[owner === 1 ? "player1" : "player2"] ?? null;
   }
 
   /** 据点出兵兵种：城镇按 id 稳定对应一种兵营，驻兵点是弓箭塔，粮仓出步兵。 */

@@ -6,6 +6,8 @@ export interface Settings {
   windowMode: WindowMode;
   volume: number;
   language: string;
+  /** 各兵种出场皮肤：兵种 → 资产 id，缺省用程序化模型。 */
+  unitSkins: Record<string, string>;
 }
 
 const KEY = "marchlands.settings.v1";
@@ -15,6 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   windowMode: "windowed",
   volume: 70,
   language: "zh-CN",
+  unitSkins: {},
 };
 
 export function loadSettings(): Settings {
@@ -22,7 +25,7 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    return { ...DEFAULT_SETTINGS, ...parsed, unitSkins: parsed.unitSkins ?? {} };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

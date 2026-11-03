@@ -16,6 +16,7 @@ import { openMapText } from "./editor/map-io";
 import { assetRegistry } from "./game/asset-registry";
 import { art } from "./game/assets";
 import { GameSession } from "./game/session";
+import { UNIT_KINDS, UNIT_NAMES } from "./game/unit-models";
 import { loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
 
@@ -72,6 +73,13 @@ const TEMPLATE = `
         <li><span>时限</span><b id="brief-time">15 分钟</b></li>
         <li><span>判定</span><b>城镇数 · 人口 · 金币</b></li>
       </ul>
+      <details class="brief-skins">
+        <summary>
+          <span>兵团皮肤</span>
+          <b id="skin-source">仅内置模型</b>
+        </summary>
+        <div class="skin-rows" id="skin-rows"></div>
+      </details>
       <p>点击己方据点选中，再点击目标据点派出一半守军。点击行军中的兵团可改道或更换目的地；经过岔路口前可以改路，兵团断粮后会掉兵。</p>
       <div class="panel-actions">
         <button class="btn primary" id="btn-brief-start">开始</button>
@@ -570,6 +578,42 @@ export class App {
     this.el("btn-editor-return").style.display = "none";
   }
 
+  private syncUnitSkins(): void {
+    const host = this.el("skin-rows");
+    const assets = assetRegistry.builtinReady ? assetRegistry.list("unit") : [];
+    const source = this.el("skin-source");
+    source.textContent = assets.length > 0 ? `已有 ${assets.length} 套外部兵团` : "仅内置模型";
+    host.replaceChildren();
+    for (const kind of UNIT_KINDS) {
+      const row = document.createElement("label");
+      row.className = "skin-row";
+      const name = document.createElement("span");
+      name.textContent = UNIT_NAMES[kind];
+      const select = document.createElement("select");
+      const fallback = document.createElement("option");
+      fallback.value = "";
+      fallback.textContent = "默认模型";
+      select.append(fallback);
+      for (const asset of assets) {
+        const option = document.createElement("option");
+        option.value = asset.id;
+        option.textContent = asset.label;
+        select.append(option);
+      }
+      const current = this.settings.unitSkins[kind];
+      select.value = current && assets.some((asset) => asset.id === current) ? current : "";
+      select.addEventListener("change", () => {
+        const next = { ...this.settings.unitSkins };
+        if (select.value) next[kind] = select.value;
+        else delete next[kind];
+        this.settings = { ...this.settings, unitSkins: next };
+        saveSettings(this.settings);
+      });
+      row.append(name, select);
+      host.append(row);
+    }
+  }
+
   private startGame(): void {
     this.session?.dispose();
     this.editor?.suspend();
@@ -584,6 +628,7 @@ export class App {
       hud: this.root,
       map: this.content.map,
       visual: this.currentVisual,
+      unitSkins: this.settings.unitSkins,
       rules: this.content.rules,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),
@@ -775,6 +820,7 @@ export class App {
     this.el("brief-objective").textContent = `占领全部 ${towns} 座城镇`;
     this.el("brief-time").textContent = `${minutes} 分钟`;
     (this.el("map-select") as HTMLSelectElement).value = this.currentMapId;
+    this.syncUnitSkins();
   }
 
   private openSettings(): void {
