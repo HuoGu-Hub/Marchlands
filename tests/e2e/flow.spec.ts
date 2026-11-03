@@ -252,6 +252,26 @@ test("next editor expands a foundation and creates a floating island", async ({ 
   await expect(page.locator("#mlnx-inspector")).toContainText("道路 r5");
 });
 
+test("next editor converts to a grid map and sculpts terrain", async ({ page }) => {
+  page.on("dialog", (dialog) => void dialog.accept());
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor-next");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.keyboard.press("g");
+  await page.click("#mlnx-convert-grid");
+  await expect(page.locator("[data-brush]")).toHaveCount(9);
+  const box = await page.locator("#mlnx-canvas").boundingBox();
+  if (!box) throw new Error("next editor canvas has no box");
+  await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("#mlnx-toast")).toContainText("已修改网格地形");
+  await page.click("#mlnx-undo");
+  await expect(page.locator("#mlnx-toast")).toContainText("已撤销");
+});
+
 test("pauses and resumes without losing the match", async ({ page }) => {
   await openGame(page);
   const timer = page.locator("#hud-timer");
