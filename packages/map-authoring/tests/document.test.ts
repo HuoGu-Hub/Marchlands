@@ -170,10 +170,11 @@ describe("map authoring", () => {
     expect(after.edges.map((edge) => edge.grade)).not.toEqual(before.edges.map((edge) => edge.grade));
   });
 
-  it("preserves foundation material through save and load", () => {
+  it("preserves foundation shape through save and load", () => {
     const starter = createStarterDocument();
-    const next = updateFoundation(starter, "f1", { material: "snow014" });
+    const next = updateFoundation(starter, "f1", { shape: "mesa", material: "snow014" });
     const parsed = parseDocument(JSON.parse(serializeDocument(next))).document;
+    expect(parsed.visual.foundations[0].shape).toBe("mesa");
     expect(parsed.visual.foundations[0].material).toBe("snow014");
     expect(parsed.visual.foundations[0].assetId).toBeUndefined();
   });

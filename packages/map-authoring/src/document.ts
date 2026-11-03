@@ -15,7 +15,7 @@ import type {
   TerrainDraft,
   VisualDraft,
 } from "./types";
-import { TERRAIN_STYLE_IDS } from "./types";
+import { isFoundationShape, TERRAIN_STYLE_IDS } from "./types";
 import { createHeightField, edgeGrade } from "./height";
 import {
   DEFAULT_CAPTURE_RADIUS_DM,
@@ -139,6 +139,8 @@ export function convertToGrid(document: MapDocument): MapDocument {
       size: [next.size[0], next.size[1]],
       elevation: primary?.elevation ?? 0,
       ...(primary?.assetId ? { assetId: primary.assetId } : {}),
+      ...(primary?.shape ? { shape: primary.shape } : {}),
+      ...(primary?.material ? { material: primary.material } : {}),
       scale: primary?.scale ?? 1,
       rotation: primary?.rotation ?? 0,
     }),
@@ -383,6 +385,10 @@ function foundationFromUnknown(value: unknown, index: number): FoundationDraft {
   if (value.assetId !== undefined && value.assetId !== "") {
     if (!isAssetId(value.assetId)) throw new Error(`地基 ${id} 的外壳资产 ID 无效`);
     foundation.assetId = value.assetId;
+  }
+  if (value.shape !== undefined) {
+    if (!isFoundationShape(value.shape)) throw new Error(`地基 ${id} 的外形无效`);
+    foundation.shape = value.shape;
   }
   if (typeof value.material === "string" && value.material.trim().length > 0) {
     foundation.material = value.material.trim().slice(0, 128);

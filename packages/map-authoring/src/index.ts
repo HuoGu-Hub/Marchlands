@@ -97,12 +97,13 @@ export { applyGridBrush, gridCellFromGround } from "./grid-ops";
 export type { GridBrushMode, GridBrushOptions } from "./grid-ops";
 export { createHeightField, edgeGrade } from "./height";
 export type { HeightField, HeightFieldOptions } from "./height";
-export { TERRAIN_STYLE_IDS, TERRAIN_STYLES } from "./types";
+export { FOUNDATION_SHAPES, isFoundationShape, TERRAIN_STYLE_IDS, TERRAIN_STYLES } from "./types";
 export type {
   CompileResult,
   DiagnosticSeverity,
   EditorDiagnostic,
   FoundationDraft,
+  FoundationShape,
   GridDraft,
   MapDocument,
   MapVisual,

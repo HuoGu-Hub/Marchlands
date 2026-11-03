@@ -37,6 +37,14 @@ export interface RoadVisualDraft {
   width: number;
 }
 
+export type FoundationShape = "plateau" | "mesa" | "spire" | "terrace" | "root" | "round";
+
+export const FOUNDATION_SHAPES: readonly FoundationShape[] = ["plateau", "mesa", "spire", "terrace", "root", "round"];
+
+export function isFoundationShape(value: unknown): value is FoundationShape {
+  return typeof value === "string" && (FOUNDATION_SHAPES as readonly string[]).includes(value);
+}
+
 /**
  * 一块地基：地图上可独立增删、移动、缩放的浮空平台。
  * 同一高度且并集仍是矩形的相邻地基会在提交时合并。
@@ -53,6 +61,8 @@ export interface FoundationDraft {
   depth?: number;
   /** 外壳模型资产 ID；缺省使用程序化浮岛。 */
   assetId?: string;
+  /** 程序化外壳外形；缺省为高原。 */
+  shape?: FoundationShape;
   /** 外壳/顶面贴图名；缺省跟随地图地表材质。 */
   material?: string;
   /** 外壳缩放。 */

@@ -50,7 +50,16 @@ import {
   updateUnitVisual,
   watchCandidates,
 } from "@marchlands/map-authoring";
-import type { CompileResult, FoundationBoundsDm, GridBrushMode, MapDocument, MapVisual, PropDraft, SiteDraft } from "@marchlands/map-authoring";
+import type {
+  CompileResult,
+  FoundationBoundsDm,
+  FoundationShape,
+  GridBrushMode,
+  MapDocument,
+  MapVisual,
+  PropDraft,
+  SiteDraft,
+} from "@marchlands/map-authoring";
 import { assetRegistry } from "../../game/asset-registry";
 import { BattleScene } from "../../game/scene";
 import { openAssetPackFile, openMapText, openModelFiles, openTextureFiles, saveAssetPackFile, saveMapText } from "../map-io";
@@ -91,6 +100,31 @@ const TOOL_LABELS: Record<NextTool, string> = {
 };
 
 const AUTOSAVE_KEY = "marchlands.editor.autosave.v1";
+
+const FOUNDATION_PRESETS: Array<{
+  id: string;
+  label: string;
+  desc: string;
+  shape: FoundationShape;
+  size: [number, number];
+  elevation: number;
+}> = [
+  { id: "round-small", label: "小圆岛", desc: "30×30", shape: "round", size: [300, 300], elevation: 0 },
+  { id: "mesa-large", label: "方山", desc: "50×50", shape: "mesa", size: [500, 500], elevation: 0 },
+  { id: "ridge-long", label: "长岛", desc: "80×35", shape: "mesa", size: [800, 350], elevation: 0 },
+  { id: "spire-float", label: "尖峰浮岛", desc: "40×40 · Y14", shape: "spire", size: [400, 400], elevation: 14 },
+  { id: "terrace-mid", label: "梯田", desc: "60×50", shape: "terrace", size: [600, 500], elevation: 0 },
+  { id: "root-mid", label: "根岛", desc: "70×60", shape: "root", size: [700, 600], elevation: 0 },
+];
+
+const FOUNDATION_SHAPE_OPTIONS: Array<{ id: FoundationShape; label: string; desc: string }> = [
+  { id: "plateau", label: "高原", desc: "宽缓起伏" },
+  { id: "mesa", label: "方山", desc: "陡壁平顶" },
+  { id: "spire", label: "尖峰", desc: "收窄长根" },
+  { id: "terrace", label: "梯田", desc: "分层台地" },
+  { id: "root", label: "根系", desc: "扭曲岩根" },
+  { id: "round", label: "圆岛", desc: "浑圆轮廓" },
+];
 
 interface SelectInputProto {
   _updateInputFieldsVisibility: (...args: unknown[]) => void;
@@ -229,6 +263,7 @@ export class EditorNext {
   private activeSiteKind: SiteKind = "town";
   private activeAssetId: string | null = null;
   private activeFoundationKind: "platform" | "island" = "platform";
+  private activeFoundationShape: FoundationShape = "plateau";
   private toolElevation = 0;
   private query = "";
   private running = false;
@@ -733,9 +768,37 @@ export class EditorNext {
       html += '<button class="mlnx-asset' + (this.activeFoundationKind === "platform" ? " active" : "") + '" data-foundation-kind="platform">平台<small>地面高度</small></button>';
       html += '<button class="mlnx-asset' + (this.activeFoundationKind === "island" ? " active" : "") + '" data-foundation-kind="island">浮空岛<small>抬高平台</small></button>';
       html += "</div>";
+      html += '<div class="mlnx-group-label">外形</div><div class="mlnx-library-grid">';
+      for (const option of FOUNDATION_SHAPE_OPTIONS) {
+        html +=
+          '<button class="mlnx-asset' +
+          (this.activeFoundationShape === option.id ? " active" : "") +
+          '" data-foundation-shape="' +
+          option.id +
+          '">' +
+          option.label +
+          "<small>" +
+          option.desc +
+          "</small></button>";
+      }
+      html += "</div>";
+      if (this.doc.navigation !== "grid") {
+        html += '<div class="mlnx-group-label">快速添加</div><div class="mlnx-library-grid">';
+        for (const preset of FOUNDATION_PRESETS) {
+          html +=
+            '<button class="mlnx-asset" data-foundation-preset="' +
+            preset.id +
+            '">' +
+            preset.label +
+            "<small>" +
+            preset.desc +
+            "</small></button>";
+        }
+        html += "</div>";
+      }
       html += '<div class="mlnx-group-label">顶面高度</div>';
       html += '<input class="mlnx-search" id="mlnx-foundation-y" type="number" step="0.5" value="' + this.toolElevation + '" style="height:26px">';
-      html += '<p class="mlnx-note">在地图上按住左键拖出矩形。平台会与相邻地基合并；浮空岛是独立平台。</p>';
+      html += '<p class="mlnx-note">在地图上按住左键拖出矩形。外形会随尺寸拉伸；平台会与相邻地基合并，浮空岛是独立平台。</p>';
       host.innerHTML = html;
       this.leftContent.appendChild(host);
       for (const button of host.querySelectorAll<HTMLElement>("[data-foundation-kind]")) {
@@ -745,6 +808,20 @@ export class EditorNext {
           this.activeFoundationKind = kind;
           this.toolElevation = kind === "island" ? Math.max(4, this.toolElevation || 12) : 0;
           this.renderLibrary();
+        });
+      }
+      for (const button of host.querySelectorAll<HTMLElement>("[data-foundation-shape]")) {
+        button.addEventListener("click", () => {
+          const shape = button.dataset.foundationShape as FoundationShape | undefined;
+          if (!shape) return;
+          this.activeFoundationShape = shape;
+          this.renderLibrary();
+        });
+      }
+      for (const button of host.querySelectorAll<HTMLElement>("[data-foundation-preset]")) {
+        button.addEventListener("click", () => {
+          const preset = FOUNDATION_PRESETS.find((entry) => entry.id === button.dataset.foundationPreset);
+          if (preset) this.addFoundationPreset(preset);
         });
       }
       const yInput = host.querySelector<HTMLInputElement>("#mlnx-foundation-y");
@@ -855,6 +932,25 @@ export class EditorNext {
       }
       this.leftContent.appendChild(list);
     }
+  }
+
+  private addFoundationPreset(preset: (typeof FOUNDATION_PRESETS)[number]): void {
+    if (this.doc.navigation === "grid") {
+      this.notice("网格地图只能保留一块地基，请直接改现有地基的外形");
+      return;
+    }
+    const bounds = documentBounds(this.doc);
+    const gap = 30;
+    const pos: [number, number] = [bounds.maxX + preset.size[0] / 2 + gap, (bounds.minZ + bounds.maxZ) / 2];
+    const result = addFoundation(this.doc, {
+      pos,
+      size: preset.size,
+      elevation: preset.elevation,
+      shape: preset.shape,
+    });
+    this.selection = { kind: "foundation", id: result.foundation.id };
+    this.commit(result.document, "已添加" + preset.label, { terrain: true, sites: true });
+    this.focusSelection();
   }
 
   private async removeAssetPack(id: string): Promise<void> {
@@ -1411,6 +1507,17 @@ export class EditorNext {
     this.inspectorEl.appendChild(actions);
     this.addSection("外壳");
     this.addSelect(
+      "外形",
+      foundation.shape ?? "plateau",
+      FOUNDATION_SHAPE_OPTIONS.map((option) => ({ t: option.label + " · " + option.desc, v: option.id })),
+      (value) =>
+        this.commit(
+          updateFoundation(this.doc, id, { shape: value as FoundationShape }),
+          "已更换地基外形",
+          { terrain: true, sites: true },
+        ),
+    );
+    this.addSelect(
       "贴图",
       foundation.material ?? "__none__",
       [{ t: "跟随地表材质", v: "__none__" }, ...this.textureMaterialOptions()],
@@ -1421,11 +1528,13 @@ export class EditorNext {
           { terrain: true, sites: true },
         ),
     );
-    const assets = assetRegistry.list("foundation");
+    const assets = assetRegistry
+      .list("foundation")
+      .filter((asset) => asset.source === "pack" || asset.id === foundation.assetId);
     const shellOptions: Array<{ t: string; v: string }> = [{ t: "程序化浮岛", v: "__none__" }];
     for (const asset of assets) shellOptions.push({ t: asset.label, v: asset.id });
     this.addSelect(
-      "模型",
+      "GLB 外壳",
       foundation.assetId ?? "__none__",
       shellOptions,
       (value) => this.commit(updateFoundation(this.doc, id, { assetId: value === "__none__" ? null : String(value) }), value === "__none__" ? "已恢复程序化浮岛" : "已设置外壳", { terrain: true, sites: true }),
@@ -2498,7 +2607,12 @@ export class EditorNext {
       const depth = maxZ - minZ;
       const center: [number, number] = [Math.round((minX + maxX) / 2), Math.round((minZ + maxZ) / 2)];
       const size: [number, number] = [Math.max(200, Math.round(width)), Math.max(200, Math.round(depth))];
-      const result = addFoundation(this.doc, { pos: center, size, elevation: this.toolElevation });
+      const result = addFoundation(this.doc, {
+        pos: center,
+        size,
+        elevation: this.toolElevation,
+        shape: this.activeFoundationShape,
+      });
       this.selection = { kind: "foundation", id: result.foundation.id };
       this.commit(result.document, "已添加地基", { terrain: true, sites: true });
       this.setTool("move");
@@ -2735,7 +2849,12 @@ export class EditorNext {
     this.orbit.target.copy(proxy.position);
     const camera = this.scene.getEditorCamera();
     const offset = camera.position.clone().sub(this.orbit.target);
-    const distance = Math.max(12, offset.length() * 0.55);
+    const foundation =
+      this.selection.kind === "foundation"
+        ? this.doc.visual.foundations.find((entry) => entry.id === this.selection?.id)
+        : null;
+    const span = foundation ? Math.max(foundation.size[0], foundation.size[1]) / 10 : 24;
+    const distance = Math.max(60, span * 1.8, offset.length() * 0.55);
     offset.setLength(distance);
     camera.position.copy(this.orbit.target).add(offset);
     this.orbit.update();

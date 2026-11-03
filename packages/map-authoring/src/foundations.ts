@@ -1,4 +1,5 @@
-import type { FoundationDraft, MapDocument } from "./types";
+import { isFoundationShape } from "./types";
+import type { FoundationDraft, FoundationShape, MapDocument } from "./types";
 
 /** 单块地基的最小边长，分米。 */
 export const MIN_FOUNDATION_SIZE_DM = 100;
@@ -90,6 +91,7 @@ export interface FoundationInput {
   elevation?: number;
   depth?: number;
   assetId?: string;
+  shape?: FoundationShape;
   material?: string;
   scale?: number;
   rotation?: number;
@@ -115,6 +117,7 @@ export function createFoundation(
     elevation: clampElevation(input.elevation ?? 0),
     depth: clampDepth(input.depth ?? Math.min(38, Math.max(14, Math.hypot(halfX, halfZ) * 0.24))),
     ...(input.assetId ? { assetId: input.assetId } : {}),
+    ...(isFoundationShape(input.shape) ? { shape: input.shape } : {}),
     ...(input.material ? { material: input.material } : {}),
     scale: clampScale(input.scale ?? 1),
     rotation: clampRotation(input.rotation ?? 0),
@@ -158,6 +161,7 @@ export function mergeFoundationRects(foundations: ReadonlyArray<FoundationDraft>
         const second = list[b];
         if (Math.abs(first.elevation - second.elevation) > 0.001) continue;
         if ((first.assetId ?? "") !== (second.assetId ?? "")) continue;
+        if ((first.shape ?? "plateau") !== (second.shape ?? "plateau")) continue;
         if ((first.material ?? "") !== (second.material ?? "")) continue;
         const merged = mergePair(first, second);
         if (!merged) continue;
@@ -202,7 +206,7 @@ function mergePair(first: FoundationDraft, second: FoundationDraft): FoundationD
     };
   }
   if (!rect) return null;
-  const keep = first.assetId || first.material ? first : second;
+  const keep = first.assetId || first.shape || first.material ? first : second;
   return {
     id: keep.id,
     pos: [(rect.minX + rect.maxX) / 2, (rect.minZ + rect.maxZ) / 2],
@@ -210,6 +214,7 @@ function mergePair(first: FoundationDraft, second: FoundationDraft): FoundationD
     elevation: keep.elevation,
     depth: keep.depth,
     ...(keep.assetId ? { assetId: keep.assetId } : {}),
+    ...(keep.shape ? { shape: keep.shape } : {}),
     ...(keep.material ? { material: keep.material } : {}),
     scale: keep.scale,
     rotation: keep.rotation,

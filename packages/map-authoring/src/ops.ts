@@ -382,6 +382,10 @@ export function updateFoundation(
     if (patch.assetId) foundation.assetId = patch.assetId;
     else delete foundation.assetId;
   }
+  if ("shape" in patch) {
+    if (patch.shape) foundation.shape = patch.shape;
+    else delete foundation.shape;
+  }
   if ("material" in patch) {
     if (patch.material) foundation.material = patch.material;
     else delete foundation.material;
@@ -414,6 +418,7 @@ export function duplicateFoundation(
     elevation: source.elevation,
     depth: source.depth,
     ...(source.assetId ? { assetId: source.assetId } : {}),
+    ...(source.shape ? { shape: source.shape } : {}),
     ...(source.material ? { material: source.material } : {}),
     scale: source.scale,
     rotation: source.rotation,

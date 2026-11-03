@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
 import type { CityId, MapDef } from "@marchlands/sim";
 import { createHeightField, foundationDepth, foundationRect } from "@marchlands/map-authoring";
-import type { MapVisual } from "@marchlands/map-authoring";
+import type { FoundationShape, MapVisual } from "@marchlands/map-authoring";
 import {
   NavGrid,
   Surface,
@@ -202,6 +202,7 @@ export interface FoundationPlatform {
   elevation: number;
   depth: number;
   assetId?: string;
+  shape?: FoundationShape;
   material?: string;
   scale: number;
   rotation: number;
@@ -380,6 +381,7 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         elevation: 0,
         depth: source ? foundationDepth(source) : platformDepth(halfX, halfZ),
         ...(source?.material ? { material: source.material } : {}),
+        ...(source?.shape ? { shape: source.shape } : {}),
         scale: 1,
         rotation: 0,
       },
@@ -398,6 +400,7 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         elevation: foundation.elevation,
         depth: foundationDepth(foundation),
         ...(foundation.assetId ? { assetId: foundation.assetId } : {}),
+        ...(foundation.shape ? { shape: foundation.shape } : {}),
         ...(foundation.material ? { material: foundation.material } : {}),
         scale: foundation.scale,
         rotation: foundation.rotation,
@@ -581,6 +584,7 @@ export function buildTerrain(
           Math.round(platform.maxZ * 100),
           Math.round(platform.elevation * 100),
           Math.round(platform.depth * 100),
+          platform.shape ?? "",
           platform.material ?? "",
         ].join(":"),
       )
@@ -620,6 +624,7 @@ export function buildTerrain(
       seed + (hashText(platform.id) % 997),
       ground,
       platform.depth,
+      platform.shape ?? "plateau",
     );
     built.group.name = `island-${platform.id}`;
     islandGroup.add(built.group);
@@ -771,9 +776,11 @@ function islandRim(
   depth: number,
   seed: number,
   heightAt: (x: number, z: number) => number,
+  shape: FoundationShape = "plateau",
 ): IslandRimPoint[] {
   const steps = 288;
   const shift = (seed % 977) * 0.013;
+  const diagonal = Math.hypot(halfX, halfZ);
   const points: IslandRimPoint[] = [];
   for (let index = 0; index < steps; index += 1) {
     const theta = (index / steps) * Math.PI * 2;
@@ -782,13 +789,49 @@ function islandRim(
     const support = rectangleSupport(theta, halfX, halfZ);
     const broad = valueNoise(cos * 2.7 + shift, sin * 2.7 - shift, seed + 41);
     const fine = valueNoise(cos * 6.5 - shift, sin * 6.5 + shift, seed + 97);
-    const base = Math.hypot(halfX, halfZ) + 12;
-    const radius = base * (0.94 + broad * 0.1 + fine * 0.05);
+    let base = diagonal + 12;
+    let radiusScale = 0.94 + broad * 0.1 + fine * 0.05;
+    let bermBase = 0.16;
+    let bermNoise = 0.58;
+    let depthScale = 0.82 + valueNoise(cos * 1.6 + shift, sin * 1.6, seed + 307) * 0.34;
+    if (shape === "mesa") {
+      base = support + 4 + broad * 2.2;
+      radiusScale = 0.99 + fine * 0.02;
+      bermBase = 0.02;
+      bermNoise = 0.1;
+      depthScale = 1.06 + broad * 0.22;
+    } else if (shape === "spire") {
+      base = support + 7 + broad * 2;
+      radiusScale = 0.97 + fine * 0.04;
+      bermBase = 0.08;
+      bermNoise = 0.2;
+      depthScale = 1.2 + broad * 0.45;
+    } else if (shape === "terrace") {
+      base = support + 8 + broad * 3;
+      radiusScale = 0.98 + fine * 0.035;
+      bermBase = 0.1;
+      bermNoise = 0.22;
+      depthScale = 0.95 + broad * 0.25;
+    } else if (shape === "root") {
+      const lobes = Math.sin(theta * 3 + shift * 3) * 0.08 + Math.sin(theta * 5 - shift * 2) * 0.05;
+      base = diagonal + 7;
+      radiusScale = 0.95 + broad * 0.12 + fine * 0.05 + lobes;
+      bermBase = 0.12;
+      bermNoise = 0.4;
+      depthScale = 0.95 + broad * 0.5;
+    } else if (shape === "round") {
+      base = diagonal * 0.98 + 6;
+      radiusScale = 0.98 + broad * 0.035 + fine * 0.02;
+      bermBase = 0.1;
+      bermNoise = 0.28;
+      depthScale = 0.92 + broad * 0.24;
+    }
+    const radius = base * radiusScale;
     const innerX = centerX + cos * support * 0.995;
     const innerZ = centerZ + sin * support * 0.995;
     const baseY = heightAt(innerX, innerZ);
-    const berm = 0.16 + valueNoise(cos * 4.1 + shift, sin * 4.1, seed + 211) * 0.58;
-    const localDepth = depth * (0.82 + valueNoise(cos * 1.6 + shift, sin * 1.6, seed + 307) * 0.34);
+    const berm = bermBase + valueNoise(cos * 4.1 + shift, sin * 4.1, seed + 211) * bermNoise;
+    const localDepth = depth * depthScale;
     points.push({
       theta,
       radius,
@@ -822,6 +865,7 @@ function buildIslandApron(
   palette: TerrainStylePalette,
   seed: number,
   ground: THREE.Material | null,
+  shape: FoundationShape = "plateau",
 ): THREE.Mesh {
   const positions: number[] = [];
   const colors: number[] = [];
@@ -831,7 +875,9 @@ function buildIslandApron(
   const rock = new THREE.Color(palette.rock);
   const tSteps = [0, 0.1, 0.22, 0.34, 0.46, 0.58, 0.7, 0.82, 0.92, 1];
   const crestAt = (theta: number, t: number): number => {
-    const ridge = 4.5 + valueNoise(Math.cos(theta) * 2.6 + 4, Math.sin(theta) * 2.6 - 1, seed + 5) * 7.5;
+    const ridgeBase = shape === "mesa" ? 1.2 : shape === "terrace" ? 2.2 : shape === "spire" ? 3.2 : 4.5;
+    const ridgeNoise = shape === "mesa" ? 1.6 : shape === "terrace" ? 3.4 : shape === "spire" ? 4.5 : 7.5;
+    const ridge = ridgeBase + valueNoise(Math.cos(theta) * 2.6 + 4, Math.sin(theta) * 2.6 - 1, seed + 5) * ridgeNoise;
     const wobble = valueNoise(theta * 3.1 + 7, t * 4.6, seed + 9) * 0.6 + 0.4;
     return Math.sin(Math.min(1, t) * Math.PI) * ridge * wobble;
   };
@@ -881,15 +927,24 @@ function buildIslandBase(
   palette: TerrainStylePalette,
   seed: number,
   ground: THREE.Material | null,
+  shape: FoundationShape = "plateau",
 ): THREE.Group {
   const group = new THREE.Group();
-  const layers = 56;
+  const layers = shape === "mesa" ? 32 : shape === "terrace" ? 44 : shape === "spire" ? 64 : 56;
   const rings: Array<Array<{ x: number; y: number; z: number; theta: number }>> = [];
   for (let layer = 0; layer <= layers; layer += 1) {
     const t = layer / layers;
-    const ledge = (valueNoise(t * 9.3, 0.5, seed + 3) - 0.5) * 2.1;
-    const taperT = Math.pow(t, 1.35);
-    const shrink = 0.52 * taperT;
+    const ledgeAmount = shape === "mesa" ? 0.45 : shape === "terrace" ? 3.2 : shape === "root" ? 2.8 : 2.1;
+    const ledge = (valueNoise(t * 9.3, 0.5, seed + 3) - 0.5) * ledgeAmount;
+    let shrink: number;
+    if (shape === "mesa") shrink = 0.18 * Math.pow(t, 0.55);
+    else if (shape === "spire") shrink = 0.8 * Math.pow(t, 0.85);
+    else if (shape === "terrace") {
+      const step = Math.floor(t * 4) / 4 + Math.min(1, (t * 4) % 1) * 0.18;
+      shrink = 0.58 * Math.pow(step, 0.8);
+    } else if (shape === "root") shrink = 0.66 * Math.pow(t, 1.05);
+    else if (shape === "round") shrink = 0.48 * Math.pow(t, 1.2);
+    else shrink = 0.52 * Math.pow(t, 1.35);
     const ring: Array<{ x: number; y: number; z: number; theta: number }> = [];
     for (const point of rim) {
       const theta = point.theta;
@@ -899,8 +954,10 @@ function buildIslandBase(
         Math.sin(theta * 11.7 + 2.1) * Math.sin(Math.PI * Math.min(1, t * 1.15)) * 0.045 +
         (valueNoise(Math.cos(theta) * 3.1 + 5, Math.sin(theta) * 3.1 - 2, seed + 17) - 0.5) * 0.1 +
         (valueNoise(Math.cos(theta) * 10.5 - 3, Math.sin(theta) * 10.5 + 7, seed + 51) - 0.5) * 0.035;
-      const radius = Math.max(2, point.radius * (1 - shrink * ridge) + ledge);
-      const fall = Math.pow(Math.sin(Math.min(1, t) * Math.PI * 0.5), 0.85) * (0.98 + Math.sin(theta * 3.1) * 0.04);
+      const lobe = shape === "root" ? Math.sin(theta * 3 + seed * 0.001) * t * 0.14 : 0;
+      const radius = Math.max(2, point.radius * (1 - shrink * ridge + lobe) + ledge);
+      const fallPower = shape === "mesa" ? 0.55 : shape === "terrace" ? 1 : shape === "spire" ? 0.8 : 0.85;
+      const fall = Math.pow(Math.sin(Math.min(1, t) * Math.PI * 0.5), fallPower) * (0.98 + Math.sin(theta * 3.1) * 0.04);
       ring.push({
         x: centerX + Math.cos(theta) * radius,
         y: point.y - point.depth * fall,
@@ -959,7 +1016,8 @@ function buildIslandBase(
     }
   }
 
-  const tipY = Math.min(...bottomRing.map((point) => point.y)) + Math.max(...rim.map((point) => point.depth)) * 0.16;
+  const tipExtra = shape === "spire" ? 0.34 : shape === "root" ? 0.22 : shape === "mesa" ? 0.05 : 0.16;
+  const tipY = Math.min(...bottomRing.map((point) => point.y)) + Math.max(...rim.map((point) => point.depth)) * tipExtra;
   const tipIndex = positions.length / 3;
   positions.push(centerX, tipY, centerZ);
   color.copy(dark).multiplyScalar(0.44);
@@ -1048,6 +1106,7 @@ function buildIsland(
   seed: number,
   ground: THREE.Material | null,
   depthOverride?: number,
+  shape: FoundationShape = "plateau",
 ): { group: THREE.Group; metrics: IslandMetrics } {
   const centerX = (minX + maxX) / 2;
   const centerZ = (minZ + maxZ) / 2;
@@ -1055,11 +1114,11 @@ function buildIsland(
   const halfZ = Math.max(1, (maxZ - minZ) / 2);
   const span = Math.max(halfX, halfZ) * 2;
   const depth = depthOverride ?? THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 0.24, 14, 38);
-  const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt);
+  const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt, shape);
   const group = new THREE.Group();
   group.name = "island";
-  group.add(buildIslandApron(rim, palette, seed, ground));
-  group.add(buildIslandBase(rim, centerX, centerZ, palette, seed, ground));
+  group.add(buildIslandApron(rim, palette, seed, ground, shape));
+  group.add(buildIslandBase(rim, centerX, centerZ, palette, seed, ground, shape));
   let radiusX = 0;
   let radiusZ = 0;
   let topY = 0;

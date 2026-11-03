@@ -390,6 +390,57 @@ test("next editor imports an OBJ with MTL and texture", async ({ page }) => {
   await expect(page.locator("[data-asset-id]").filter({ hasText: "cube" })).toHaveCount(1);
 });
 
+test("next editor adds varied foundation shapes and sizes", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.keyboard.press("b");
+  await page.click('[data-tab="foundation"]');
+  await page.locator("[data-foundation-preset='round-small']").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { visual: { foundations: Array<{ shape?: string; size: number[] }> } } })
+            .__mlnxDoc().visual.foundations.length,
+      ),
+    )
+    .toBe(2);
+  await page.locator("[data-foundation-preset='spire-float']").click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const foundations = (
+          window as unknown as {
+            __mlnxDoc: () => { visual: { foundations: Array<{ shape?: string; size: number[]; elevation: number }> } };
+          }
+        ).__mlnxDoc().visual.foundations;
+        return foundations.map((foundation) => [foundation.shape ?? null, foundation.size.join("x"), foundation.elevation]);
+      }),
+    )
+    .toEqual([
+      [null, "700x700", 0],
+      ["round", "300x300", 0],
+      ["spire", "400x400", 14],
+    ]);
+  await page.keyboard.press("v");
+  await page.waitForTimeout(300);
+  await page.locator(".pcui-treeview-item-text", { hasText: "f2 ·" }).click();
+  const shapeSelect = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "圆岛" }).first();
+  await shapeSelect.locator(".pcui-select-input-value").click();
+  await shapeSelect.locator(".pcui-select-input-list .pcui-label", { hasText: "方山" }).first().click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { visual: { foundations: Array<{ id: string; shape?: string; size: number[] }> } } })
+            .__mlnxDoc().visual.foundations.find((foundation) => foundation.id === "f2")?.shape,
+      ),
+    )
+    .toBe("mesa");
+});
+
 test("next editor converts to a grid map and sculpts terrain", async ({ page }) => {
   page.on("dialog", (dialog) => void dialog.accept());
   await page.goto("/");
