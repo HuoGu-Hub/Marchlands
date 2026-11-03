@@ -45,7 +45,6 @@ const TEMPLATE = `
     <div class="menu-actions">
       <button class="btn primary" id="btn-start">开始游戏</button>
       <button class="btn" id="btn-editor">地图编辑器</button>
-      <button class="btn ghost" id="btn-editor-classic">经典编辑器</button>
       <button class="btn" id="btn-settings">设置</button>
       <button class="btn ghost" id="btn-exit">退出</button>
       <div class="menu-foot" id="menu-version">M1 灰盒 · v0.1.0</div>
@@ -445,15 +444,6 @@ export class App {
   private bind(): void {
     this.on("btn-start", "click", () => this.openBriefing());
     this.on("btn-editor", "click", () => this.openEditor());
-    this.on("btn-editor-classic", "click", () => {
-      const url = new URL(window.location.href);
-      url.searchParams.set("editor", "classic");
-      window.history.replaceState({}, "", url.toString());
-      this.openEditor();
-      const clean = new URL(window.location.href);
-      clean.searchParams.delete("editor");
-      window.history.replaceState({}, "", clean.toString());
-    });
     this.on("btn-settings", "click", () => this.openSettings());
     this.on("btn-exit", "click", () => this.showOverlay("exit-overlay"));
     this.on("btn-brief-start", "click", () => this.startGame());

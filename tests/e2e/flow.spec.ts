@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+async function openClassicEditor(page: import("@playwright/test").Page): Promise<void> {
+  await page.goto("/?editor=classic");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#page-editor")).toBeVisible();
+}
+
 async function openGame(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/?map=forest01");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
@@ -38,10 +45,7 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
 });
 
 test("creates a map in the editor and returns from playtest", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-classic");
-  await expect(page.locator("#page-editor")).toBeVisible();
+  await openClassicEditor(page);
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   const box = await page.locator("#ml-ed-canvas").boundingBox();
   if (!box) throw new Error("editor canvas has no box");
@@ -62,10 +66,7 @@ test("creates a map in the editor and returns from playtest", async ({ page }) =
 });
 
 test("creates a grid map, sculpts terrain and previews navigation", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-classic");
-  await expect(page.locator("#page-editor")).toBeVisible();
+  await openClassicEditor(page);
   await page.click("#ml-ed-new-grid");
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   await page.click('[data-mode="terrain"]');
@@ -105,10 +106,7 @@ test("creates a grid map, sculpts terrain and previews navigation", async ({ pag
 });
 
 test("draws and reshapes a road in the editor", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-classic");
-  await expect(page.locator("#page-editor")).toBeVisible();
+  await openClassicEditor(page);
   await page.click("#ml-ed-new-grid");
   await page.waitForTimeout(500);
 
@@ -157,10 +155,7 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
 });
 
 test("draws a free road with empty endpoints", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-classic");
-  await expect(page.locator("#page-editor")).toBeVisible();
+  await openClassicEditor(page);
   await page.click("#ml-ed-new-grid");
   await page.waitForTimeout(500);
 
@@ -176,9 +171,7 @@ test("draws a free road with empty endpoints", async ({ page }) => {
 });
 
 test("places and rotates a terrain prop in the editor", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-classic");
+  await openClassicEditor(page);
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   const label = page.locator("#ml-ed-map-label");
   const before = await label.textContent();
@@ -197,9 +190,7 @@ test("places and rotates a terrain prop in the editor", async ({ page }) => {
 });
 
 test("adds a floating foundation and deletes it", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-classic");
+  await openClassicEditor(page);
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   await page.click('[data-mode="foundation"]');
   await expect(page.locator(".ml-ed-foundation-row")).toHaveCount(1);
