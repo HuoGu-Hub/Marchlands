@@ -16,6 +16,12 @@ interface RouteOverlayOptions {
   map: MapDef;
 }
 
+/** 批量指定目标时已经编好组、等待松开发兵的派兵计划。 */
+export interface PlannedAssignment {
+  sources: readonly CityId[];
+  to: CityId;
+}
+
 // BattleScene.projectCity projects every site at this height.
 const REF_Y = 4.8;
 const GROUND_Y = 0.55;
@@ -132,6 +138,7 @@ export class RouteOverlay {
   private readonly style: HTMLStyleElement;
   private readonly projector = new ScreenProjector();
   private readonly panelRefs: Record<string, HTMLElement> = {};
+  private plan: PlannedAssignment[] = [];
   private width = 0;
   private height = 0;
   private pixelRatio = 0;
@@ -192,11 +199,16 @@ export class RouteOverlay {
     this.resize();
   }
 
+  setPlan(assignments: readonly PlannedAssignment[]): void {
+    this.plan = assignments.map((group) => ({ sources: group.sources.slice(), to: group.to }));
+  }
+
   render(state: SimState, selectedSquadId: string | null): void {
     this.resize();
     this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
     const context = this.context;
     context.clearRect(0, 0, this.width, this.height);
+    this.drawPlan();
 
     const selected = selectedSquadId
       ? state.squads.find((squad) => squad.id === selectedSquadId)
@@ -372,6 +384,32 @@ export class RouteOverlay {
       context.beginPath();
       context.arc(anchor.x, anchor.y, 3.5, 0, Math.PI * 2);
       context.fillStyle = "rgba(226,208,165,.55)";
+      context.fill();
+    }
+  }
+
+  /** 用琥珀色虚线把已编组的据点连到目标，并在目标处打点。 */
+  private drawPlan(): void {
+    if (this.plan.length === 0) return;
+    const context = this.context;
+    for (const group of this.plan) {
+      const target = this.sitePoint(group.to, GROUND_Y);
+      if (!target) continue;
+      for (const sourceId of group.sources) {
+        const source = this.sitePoint(sourceId, GROUND_Y);
+        if (!source) continue;
+        this.stroke([source, target], "rgba(8,12,9,.5)", 5, []);
+        this.stroke([source, target], "rgba(242,198,124,.9)", 2, [7, 6]);
+      }
+      const pulse = 1 + Math.sin(performance.now() / 320) * 0.1;
+      context.beginPath();
+      context.arc(target.x, target.y, 9 * pulse, 0, Math.PI * 2);
+      context.strokeStyle = "rgba(242,198,124,.85)";
+      context.lineWidth = 1.8;
+      context.stroke();
+      context.beginPath();
+      context.arc(target.x, target.y, 2.6, 0, Math.PI * 2);
+      context.fillStyle = "rgba(242,198,124,.95)";
       context.fill();
     }
   }

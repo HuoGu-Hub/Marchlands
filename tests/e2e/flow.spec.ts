@@ -805,7 +805,7 @@ test("loads the crossroads01 map and selector", async ({ page }) => {
   await expect(page.locator("#hud-cities")).toHaveText("1");
 });
 
-test("highlights reachable towns and sends from a multi-selection", async ({ page }) => {
+test("queues ctrl assignments and sends them together on release", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/?map=frontier01");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
@@ -814,45 +814,114 @@ test("highlights reachable towns and sends from a multi-selection", async ({ pag
   await page.click("#btn-brief-start");
   await expect(page.locator("#page-game")).toBeVisible();
 
+  const project = (id: string) =>
+    page.evaluate(
+      (cityId) =>
+        (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+          .__mlDebug?.projectCity(cityId),
+      id,
+    );
   const reach = () =>
     page.evaluate(
       () =>
         (window as unknown as { __mlReach?: { targets: string[] } }).__mlReach?.targets ?? [],
     );
+  const plan = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as {
+          __mlPlan?: {
+            planning: boolean;
+            pending: string[];
+            groups: Array<{ sources: string[]; to: string }>;
+          };
+        }).__mlPlan,
+    );
+
   // frontier01 的中立据点阻断道路：c1 只能直达相邻的五座据点。
   await expect.poll(reach).toEqual(["c17", "c2", "c3", "c9", "g1"]);
 
-  const c2 = await page.evaluate(() =>
-    (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
-      .__mlDebug?.projectCity("c2"),
-  );
+  const c2 = await project("c2");
   if (!c2) throw new Error("c2 has no screen position");
   await page.mouse.click(c2.x, c2.y);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 40_000 });
-  await expect.poll(reach).toEqual(["c10", "c17", "c3", "c9", "g1"]);
 
-  // 选中刚占领的 c2，等守军增长到可以派兵后与 c1 组成多选。
   await page.mouse.click(c2.x, c2.y);
   await expect(page.locator("#city-name")).toContainText("c2");
   await expect
     .poll(async () => Number(await page.locator("#city-pop").textContent()), { timeout: 20_000 })
     .toBeGreaterThanOrEqual(2);
-  const c1 = await page.evaluate(() =>
-    (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
-      .__mlDebug?.projectCity("c1"),
-  );
-  if (!c1) throw new Error("c1 has no screen position");
-  await page.keyboard.down("Control");
-  await page.mouse.click(c1.x, c1.y);
-  await page.keyboard.up("Control");
-  await expect(page.locator("#city-multi")).toHaveText("已选 2 座");
-  await expect.poll(reach).toEqual(["c10", "c17", "c3", "c9", "g1"]);
 
-  const c3 = await page.evaluate(() =>
-    (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
-      .__mlDebug?.projectCity("c3"),
-  );
-  if (!c3) throw new Error("c3 has no screen position");
+  const c1 = await project("c1");
+  const c3 = await project("c3");
+  const c9 = await project("c9");
+  if (!c1 || !c3 || !c9) throw new Error("missing screen positions");
+
+  // 按住 Ctrl：先编组 c2、c1，再点 c3 指定第一组。
+  await page.keyboard.down("Control");
+  await page.mouse.click(c2.x, c2.y);
+  await page.mouse.click(c1.x, c1.y);
+  await expect(page.locator("#plan-hint")).toContainText("已编组 2 座");
+  await expect.poll(reach).toEqual(["c10", "c17", "c3", "c9", "g1"]);
   await page.mouse.click(c3.x, c3.y);
+  await expect(page.locator("#toast")).toContainText("2 座据点 → c3");
+  await expect.poll(async () => (await plan())?.groups).toEqual([
+    { sources: ["c2", "c1"], to: "c3" },
+  ]);
+
+  // 把 c1 撤回编组，再指定第二组：c1 → c9。
+  await page.mouse.click(c1.x, c1.y);
+  await expect(page.locator("#plan-hint")).toContainText("待指定 1 座");
+  await page.mouse.click(c9.x, c9.y);
+  await expect(page.locator("#toast")).toContainText("1 座据点 → c9");
+  await expect.poll(async () => (await plan())?.groups).toEqual([
+    { sources: ["c2"], to: "c3" },
+    { sources: ["c1"], to: "c9" },
+  ]);
+
+  // 松开 Ctrl 才真正发兵，所有编组一起出发。
+  await page.keyboard.up("Control");
+  await expect(page.locator("#toast")).toContainText("2 座据点同时发兵");
+  await expect.poll(async () => (await plan())?.planning).toBe(false);
+  await expect(page.locator("#plan-hint")).not.toHaveClass(/on/);
+});
+
+test("sends one ctrl group from several towns on release", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/?map=frontier01");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-start");
+  await expect(page.locator("#page-briefing")).toBeVisible();
+  await page.click("#btn-brief-start");
+  await expect(page.locator("#page-game")).toBeVisible();
+
+  const project = (id: string) =>
+    page.evaluate(
+      (cityId) =>
+        (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+          .__mlDebug?.projectCity(cityId),
+      id,
+    );
+  const c2 = await project("c2");
+  if (!c2) throw new Error("c2 has no screen position");
+  await page.mouse.click(c2.x, c2.y);
+  await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 40_000 });
+
+  await page.mouse.click(c2.x, c2.y);
+  await expect(page.locator("#city-name")).toContainText("c2");
+  await expect
+    .poll(async () => Number(await page.locator("#city-pop").textContent()), { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(2);
+
+  const c1 = await project("c1");
+  const c3 = await project("c3");
+  if (!c1 || !c3) throw new Error("missing screen positions");
+
+  await page.keyboard.down("Control");
+  await page.mouse.click(c2.x, c2.y);
+  await page.mouse.click(c1.x, c1.y);
+  await page.mouse.click(c3.x, c3.y);
+  await expect(page.locator("#toast")).toContainText("2 座据点 → c3");
+  await page.keyboard.up("Control");
   await expect(page.locator("#toast")).toContainText("2 座据点同时发兵");
 });

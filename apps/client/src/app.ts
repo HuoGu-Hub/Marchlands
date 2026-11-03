@@ -140,7 +140,8 @@ const TEMPLATE = `
       </div>
     </div>
     <div class="toast" id="toast"></div>
-    <div class="hint">拖动地图 · 左键选择与派兵 · Ctrl+点击多选据点 · 点击行军兵团改道 · 右键取消 · Q / E 旋转 · 滚轮缩放</div>
+    <div class="plan-hint" id="plan-hint"></div>
+    <div class="hint">拖动地图 · 左键选择与派兵 · 按住 Ctrl 批量指定目标 · 点击行军兵团改道 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
   </div>
 
   <div class="overlay" id="pause-overlay">
