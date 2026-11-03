@@ -725,6 +725,21 @@ input {
   white-space: nowrap;
 }
 
+.dispatch-btn {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 4;
+  display: none;
+  min-width: 118px;
+}
+
+.dispatch-btn.on {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .plan-hint {
   position: absolute;
   left: 50%;

@@ -24,6 +24,8 @@ export interface PlannedAssignment {
 
 // BattleScene.projectCity projects every site at this height.
 const REF_Y = 4.8;
+const PLAN_COLOR = "rgba(166,245,184,.95)";
+const PLAN_SHADOW = "rgba(8,12,9,.5)";
 const GROUND_Y = 0.55;
 const SQUAD_Y = 0.95;
 
@@ -208,7 +210,6 @@ export class RouteOverlay {
     this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
     const context = this.context;
     context.clearRect(0, 0, this.width, this.height);
-    this.drawPlan();
 
     const selected = selectedSquadId
       ? state.squads.find((squad) => squad.id === selectedSquadId)
@@ -230,12 +231,14 @@ export class RouteOverlay {
 
     if (!selected) {
       this.setPanel(null, state);
+      this.drawPlan();
       return;
     }
 
     this.drawRoutes(selected, state);
     this.drawOwnSquadDot(selected, state);
     this.setPanel(selected, state);
+    this.drawPlan();
   }
 
   pickSquad(state: SimState, clientX: number, clientY: number): string | null {
@@ -388,30 +391,116 @@ export class RouteOverlay {
     }
   }
 
-  /** 用琥珀色虚线把已编组的据点连到目标，并在目标处打点。 */
+  /** 双击拱形箭头取消任务：返回被点中的任务下标。 */
+  pickPlan(clientX: number, clientY: number): number | null {
+    if (this.plan.length === 0) return null;
+    this.resize();
+    this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
+    const x = clientX - this.rect.left;
+    const y = clientY - this.rect.top;
+    let best: number | null = null;
+    let bestDistance = 11;
+    for (let groupIndex = 0; groupIndex < this.plan.length; groupIndex += 1) {
+      const group = this.plan[groupIndex];
+      const target = this.sitePoint(group.to, GROUND_Y);
+      if (!target) continue;
+      group.sources.forEach((sourceId, sourceIndex) => {
+        const source = this.sitePoint(sourceId, GROUND_Y);
+        if (!source) return;
+        const points = this.planArc(source, target, sourceIndex);
+        // 两端留出空隙，避免箭头端点与建筑点击互相抢占。
+        const start = Math.floor(points.length * 0.18);
+        const end = Math.ceil(points.length * 0.82);
+        const distance = distanceToPolyline(x, y, points.slice(start, end));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = groupIndex;
+        }
+      });
+    }
+    return best;
+  }
+
+  /** 任务箭头最高点的屏幕坐标，供自动测试定位双击位置。 */
+  planMidpoint(groupIndex: number): ScreenPoint | null {
+    const group = this.plan[groupIndex];
+    if (!group) return null;
+    this.resize();
+    this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
+    const target = this.sitePoint(group.to, GROUND_Y);
+    const first = group.sources[0];
+    const source = first ? this.sitePoint(first, GROUND_Y) : null;
+    if (!target || !source) return null;
+    const points = this.planArc(source, target, 0);
+    const middle = points[Math.floor(points.length / 2)];
+    return { x: this.rect.left + middle.x, y: this.rect.top + middle.y };
+  }
+
+  /** 每个出发据点画一条浅绿色拱形箭头指向目标。 */
   private drawPlan(): void {
     if (this.plan.length === 0) return;
     const context = this.context;
     for (const group of this.plan) {
       const target = this.sitePoint(group.to, GROUND_Y);
       if (!target) continue;
-      for (const sourceId of group.sources) {
+      group.sources.forEach((sourceId, sourceIndex) => {
         const source = this.sitePoint(sourceId, GROUND_Y);
-        if (!source) continue;
-        this.stroke([source, target], "rgba(8,12,9,.5)", 5, []);
-        this.stroke([source, target], "rgba(242,198,124,.9)", 2, [7, 6]);
-      }
-      const pulse = 1 + Math.sin(performance.now() / 320) * 0.1;
-      context.beginPath();
-      context.arc(target.x, target.y, 9 * pulse, 0, Math.PI * 2);
-      context.strokeStyle = "rgba(242,198,124,.85)";
-      context.lineWidth = 1.8;
-      context.stroke();
-      context.beginPath();
-      context.arc(target.x, target.y, 2.6, 0, Math.PI * 2);
-      context.fillStyle = "rgba(242,198,124,.95)";
-      context.fill();
+        if (!source) return;
+        const points = this.planArc(source, target, sourceIndex);
+        this.stroke(points, PLAN_SHADOW, 5, []);
+        this.stroke(points, PLAN_COLOR, 2.2, []);
+        this.arrowHead(points);
+        context.beginPath();
+        context.arc(source.x, source.y, 3, 0, Math.PI * 2);
+        context.fillStyle = PLAN_COLOR;
+        context.fill();
+      });
     }
+  }
+
+  /** 拱形控制点位于连线中点的上方，多个出发据点按序号抬高避免重叠。 */
+  private planArc(from: ScreenPoint, to: ScreenPoint, sourceIndex: number): ScreenPoint[] {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1) return [from, to];
+    let nx = -dy / length;
+    let ny = dx / length;
+    if (ny > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const lift = Math.min(140, Math.max(34, length * 0.26)) + sourceIndex * 12;
+    const control = {
+      x: (from.x + to.x) / 2 + nx * lift,
+      y: (from.y + to.y) / 2 + ny * lift,
+    };
+    const points: ScreenPoint[] = [];
+    const steps = 24;
+    for (let index = 0; index <= steps; index += 1) {
+      const t = index / steps;
+      const inverse = 1 - t;
+      points.push({
+        x: inverse * inverse * from.x + 2 * inverse * t * control.x + t * t * to.x,
+        y: inverse * inverse * from.y + 2 * inverse * t * control.y + t * t * to.y,
+      });
+    }
+    return points;
+  }
+
+  private arrowHead(points: ScreenPoint[]): void {
+    const tip = points[points.length - 1];
+    const tail = points[Math.max(0, points.length - 5)];
+    const angle = Math.atan2(tip.y - tail.y, tip.x - tail.x);
+    const size = 9;
+    const context = this.context;
+    context.beginPath();
+    context.moveTo(tip.x, tip.y);
+    context.lineTo(tip.x - size * Math.cos(angle - 0.45), tip.y - size * Math.sin(angle - 0.45));
+    context.lineTo(tip.x - size * Math.cos(angle + 0.45), tip.y - size * Math.sin(angle + 0.45));
+    context.closePath();
+    context.fillStyle = PLAN_COLOR;
+    context.fill();
   }
 
   private stroke(points: ScreenPoint[], color: string, width: number, dash: number[]): void {

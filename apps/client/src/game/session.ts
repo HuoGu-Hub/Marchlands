@@ -17,6 +17,7 @@ import type { PlannedAssignment } from "./route-overlay";
 import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
+const PLAN_CANCEL_WINDOW = 500;
 const REASONS: Record<string, string> = {
   unknown_city: "据点不存在",
   unknown_target: "目标不存在",
@@ -58,8 +59,9 @@ export class GameSession {
   private state: SimState;
   private selected: CityId[] = [];
   private selectedSquad: string | null = null;
-  private planning = false;
+  private multiSelect = false;
   private plan: PlannedAssignment[] = [];
+  private lastPlanClick: { index: number; at: number } | null = null;
   private reachKey = "";
   private reachTargets: CityId[] = [];
   private commands: Command[] = [];
@@ -107,7 +109,6 @@ export class GameSession {
 
   pause(): void {
     this.paused = true;
-    if (this.planning) this.finishPlanning(false);
   }
 
   resume(): void {
@@ -133,9 +134,9 @@ export class GameSession {
     });
     this.selected = [];
     this.selectedSquad = null;
-    this.planning = false;
+    this.multiSelect = false;
     this.plan = [];
-    this.setPlanHint("");
+    this.lastPlanClick = null;
     this.reachKey = "";
     this.reachTargets = [];
     this.commands = [];
@@ -145,6 +146,7 @@ export class GameSession {
     this.finished = false;
     this.select("c1");
     this.updateHud();
+    this.updatePlanUi();
   }
 
   getCity(id: CityId): CityState | undefined {
@@ -242,7 +244,7 @@ export class GameSession {
     this.scene.setSelected(ids);
     this.refreshReach(true);
     this.options.onSelect(this.primary, ids.length);
-    this.updatePlanHint();
+    this.updatePlanUi();
   }
 
   private announceCity(city: CityState): void {
@@ -311,27 +313,56 @@ export class GameSession {
     else if (sent > 1) this.options.onToast(`${sent} 座据点同时发兵`);
   }
 
-  /** 按住 Ctrl 进入批量指定：先点己方据点编组，再点敌方据点指定目标，松开 Ctrl 一起发兵。 */
-  private beginPlanning(): void {
-    if (this.planning || this.paused || this.finished) return;
-    this.planning = true;
-    this.selectedSquad = null;
-    this.plan = [];
-    this.setSelection([]);
-    this.routeOverlay.setPlan(this.plan);
+  /** Ctrl 单击切换单/多选模式。 */
+  private toggleMultiSelect(): void {
+    if (this.paused || this.finished) return;
+    if (this.multiSelect) this.exitMultiSelect();
+    else this.enterMultiSelect();
   }
 
-  /** 结束批量指定；execute 为真时把所有编组一次性排入命令队列。 */
-  private finishPlanning(execute: boolean): void {
-    if (!this.planning) return;
-    this.planning = false;
+  /** 进入多选：清空单选，重新编组，等按钮确认派遣。 */
+  private enterMultiSelect(): void {
+    if (this.multiSelect) return;
+    this.multiSelect = true;
+    this.selectedSquad = null;
+    this.plan = [];
+    this.lastPlanClick = null;
+    this.routeOverlay.setPlan([]);
+    this.setSelection([]);
+  }
+
+  /** 退出多选：未派遣的任务一并取消，当前编组保留为普通选择。 */
+  private exitMultiSelect(): void {
+    if (!this.multiSelect) return;
+    const cancelled = this.plan.length;
+    this.multiSelect = false;
+    this.plan = [];
+    this.lastPlanClick = null;
+    this.routeOverlay.setPlan([]);
+    this.updatePlanUi();
+    if (cancelled > 0) this.options.onToast(`已退出多选 · ${cancelled} 组任务已取消`);
+  }
+
+  /** “派遣”按钮：确认发出所有编组，仍留在多选模式。 */
+  dispatchSelectedPlan(): void {
+    if (!this.multiSelect || this.plan.length === 0 || this.paused || this.finished) return;
     const plan = this.plan;
     this.plan = [];
-    const pending = this.selected.slice();
+    this.lastPlanClick = null;
     this.routeOverlay.setPlan([]);
-    this.setSelection(pending);
-    if (!execute || this.paused || this.finished) return;
-    this.dispatchPlan(plan);
+    this.updatePlanUi();
+    this.dispatchPlan(plan, true);
+  }
+
+  /** 双击箭头取消一组任务。 */
+  private cancelPlanGroup(index: number): void {
+    const group = this.plan[index];
+    if (!group) return;
+    this.plan = this.plan.filter((_, entry) => entry !== index);
+    this.lastPlanClick = null;
+    this.routeOverlay.setPlan(this.plan);
+    this.updatePlanUi();
+    this.options.onToast(`已取消 ${group.sources.length} 座 → ${group.to}`);
   }
 
   /** 点击敌方据点：把编组里能抵达的据点登记到该目标，其余留在编组里继续指定。 */
@@ -351,6 +382,7 @@ export class GameSession {
       return;
     }
     this.plan.push({ sources, to });
+    this.lastPlanClick = null;
     this.routeOverlay.setPlan(this.plan);
     this.setSelection(left);
     this.options.onToast(
@@ -379,7 +411,7 @@ export class GameSession {
   }
 
   /** 所有编组的发兵命令在同一 tick 入队，抵达时序与多选同时发兵一致。 */
-  private dispatchPlan(plan: PlannedAssignment[]): void {
+  private dispatchPlan(plan: PlannedAssignment[], announce = false): void {
     if (plan.length === 0) return;
     let sent = 0;
     let problem = "";
@@ -409,31 +441,41 @@ export class GameSession {
     }
     if (problem) this.options.onToast(`${sent} 座发兵 · ${problem}`);
     else if (sent > 1) this.options.onToast(`${sent} 座据点同时发兵`);
+    else if (announce) this.options.onToast("1 座据点已派遣");
   }
 
-  private updatePlanHint(): void {
+  private updatePlanUi(): void {
+    this.syncDispatchButton();
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__mlPlan = {
-        planning: this.planning,
+        multiSelect: this.multiSelect,
         pending: this.selected.slice(),
         groups: this.plan.map((group) => ({ sources: group.sources.slice(), to: group.to })),
+        arcs: this.plan.map((_, index) => this.routeOverlay.planMidpoint(index)),
       };
     }
-    if (!this.planning) {
+    if (!this.multiSelect) {
       this.setPlanHint("");
       return;
     }
     const pending = this.selected.length;
     const groups = this.plan.length;
     if (pending > 0 && groups > 0) {
-      this.setPlanHint(`待指定 ${pending} 座 · 已指定 ${groups} 组 · 松开 Ctrl 发兵`);
+      this.setPlanHint(`多选模式 · 待指定 ${pending} 座 · 已指定 ${groups} 组 · 点击“派遣”发兵`);
     } else if (pending > 0) {
-      this.setPlanHint(`已编组 ${pending} 座 · 点击敌方据点指定目标`);
+      this.setPlanHint(`多选模式 · 已编组 ${pending} 座 · 点击敌方据点指定目标`);
     } else if (groups > 0) {
-      this.setPlanHint(`已指定 ${groups} 组 · 松开 Ctrl 发兵`);
+      this.setPlanHint(`多选模式 · 已指定 ${groups} 组 · 点击“派遣”发兵`);
     } else {
-      this.setPlanHint("点击己方据点编组，再点敌方据点指定目标");
+      this.setPlanHint("多选模式 · 点击己方据点编组，再点敌方据点指定目标 · Ctrl 退出");
     }
+  }
+
+  private syncDispatchButton(): void {
+    const button = this.options.hud.querySelector<HTMLButtonElement>("#btn-dispatch");
+    if (!button) return;
+    button.classList.toggle("on", this.multiSelect);
+    button.disabled = this.plan.length === 0 || this.paused || this.finished;
   }
 
   private setPlanHint(text: string): void {
@@ -447,10 +489,12 @@ export class GameSession {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.multiSelect = false;
+    this.plan = [];
+    this.lastPlanClick = null;
     this.setPlanHint("");
+    this.syncDispatchButton();
     window.removeEventListener("keydown", this.onKeyDown);
-    window.removeEventListener("keyup", this.onKeyUp);
-    window.removeEventListener("blur", this.onWindowBlur);
     this.options.canvas.removeEventListener("click", this.onClick);
     this.options.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.options.canvas.removeEventListener("wheel", this.onWheel);
@@ -511,7 +555,7 @@ export class GameSession {
     this.updateHud();
     if (this.selected.length > 0) this.options.onSelect(this.primary, this.selected.length);
     else if (lostSelection) this.options.onSelect(null, 0);
-    if (lostSelection && this.planning) this.updatePlanHint();
+    if (lostSelection && this.multiSelect) this.updatePlanUi();
 
     if (this.state.status === "finished" && !this.finished) {
       this.finished = true;
@@ -605,8 +649,6 @@ export class GameSession {
     window.addEventListener("pointerup", this.onPointerUp);
     window.addEventListener("pointercancel", this.onPointerUp);
     window.addEventListener("keydown", this.onKeyDown);
-    window.addEventListener("keyup", this.onKeyUp);
-    window.addEventListener("blur", this.onWindowBlur);
   }
 
   private retargetSquad(to: CityId, via?: CityId): void {
@@ -650,16 +692,41 @@ export class GameSession {
     }
   };
 
+  private clickDuringMultiSelect(cityId: CityId): void {
+    const city = this.getCity(cityId);
+    if (!city) return;
+    this.lastPlanClick = null;
+    if (city.owner === 1) this.togglePending(cityId);
+    else this.assignPlan(cityId);
+  }
+
   private readonly onClick = (event: MouseEvent): void => {
     if (this.suppressClick) { this.suppressClick = false; return; }
     if (this.paused || this.finished) return;
-    if (this.planning) {
-      const cityId = this.scene.pickCity(event.clientX, event.clientY, this.state);
-      if (!cityId) return;
-      const city = this.getCity(cityId);
-      if (!city) return;
-      if (city.owner === 1) this.togglePending(cityId);
-      else this.assignPlan(cityId);
+    if (this.multiSelect) {
+      // 点击落在据点本体上时优先操作据点，避免箭头端点盖住建筑。
+      const nearest = this.scene.nearestCity(event.clientX, event.clientY, this.state);
+      if (nearest && nearest.distance <= 20) {
+        this.clickDuringMultiSelect(nearest.id);
+        return;
+      }
+      const groupIndex = this.routeOverlay.pickPlan(event.clientX, event.clientY);
+      if (groupIndex !== null) {
+        const now = performance.now();
+        if (
+          this.lastPlanClick &&
+          this.lastPlanClick.index === groupIndex &&
+          now - this.lastPlanClick.at < PLAN_CANCEL_WINDOW
+        ) {
+          this.lastPlanClick = null;
+          this.cancelPlanGroup(groupIndex);
+        } else {
+          this.lastPlanClick = { index: groupIndex, at: now };
+        }
+        return;
+      }
+      this.lastPlanClick = null;
+      if (nearest && nearest.distance < 72) this.clickDuringMultiSelect(nearest.id);
       return;
     }
     if (this.selectedSquad) {
@@ -714,19 +781,8 @@ export class GameSession {
     if (cityId) {
       const city = this.getCity(cityId);
       if (!city) return;
-      const additive = event.ctrlKey || event.metaKey;
       if (city.owner === 1) {
-        if (additive) {
-          this.beginPlanning();
-          this.togglePending(cityId);
-        } else {
-          this.select(cityId);
-        }
-        return;
-      }
-      if (additive) {
-        this.beginPlanning();
-        this.assignPlan(cityId);
+        this.select(cityId);
         return;
       }
       if (this.selected.length === 0) {
@@ -737,17 +793,18 @@ export class GameSession {
       return;
     }
 
-    if (event.ctrlKey || event.metaKey) return;
     this.clearSelection();
   };
 
   private readonly onContextMenu = (event: MouseEvent): void => {
     event.preventDefault();
-    if (this.planning) {
+    if (this.multiSelect) {
+      const hadTasks = this.plan.length > 0;
       this.plan = [];
+      this.lastPlanClick = null;
       this.routeOverlay.setPlan([]);
       this.setSelection([]);
-      this.options.onToast("已清空批量指定");
+      this.options.onToast(hadTasks ? "已清空本次多选任务" : "已清空编组");
       return;
     }
     this.clearSelection();
@@ -760,7 +817,7 @@ export class GameSession {
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Control" || event.key === "Meta") {
-      if (!event.repeat) this.beginPlanning();
+      if (!event.repeat) this.toggleMultiSelect();
       return;
     }
     if (event.key === "q" || event.key === "Q") this.scene.rotate(1);
@@ -768,17 +825,5 @@ export class GameSession {
     if ((event.key === "r" || event.key === "R") && !this.paused && !this.finished) {
       this.toggleStance();
     }
-  };
-
-  /** 松开 Ctrl 时把全部编组一次性发兵。 */
-  private readonly onKeyUp = (event: KeyboardEvent): void => {
-    if (event.key === "Control" || event.key === "Meta") this.finishPlanning(true);
-  };
-
-  /** 窗口失焦时收不到松开事件，取消本次批量指定以免误发。 */
-  private readonly onWindowBlur = (): void => {
-    if (!this.planning) return;
-    this.finishPlanning(false);
-    this.options.onToast("已取消批量指定");
   };
 }

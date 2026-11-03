@@ -484,10 +484,11 @@ export class BattleScene {
     return [point.x * 10, point.z * 10];
   }
 
-  pickCity(clientX: number, clientY: number, state: SimState): CityId | null {
+  /** 离屏幕坐标最近的据点及像素距离，供点击与任务箭头判定优先级。 */
+  nearestCity(clientX: number, clientY: number, state: SimState): { id: CityId; distance: number } | null {
     const rect = this.canvas.getBoundingClientRect();
     let bestId: CityId | null = null;
-    let bestDistance = 72;
+    let bestDistance = Number.POSITIVE_INFINITY;
     for (const city of state.cities) {
       const position = this.positions.get(city.id);
       if (!position) continue;
@@ -500,7 +501,12 @@ export class BattleScene {
         bestId = city.id;
       }
     }
-    return bestId;
+    return bestId ? { id: bestId, distance: bestDistance } : null;
+  }
+
+  pickCity(clientX: number, clientY: number, state: SimState): CityId | null {
+    const nearest = this.nearestCity(clientX, clientY, state);
+    return nearest && nearest.distance < 72 ? nearest.id : null;
   }
 
   update(state: SimState, deltaMs: number): void {

@@ -805,7 +805,7 @@ test("loads the crossroads01 map and selector", async ({ page }) => {
   await expect(page.locator("#hud-cities")).toHaveText("1");
 });
 
-test("queues ctrl assignments and sends them together on release", async ({ page }) => {
+test("assigns groups in multi-select mode and dispatches with the button", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/?map=frontier01");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
@@ -831,9 +831,10 @@ test("queues ctrl assignments and sends them together on release", async ({ page
       () =>
         (window as unknown as {
           __mlPlan?: {
-            planning: boolean;
+            multiSelect: boolean;
             pending: string[];
             groups: Array<{ sources: string[]; to: string }>;
+            arcs: Array<{ x: number; y: number } | null>;
           };
         }).__mlPlan,
     );
@@ -857,8 +858,13 @@ test("queues ctrl assignments and sends them together on release", async ({ page
   const c9 = await project("c9");
   if (!c1 || !c3 || !c9) throw new Error("missing screen positions");
 
-  // 按住 Ctrl：先编组 c2、c1，再点 c3 指定第一组。
-  await page.keyboard.down("Control");
+  // 单击 Ctrl 进入多选，松开不会发兵；随后点据点编组、点敌方据点指定目标。
+  await page.keyboard.press("Control");
+  await expect(page.locator("#plan-hint")).toContainText("多选模式");
+  await expect(page.locator("#btn-dispatch")).toHaveClass(/on/);
+  await expect(page.locator("#btn-dispatch")).toBeDisabled();
+  await expect.poll(async () => (await plan())?.multiSelect).toBe(true);
+
   await page.mouse.click(c2.x, c2.y);
   await page.mouse.click(c1.x, c1.y);
   await expect(page.locator("#plan-hint")).toContainText("已编组 2 座");
@@ -868,6 +874,7 @@ test("queues ctrl assignments and sends them together on release", async ({ page
   await expect.poll(async () => (await plan())?.groups).toEqual([
     { sources: ["c2", "c1"], to: "c3" },
   ]);
+  await expect(page.locator("#btn-dispatch")).toBeEnabled();
 
   // 把 c1 撤回编组，再指定第二组：c1 → c9。
   await page.mouse.click(c1.x, c1.y);
@@ -879,14 +886,21 @@ test("queues ctrl assignments and sends them together on release", async ({ page
     { sources: ["c1"], to: "c9" },
   ]);
 
-  // 松开 Ctrl 才真正发兵，所有编组一起出发。
-  await page.keyboard.up("Control");
+  // 单击“派遣”才真正发兵，所有编组一起出发，仍留在多选模式。
+  await page.click("#btn-dispatch");
   await expect(page.locator("#toast")).toContainText("2 座据点同时发兵");
-  await expect.poll(async () => (await plan())?.planning).toBe(false);
+  await expect.poll(async () => (await plan())?.groups).toEqual([]);
+  await expect(page.locator("#btn-dispatch")).toBeDisabled();
+  await expect.poll(async () => (await plan())?.multiSelect).toBe(true);
+
+  // 再次单击 Ctrl 退出多选。
+  await page.keyboard.press("Control");
+  await expect.poll(async () => (await plan())?.multiSelect).toBe(false);
   await expect(page.locator("#plan-hint")).not.toHaveClass(/on/);
+  await expect(page.locator("#btn-dispatch")).not.toHaveClass(/on/);
 });
 
-test("sends one ctrl group from several towns on release", async ({ page }) => {
+test("dispatches one multi-select group from several towns", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/?map=frontier01");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
@@ -917,11 +931,65 @@ test("sends one ctrl group from several towns on release", async ({ page }) => {
   const c3 = await project("c3");
   if (!c1 || !c3) throw new Error("missing screen positions");
 
-  await page.keyboard.down("Control");
+  await page.keyboard.press("Control");
   await page.mouse.click(c2.x, c2.y);
   await page.mouse.click(c1.x, c1.y);
   await page.mouse.click(c3.x, c3.y);
   await expect(page.locator("#toast")).toContainText("2 座据点 → c3");
-  await page.keyboard.up("Control");
+  await page.click("#btn-dispatch");
   await expect(page.locator("#toast")).toContainText("2 座据点同时发兵");
+});
+
+test("double-clicking an arched arrow cancels its task", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/?map=frontier01");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-start");
+  await expect(page.locator("#page-briefing")).toBeVisible();
+  await page.click("#btn-brief-start");
+  await expect(page.locator("#page-game")).toBeVisible();
+
+  const project = (id: string) =>
+    page.evaluate(
+      (cityId) =>
+        (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+          .__mlDebug?.projectCity(cityId),
+      id,
+    );
+  const plan = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as {
+          __mlPlan?: {
+            multiSelect: boolean;
+            pending: string[];
+            groups: Array<{ sources: string[]; to: string }>;
+            arcs: Array<{ x: number; y: number } | null>;
+          };
+        }).__mlPlan,
+    );
+
+  await page.keyboard.press("Control");
+  const c1 = await project("c1");
+  const c3 = await project("c3");
+  if (!c1 || !c3) throw new Error("missing screen positions");
+  await page.mouse.click(c1.x, c1.y);
+  await page.mouse.click(c3.x, c3.y);
+  await expect(page.locator("#toast")).toContainText("1 座据点 → c3");
+
+  const arc = (await plan())?.arcs[0];
+  if (!arc) throw new Error("missing arched arrow");
+  await page.mouse.dblclick(arc.x, arc.y);
+  await expect(page.locator("#toast")).toContainText("已取消 1 座 → c3");
+  await expect.poll(async () => (await plan())?.groups).toEqual([]);
+  await expect(page.locator("#btn-dispatch")).toBeDisabled();
+
+  // 再次指定后单击 Ctrl 退出，未派遣任务被取消。
+  await page.mouse.click(c1.x, c1.y);
+  await page.mouse.click(c3.x, c3.y);
+  await expect(page.locator("#toast")).toContainText("1 座据点 → c3");
+  await page.keyboard.press("Control");
+  await expect(page.locator("#toast")).toContainText("已退出多选 · 1 组任务已取消");
+  await expect.poll(async () => (await plan())?.groups).toEqual([]);
+  await expect(page.locator("#btn-dispatch")).not.toHaveClass(/on/);
 });

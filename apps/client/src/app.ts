@@ -139,9 +139,10 @@ const TEMPLATE = `
         <button class="btn ghost" id="btn-deselect">取消</button>
       </div>
     </div>
+    <button class="btn primary dispatch-btn" id="btn-dispatch" disabled>派遣</button>
     <div class="toast" id="toast"></div>
     <div class="plan-hint" id="plan-hint"></div>
-    <div class="hint">拖动地图 · 左键选择与派兵 · 按住 Ctrl 批量指定目标 · 点击行军兵团改道 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
+    <div class="hint">拖动地图 · 左键选择与派兵 · Ctrl 切换多选 · 多选后点“派遣”发兵 · 点击兵团改道 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
   </div>
 
   <div class="overlay" id="pause-overlay">
@@ -463,6 +464,7 @@ export class App {
     this.on("btn-confirm-yes", "click", () => this.restartGame());
     this.on("btn-menu", "click", () => this.backToMenu());
     this.on("btn-deselect", "click", () => this.session?.clearSelection());
+    this.on("btn-dispatch", "click", () => this.session?.dispatchSelectedPlan());
     this.on("city-upgrade", "click", () => this.session?.upgradeSelected());
     this.on("city-transit", "click", () => this.session?.toggleTransit());
     this.on("btn-save-settings", "click", () => this.applySettingsForm(true));
