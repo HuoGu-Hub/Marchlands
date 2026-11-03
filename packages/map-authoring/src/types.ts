@@ -28,6 +28,8 @@ export interface TerrainDraft {
   seed: number;
   /** 起伏强度，1 为默认。 */
   amplitude: number;
+  /** 地表材质名，例如 rocks007；留空则使用顶点色。 */
+  material?: string;
 }
 
 export interface RoadVisualDraft {
