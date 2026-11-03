@@ -770,12 +770,7 @@ export function buildTerrain(
     const swap = Math.floor(random() * (index + 1));
     [candidates[index], candidates[swap]] = [candidates[swap], candidates[index]];
   }
-  for (const site of candidates.slice(0, 3)) {
-    group.add(buildRockRidge(site.x, site.z, 0.95 + random() * 0.25, heightAt, random, palette));
-  }
-  for (const site of candidates.slice(3, 5)) {
-    group.add(buildMesa(site.x, site.z, 1.1 + random() * 0.2, heightAt, random, palette));
-  }
+  // 地形里的程序化岩脊/台地无法单独选中，改为不生成；岩石由补景写入显式 props。
 
   return result;
 }
