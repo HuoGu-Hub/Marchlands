@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marchlands 单位与寻路机制</title>
+<style>
+  :root { color-scheme: dark; --bg:#111410; --panel:#181d16; --line:#313a2d; --text:#e7e2d4; --muted:#a7ad9b; --gold:#d6b46a; --green:#8fc27a; --red:#df8b78; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.75 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  main { max-width:1040px; margin:0 auto; padding:40px 28px 80px; }
+  h1 { margin:0 0 8px; font-size:30px; letter-spacing:.04em; }
+  h2 { margin:38px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--line); font-size:20px; color:var(--gold); }
+  h3 { margin:22px 0 8px; font-size:16px; color:var(--green); }
+  p, li { color:var(--text); }
+  .meta { color:var(--muted); font-size:13px; }
+  code { padding:2px 5px; border:1px solid var(--line); border-radius:4px; background:#0d100c; color:#e9d9a8; }
+  pre { overflow:auto; padding:16px; border:1px solid var(--line); border-radius:8px; background:#0d100c; line-height:1.6; }
+  table { width:100%; border-collapse:collapse; margin:12px 0 18px; }
+  th, td { padding:9px 10px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { background:#1d241a; color:var(--gold); font-weight:600; }
+  .note { padding:12px 16px; border-left:3px solid var(--gold); background:var(--panel); color:var(--muted); }
+  .grid { width:auto; font-family:Consolas, monospace; }
+  .grid td { width:64px; height:48px; text-align:center; }
+  .grid .void { background:#0b0d0a; color:#3a4234; }
+  .tag { display:inline-block; padding:1px 7px; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<main>
+<h1>单位与寻路机制</h1>
+<p class="meta">规格版本 2026-11-04 · 以此文为准</p>
+
+<h2>1. 网格与坐标</h2>
+<table class="grid">
+  <tr><td class="void"></td><td>一</td><td>二</td></tr>
+  <tr><td>三</td><td>四</td><td>五</td></tr>
+  <tr><td class="void"></td><td>六</td><td class="void"></td></tr>
+  <tr><td>七</td><td>八</td><td>九</td></tr>
+</table>
+<p>空白格不可通行；有字格可通行。精兵从一出发，到八的路线为 <code>一 → 四 → 六 → 八</code>，不是一二六八九。六是单格瓶颈，两侧没有可绕行格。</p>
+
+<h2>2. 单位档案</h2>
+<table>
+  <tr><th>字段</th><th>含义</th></tr>
+  <tr><td><code>surface</code></td><td>可通行地表集合，例如陆路、浅水、水路。</td></tr>
+  <tr><td><code>maxStepCm</code></td><td>相邻两格允许的最大高度差，厘米。</td></tr>
+  <tr><td><code>footprint</code></td><td>占地格数。普通兵/精兵 <code>1×1</code>，盾兵 <code>1×2</code>。</td></tr>
+  <tr><td><code>turnFootprint</code></td><td>转弯所需空地。盾兵为 <code>2×2</code>。</td></tr>
+</table>
+<p>高度差是逐边判定，不是整条路线累计。例：精兵 <code>maxStepCm = 10000</code>，普通兵 <code>500</code>；同一条边高差 5000cm 时精兵能走、普通兵不能。</p>
+
+<h2>3. 盾兵 1×2 的格位</h2>
+<p>盾兵的格位不是单格中心，而是 <code>(x, z, orientation)</code> 两个相邻格。起始占 <code>(1,2)</code> 时，只能整体平移到 <code>(4,5)</code>，不能从六这种单格通道通过。</p>
+<pre>横放： (x,z) + (x+1,z)
+竖放： (x,z) + (x,z+1)
+平移：保持朝向，两格同时可走且高度差满足
+转弯：目标处的 2×2 区域内四格全部可走，才允许换朝向
+对角：不改变占地合法性，但路径代价按两格移动中的最大值计算</pre>
+<p>盾兵不能只移动一半格位；任何移动、转弯、贴墙都按完整占地检查。</p>
+
+<h2>4. 建筑与兵种</h2>
+<table>
+  <tr><th>建筑</th><th>产出兵种</th><th>说明</th></tr>
+  <tr><td>兵营</td><td>步兵</td><td>固定绑定。</td></tr>
+  <tr><td>马厩</td><td>骑兵</td><td>固定绑定。</td></tr>
+  <tr><td>盾兵营</td><td>盾兵</td><td>固定绑定。</td></tr>
+  <tr><td>弓兵营</td><td>弓兵</td><td>固定绑定。</td></tr>
+  <tr><td>弓箭塔</td><td>无</td><td>只防御，不产兵。</td></tr>
+</table>
+<p>所有可产兵建筑能且只能产一种兵。建筑外观模型在导入资产时绑定建筑类型，运行时不按模型哈希临时决定兵种。</p>
+
+<h2>5. 建筑通行状态</h2>
+<table>
+  <tr><th>归属</th><th>状态来源</th><th>局内是否可改</th></tr>
+  <tr><td>中立</td><td>创建地图时的默认值</td><td>玩家不可改</td></tr>
+  <tr><td>已被占领</td><td>占领方设置，默认继承被占领前的状态或占领方默认</td><td>占领方可改</td></tr>
+</table>
+<p>状态只有两种：</p>
+<ul>
+  <li><strong>放行</strong>：非己方兵团无需战斗直接通过；终点是建筑本身时仍进入占领结算。</li>
+  <li><strong>拦截</strong>：非己方兵团必须战斗并攻占后才能通过。</li>
+</ul>
+<p>己方建筑永远放行。非己方建筑按<strong>通过瞬间</strong>的状态判定，而不是按出发时的快照。</p>
+
+<h2>6. 逐兵通过</h2>
+<pre>兵团进入建筑格时：
+  for each 尚未通过的士兵:
+    读取建筑当前状态
+    己方 / 放行 -> 标记已通过
+    拦截 -> 该士兵与守军结算
+  已通过的部分继续前往目的地，不回头
+  未通过且战斗失败的部分留在建筑前，按战斗结果处理
+  攻占成功后，剩余士兵继续通过</pre>
+<p>状态在兵团通过途中从放行改为拦截时，只影响尚未通过的士兵；已通过的士兵不会被拉回。</p>
+
+<h2>7. 寻路顺序</h2>
+<ol>
+  <li>起点与终点所在格可通行。</li>
+  <li>过滤当前兵种不能走的地表。</li>
+  <li>逐边检查高度差 <code>abs(h1 - h2) &lt;= maxStepCm</code>。</li>
+  <li>按 <code>1×1</code> 或 <code>1×2</code> 占地检查通道宽度；转弯检查 <code>2×2</code>。</li>
+  <li>检查路线上建筑在<strong>规划时</strong>的通行状态，只作为路线候选；实际通过时再逐兵复核。</li>
+</ol>
+<p>建筑状态会变化，所以长距离路线必须有“进入建筑前重新校验”的事件，不能只在出发时算一次。</p>
+
+<h2>8. 代码改动范围</h2>
+<table>
+  <tr><th>层</th><th>改动</th></tr>
+  <tr><td>地图数据</td><td>新增建筑类型、<code>unitKind</code>、中立默认通行状态；外观资产绑定建筑类型。</td></tr>
+  <tr><td>模拟</td><td>兵团增加 <code>unitKind</code>；建筑增加运行期通行状态与切换命令；通过建筑时逐兵结算。</td></tr>
+  <tr><td>寻路</td><td>按兵种档案生成可走掩码、高度规则、占地与转弯规则；建筑格动态成本/阻挡。</td></tr>
+  <tr><td>界面</td><td>建筑检查器设置默认通行状态、占领后切换；出兵建筑显示唯一兵种。</td></tr>
+  <tr><td>资产</td><td>导入建筑模型时选择建筑类型；类型决定可产出兵种。</td></tr>
+</table>
+
+<h2>9. 实施阶段</h2>
+<ol>
+  <li><strong>数据模型</strong>：兵种档案、建筑类型、建筑默认状态、兵团兵种。</li>
+  <li><strong>网格寻路</strong>：1×1 兵种地表/高差/宽度；1×2 盾兵平移与 2×2 转弯；用 1–9 网格做固定测试。</li>
+  <li><strong>建筑通过</strong>：逐兵状态、拆分、战斗、攻占后继续。</li>
+  <li><strong>局内切换</strong>：占领方切换拦截/放行，已通过士兵不回退。</li>
+  <li><strong>编辑器与资产</strong>：建筑类型绑定、默认状态、出兵展示。</li>
+</ol>
+
+<h2>10. 待确认</h2>
+<div class="note">
+<p><strong>城镇是否产兵？</strong> 当前游戏只有城镇、粮仓、驻兵点。上表没有“城镇”这一行；如果城镇也产兵，需要指定它固定产哪一种；如果不产兵，现有从城镇出兵的操作要迁移到兵营等建筑。</p>
+<p><strong>粮仓、驻兵点归入哪类建筑？</strong> 它们当前有守军和功能，但不一定属于“可产兵建筑”。</p>
+<p><strong>盾兵初始朝向、建筑占格数、建筑是否阻挡整格</strong>会直接影响网格寻路数据结构，需要在实现前固定。</p>
+</div>
+</main>
+</body>
+</html>
