@@ -362,7 +362,7 @@ export function buildTerrain(
 
   const width = maxX - minX;
   const depth = maxZ - minZ;
-  const cell = navGrid ? 1.0 : 1.5;
+  const cell = navGrid ? 0.8 : 0.9;
   const segmentsX = Math.max(24, Math.round(width / cell));
   const segmentsZ = Math.max(18, Math.round(depth / cell));
 
@@ -385,34 +385,14 @@ export function buildTerrain(
     position.setY(index, heightAt(position.getX(index), position.getZ(index)));
   }
   geometry.computeVertexNormals();
-  const faceted = geometry.toNonIndexed();
-  const flat = faceted.getAttribute("position") as THREE.BufferAttribute;
+  const normal = geometry.getAttribute("normal") as THREE.BufferAttribute;
   const colors: number[] = [];
   const color = new THREE.Color();
-  for (let index = 0; index < flat.count; index += 3) {
-    const ax = flat.getX(index);
-    const ay = flat.getY(index);
-    const az = flat.getZ(index);
-    const bx = flat.getX(index + 1);
-    const by = flat.getY(index + 1);
-    const bz = flat.getZ(index + 1);
-    const cx = flat.getX(index + 2);
-    const cy = flat.getY(index + 2);
-    const cz = flat.getZ(index + 2);
-    const ux = bx - ax;
-    const uy = by - ay;
-    const uz = bz - az;
-    const vx = cx - ax;
-    const vy = cy - ay;
-    const vz = cz - az;
-    const nx = uy * vz - uz * vy;
-    const ny = uz * vx - ux * vz;
-    const nz = ux * vy - uy * vx;
-    const normalLength = Math.hypot(nx, ny, nz) || 1;
-    const slope = 1 - Math.abs(ny / normalLength);
-    const x = (ax + bx + cx) / 3;
-    const y = (ay + by + cy) / 3;
-    const z = (az + bz + cz) / 3;
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index);
+    const y = position.getY(index);
+    const z = position.getZ(index);
+    const slope = 1 - Math.abs(normal.getY(index));
     const dirt = valueNoise(x / 9 + noiseShift, z / 9, 103) > 0.76;
     if (navGrid) {
       color.setHex(surfaceColor(navGrid.surfaceAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)), palette));
@@ -426,17 +406,15 @@ export function buildTerrain(
       color.setHex(palette.grass);
     }
     color.offsetHSL(0, 0, (valueNoise(x / 3.5, z / 3.5, 7) - 0.5) * (navGrid ? 0.04 : 0.13) - slope * 0.2);
-    for (let vertex = 0; vertex < 3; vertex += 1) colors.push(color.r, color.g, color.b);
+    colors.push(color.r, color.g, color.b);
   }
-  faceted.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  faceted.computeVertexNormals();
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
 
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
-    flatShading: true,
   });
-  const terrainMesh = new THREE.Mesh(faceted, material);
+  const terrainMesh = new THREE.Mesh(geometry, material);
   terrainMesh.receiveShadow = true;
   terrainMesh.castShadow = false;
 
@@ -554,7 +532,7 @@ function islandRim(
   seed: number,
   heightAt: (x: number, z: number) => number,
 ): IslandRimPoint[] {
-  const steps = 168;
+  const steps = 288;
   const shift = (seed % 977) * 0.013;
   const points: IslandRimPoint[] = [];
   for (let index = 0; index < steps; index += 1) {
@@ -653,7 +631,7 @@ function buildIslandBase(
   seed: number,
 ): THREE.Group {
   const group = new THREE.Group();
-  const layers = 22;
+  const layers = 56;
   const rings: Array<Array<{ x: number; y: number; z: number; theta: number }>> = [];
   for (let layer = 0; layer <= layers; layer += 1) {
     const t = layer / layers;
@@ -681,62 +659,70 @@ function buildIslandBase(
     rings.push(ring);
   }
 
+  const cols = rim.length;
   const positions: number[] = [];
   const colors: number[] = [];
+  const indices: number[] = [];
   const color = new THREE.Color();
   const rock = new THREE.Color(palette.rock);
   const mesa = new THREE.Color(palette.mesa);
   const dark = new THREE.Color(palette.rockDark);
   const soil = new THREE.Color(palette.skirt);
-  for (let layer = 0; layer < layers; layer += 1) {
-    const upper = rings[layer];
-    const lower = rings[layer + 1];
-    const tMid = (layer + 0.5) / layers;
-    for (let index = 0; index < rim.length; index += 1) {
-      const next = (index + 1) % rim.length;
-      const a = upper[index];
-      const b = upper[next];
-      const c = lower[next];
-      const d = lower[index];
-      const strata = valueNoise(2.3, (a.y - d.y) * 0.34 + tMid * 2.4, seed + 8);
-      const crevice = valueNoise(Math.cos(a.theta) * 9.5 + 9, Math.sin(a.theta) * 9.5 + tMid * 3.1, seed + 61);
-      const rib = valueNoise(Math.cos(a.theta) * 17 + 2, Math.sin(a.theta) * 17 - 5, seed + 83);
-      color.copy(rock).lerp(mesa, strata * 0.95);
-      if (strata > 0.58) color.offsetHSL(0, -0.03, 0.1);
-      if (crevice < 0.38) color.lerp(dark, 0.72);
-      if (rib < 0.3) color.multiplyScalar(0.82);
-      if (layer === 0) color.lerp(soil, 0.6);
-      color.multiplyScalar(0.66 + (1 - tMid) * 0.5);
-      pushQuad(
-        positions,
-        colors,
-        color,
-        [a.x, a.y, a.z],
-        [b.x, b.y, b.z],
-        [c.x, c.y, c.z],
-        [d.x, d.y, d.z],
+  const bottomRing = rings[layers];
+  for (let layer = 0; layer <= layers; layer += 1) {
+    const ring = rings[layer];
+    const t = layer / layers;
+    const nextLayer = rings[Math.min(layers, layer + 1)];
+    for (let index = 0; index < cols; index += 1) {
+      const point = ring[index];
+      positions.push(point.x, point.y, point.z);
+      const drop = point.y - nextLayer[index].y;
+      const strata = valueNoise(2.3, drop * 0.34 + t * 2.4, seed + 8);
+      const crevice = valueNoise(
+        Math.cos(point.theta) * 9.5 + 9,
+        Math.sin(point.theta) * 9.5 + t * 3.1,
+        seed + 61,
       );
+      const rib = valueNoise(Math.cos(point.theta) * 17 + 2, Math.sin(point.theta) * 17 - 5, seed + 83);
+      const band = 0.5 + 0.5 * Math.sin(point.y * 0.62 + strata * 2.4 + seed * 0.001);
+      color.copy(rock).lerp(mesa, strata * 0.68 + band * 0.22);
+      if (band > 0.78) color.offsetHSL(0, -0.03, 0.09);
+      if (crevice < 0.44) color.lerp(dark, 0.55 + (0.44 - crevice) * 1.4);
+      if (rib < 0.34) color.multiplyScalar(0.8);
+      if (layer === 0) color.lerp(soil, 0.6);
+      color.multiplyScalar(0.6 + (1 - t) * 0.58);
+      colors.push(color.r, color.g, color.b);
+    }
+  }
+  for (let layer = 0; layer < layers; layer += 1) {
+    for (let index = 0; index < cols; index += 1) {
+      const next = (index + 1) % cols;
+      const a = layer * cols + index;
+      const b = layer * cols + next;
+      const c = (layer + 1) * cols + next;
+      const d = (layer + 1) * cols + index;
+      indices.push(a, b, c, a, c, d);
     }
   }
 
-  const tipY = Math.min(...rings[layers].map((point) => point.y)) - 6;
-  const tip: [number, number, number] = [centerX + 1.6, tipY, centerZ - 1.2];
-  const bottom = rings[layers];
-  for (let index = 0; index < bottom.length; index += 1) {
-    const a = bottom[index];
-    const b = bottom[(index + 1) % bottom.length];
-    color.copy(dark).multiplyScalar(0.44);
-    positions.push(a.x, a.y, a.z, b.x, b.y, b.z, ...tip);
-    for (let vertex = 0; vertex < 3; vertex += 1) colors.push(color.r, color.g, color.b);
+  const tipY = Math.min(...bottomRing.map((point) => point.y)) - 6;
+  const tipIndex = positions.length / 3;
+  positions.push(centerX + 1.6, tipY, centerZ - 1.2);
+  color.copy(dark).multiplyScalar(0.44);
+  colors.push(color.r, color.g, color.b);
+  const bottomStart = layers * cols;
+  for (let index = 0; index < cols; index += 1) {
+    indices.push(bottomStart + index, bottomStart + ((index + 1) % cols), tipIndex);
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(
     geometry,
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }),
   );
   mesh.name = "island-base";
   group.add(mesh);

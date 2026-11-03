@@ -35,6 +35,28 @@ const UNIT_SCALE = 1.15;
 const CAVALRY_SCALE = 0.95;
 const GLB_UNIT_SCALE = 1.05;
 const SQUAD_LABEL_HEIGHT = 1.55;
+/** 兵团按实际人数铺开，每行站位与行列间距，单位：米。 */
+const SQUAD_COLUMNS = 5;
+const SQUAD_SPACING_X = 0.44;
+const SQUAD_SPACING_Z = 0.5;
+const SQUAD_CAVALRY_SPACING = 0.78;
+
+/**
+ * 兵团编队：按人数生成每个士兵的站位，行优先、以队形中心为原点。
+ * 兵种来自出发据点——城镇按 id 稳定对应一种兵营，驻兵点是弓箭塔，粮仓出步兵。
+ */
+function squadFormation(count: number, spacingX: number, spacingZ: number): Array<[number, number]> {
+  const total = Math.max(1, Math.floor(count));
+  const rows = Math.ceil(total / SQUAD_COLUMNS);
+  const offsets: Array<[number, number]> = [];
+  for (let index = 0; index < total; index += 1) {
+    const row = Math.floor(index / SQUAD_COLUMNS);
+    const column = index % SQUAD_COLUMNS;
+    const rowCount = Math.min(SQUAD_COLUMNS, total - row * SQUAD_COLUMNS);
+    offsets.push([(column - (rowCount - 1) / 2) * spacingX, (row - (rows - 1) / 2) * spacingZ]);
+  }
+  return offsets;
+}
 
 const TREE_SPECIES = [
   "tree_pineTallA",
@@ -707,13 +729,9 @@ export class BattleScene {
 
   private createSquadView(squad: SquadState): SquadView {
     const group = new THREE.Group();
-    const explicit = (squad as SquadState & { unitKind?: UnitKind }).unitKind;
-    const fallback: UnitKind[] = ["shield", "infantry", "archer"];
-    const kinds: UnitKind[] = explicit ? [explicit, explicit, explicit] : fallback;
-
-    const offsets: Array<[number, number]> = explicit === "cavalry"
-      ? [[-0.65, -0.25], [0.65, -0.25], [0, 0.7]]
-      : [[-0.75, -0.12], [0.75, -0.08], [0, 0.72]];
+    const kind = this.unitKindFor(squad.from);
+    const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
+    const offsets = squadFormation(squad.count, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
 
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -744,33 +762,42 @@ export class BattleScene {
 
     const unitAssetId = this.visual?.units?.[squad.owner === 1 ? "player1" : "player2"];
     if (unitAssetId && assetRegistry.has(unitAssetId)) {
-      void this.populateGlbUnits(view, unitAssetId, squad, offsets, kinds);
+      void this.populateGlbUnits(view, unitAssetId, squad, offsets, kind);
     } else {
-      this.populateProceduralUnits(view, squad, offsets, kinds);
+      this.populateProceduralUnits(view, squad, offsets, kind);
     }
     return view;
+  }
+
+  /** 据点出兵兵种：城镇按 id 稳定对应一种兵营，驻兵点是弓箭塔，粮仓出步兵。 */
+  private unitKindFor(siteId: CityId): UnitKind {
+    const site = this.map.cities.find((city) => city.id === siteId);
+    if (!site) return "infantry";
+    if (site.kind === "outpost") return "archer";
+    if (site.kind === "granary") return "infantry";
+    return townBuildingKind(hashId(site.id)) as UnitKind;
   }
 
   private populateProceduralUnits(
     view: SquadView,
     squad: SquadState,
     offsets: Array<[number, number]>,
-    kinds: UnitKind[],
+    kind: UnitKind,
   ): void {
-    kinds.forEach((kind, index) => {
+    for (let index = 0; index < offsets.length; index += 1) {
       const [x, z] = offsets[index];
       const unit = new UnitActor({
         kind,
         palette: paletteFor(squad.owner),
-        variant: index,
-        phase: index * 2.1 + 0.4,
+        variant: index % 3,
+        phase: (index % SQUAD_COLUMNS) * 0.9 + Math.floor(index / SQUAD_COLUMNS) * 1.7,
       });
       unit.position.set(x, 0, z);
       unit.scale.setScalar(kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE);
       this.enableShadows(unit);
       view.group.add(unit);
       view.units.push(unit);
-    });
+    }
   }
 
   private async populateGlbUnits(
@@ -778,7 +805,7 @@ export class BattleScene {
     assetId: string,
     squad: SquadState,
     offsets: Array<[number, number]>,
-    kinds: UnitKind[],
+    kind: UnitKind,
   ): Promise<void> {
     try {
       for (let index = 0; index < offsets.length; index += 1) {
@@ -800,7 +827,7 @@ export class BattleScene {
       }
     } catch {
       if (this.disposed || view.disposed || view.units.length > 0) return;
-      this.populateProceduralUnits(view, squad, offsets, kinds);
+      this.populateProceduralUnits(view, squad, offsets, kind);
     }
   }
 
@@ -1370,8 +1397,8 @@ export class BattleScene {
       const cos = Math.cos(theta);
       const sin = Math.sin(theta);
 
-      if (index % 2 === 0 && random() > 0.45) {
-        const count = 1 + Math.floor(random() * 3);
+      if (index % 5 === 0 && random() > 0.45) {
+        const count = 1 + Math.floor(random() * 2);
         for (let cluster = 0; cluster < count; cluster += 1) {
           const t = 0.05 + random() * 0.2;
           const spread = (random() - 0.5) * 2.6;
@@ -1383,7 +1410,7 @@ export class BattleScene {
         }
       }
 
-      if (index % 4 === 1) {
+      if (index % 7 === 1) {
         const t = 0.16 + random() * 0.34;
         const shrink = 0.8 * Math.pow(t, 0.9);
         const cliffRadius = radius * (1 - shrink) * (0.84 + random() * 0.06);
@@ -1394,7 +1421,7 @@ export class BattleScene {
         cliffRocks.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });
       }
 
-      if (index % 5 === 2) {
+      if (index % 9 === 2) {
         const t = 0.3 + random() * 0.32;
         const x = point.x + (point.innerX - point.x) * t;
         const z = point.z + (point.innerZ - point.z) * t;
