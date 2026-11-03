@@ -1,3 +1,4 @@
+import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 async function openClassicEditor(page: import("@playwright/test").Page): Promise<void> {
@@ -308,6 +309,52 @@ test("next editor switches ground material and keeps atmosphere on foundation ad
     )
     .toBe(2);
   expect(await snapshot()).toEqual(before);
+});
+
+test("next editor imports a custom ground material and keeps it after reload", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.click("#mlnx-material-import");
+  const chooser = await chooserPromise;
+  await chooser.setFiles(path.join(process.cwd(), "apps/client/src/assets/materials/snow014/color.jpg"));
+  const material = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __mlnxDoc: () => { visual: { terrain: { material?: string } } } }).__mlnxDoc().visual
+          .terrain.material,
+    );
+  await expect.poll(material).toMatch(/^custom\./);
+  const id = await material();
+  await page.waitForTimeout(1200);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await expect.poll(material).toBe(id);
+  await expect(page.locator("#mlnx-inspector")).toContainText("自定义");
+});
+
+test("next editor imports an OBJ with MTL and texture", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.keyboard.press("b");
+  await page.click('[data-tab="decor"]');
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.click("#mlnx-obj-import");
+  const chooser = await chooserPromise;
+  const root = process.cwd();
+  await chooser.setFiles([
+    path.join(root, "tests/fixtures/obj/cube.obj"),
+    path.join(root, "tests/fixtures/obj/cube.mtl"),
+    path.join(root, "apps/client/src/assets/materials/rocks007/color.jpg"),
+  ]);
+  await expect(page.locator("#mlnx-toast")).toContainText("已导入", { timeout: 20_000 });
+  await expect(page.locator("#mlnx-left-content")).toContainText("cube");
+  await expect(page.locator("[data-asset-id]").filter({ hasText: "cube" })).toHaveCount(1);
 });
 
 test("next editor converts to a grid map and sculpts terrain", async ({ page }) => {

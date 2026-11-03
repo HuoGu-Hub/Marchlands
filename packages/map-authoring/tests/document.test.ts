@@ -170,6 +170,14 @@ describe("map authoring", () => {
     expect(after.edges.map((edge) => edge.grade)).not.toEqual(before.edges.map((edge) => edge.grade));
   });
 
+  it("preserves terrain material through save and load", () => {
+    const starter = createStarterDocument();
+    const next = updateTerrain(starter, { material: "rocks007" });
+    expect(parseDocument(JSON.parse(serializeDocument(next))).document.visual.terrain.material).toBe("rocks007");
+    const custom = updateTerrain(starter, { material: "custom.local.snow" });
+    expect(parseDocument(JSON.parse(serializeDocument(custom))).document.visual.terrain.material).toBe("custom.local.snow");
+  });
+
   it("reports props outside the map bounds", () => {
     const starter = createStarterDocument();
     starter.visual.props.push({

@@ -54,6 +54,48 @@ export async function openMapText(): Promise<OpenedMap | null> {
     input.click();
   });
 }
+export async function openModelFiles(directory = false): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    if (directory) {
+      (input as HTMLInputElement & { webkitdirectory: boolean }).webkitdirectory = true;
+    } else {
+      input.accept = ".obj,.mtl,.jpg,.jpeg,.png,.webp";
+    }
+    input.addEventListener(
+      "change",
+      () => {
+        resolve(Array.from(input.files ?? []));
+      },
+      { once: true },
+    );
+    input.click();
+  });
+}
+
+export async function openTextureFiles(directory = false): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    if (directory) {
+      (input as HTMLInputElement & { webkitdirectory: boolean }).webkitdirectory = true;
+    } else {
+      input.accept = "image/jpeg,image/png,image/webp";
+    }
+    input.addEventListener(
+      "change",
+      () => {
+        resolve(Array.from(input.files ?? []));
+      },
+      { once: true },
+    );
+    input.click();
+  });
+}
+
 export interface OpenedAssetPack {
   name: string;
   bytes: Uint8Array;

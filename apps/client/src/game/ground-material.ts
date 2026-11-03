@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { customGroundMaterial } from "./custom-materials";
 
 const URLS = import.meta.glob("../assets/materials/*/*.jpg", {
   query: "?url",
@@ -20,6 +21,7 @@ function load(path: string | undefined, colorSpace: boolean): THREE.Texture | nu
 
 export function groundMaterial(name: string | undefined): THREE.MeshStandardMaterial | null {
   if (!name) return null;
+  if (name.startsWith("custom.")) return customGroundMaterial(name);
   const key = name.toLowerCase();
   const cached = cache.get(key);
   if (cached) return cached;

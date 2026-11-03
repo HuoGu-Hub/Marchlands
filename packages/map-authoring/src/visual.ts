@@ -371,6 +371,10 @@ export function isRoadStyle(value: unknown): value is RoadVisualDraft["style"] {
 }
 
 export function terrainDraft(value: Partial<TerrainDraft> | undefined, fallback: TerrainDraft): TerrainDraft {
+  const material =
+    typeof value?.material === "string" && value.material.trim().length > 0
+      ? value.material.trim().slice(0, 128)
+      : fallback.material;
   return {
     style: isTerrainStyle(value?.style) ? value.style : fallback.style,
     seed: typeof value?.seed === "number" && Number.isFinite(value.seed) ? Math.round(value.seed) : fallback.seed,
@@ -378,6 +382,7 @@ export function terrainDraft(value: Partial<TerrainDraft> | undefined, fallback:
       typeof value?.amplitude === "number" && Number.isFinite(value.amplitude)
         ? Math.min(1.5, Math.max(0.2, value.amplitude))
         : fallback.amplitude,
+    ...(material ? { material } : {}),
   };
 }
 

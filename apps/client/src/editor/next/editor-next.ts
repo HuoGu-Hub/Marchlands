@@ -53,8 +53,15 @@ import {
 import type { CompileResult, FoundationBoundsDm, GridBrushMode, MapDocument, MapVisual, PropDraft, SiteDraft } from "@marchlands/map-authoring";
 import { assetRegistry } from "../../game/asset-registry";
 import { BattleScene } from "../../game/scene";
-import { openAssetPackFile, openMapText, saveAssetPackFile, saveMapText } from "../map-io";
+import { openAssetPackFile, openMapText, openModelFiles, openTextureFiles, saveAssetPackFile, saveMapText } from "../map-io";
 import { buildBuiltinAssetPack } from "../../game/asset-pack-export";
+import { convertObjToPack } from "../../game/obj-import";
+import {
+  customMaterialList,
+  loadCustomMaterials,
+  removeCustomMaterial,
+  saveCustomMaterial,
+} from "../../game/custom-materials";
 import "./next.css";
 
 type NextTool = "select" | "move" | "rotate" | "scale" | "place" | "road" | "terrain";
@@ -201,6 +208,7 @@ export class EditorNext {
   private mounted = false;
   private disposed = false;
   private inspectorFrame = 0;
+  private materialsLoaded = false;
   private gizmoDirty = false;
   private cameraState: CameraState | null = null;
 
@@ -228,6 +236,7 @@ export class EditorNext {
     }
     this.startScene();
     this.renderAll();
+    this.ensureCustomMaterials();
     this.resume();
   }
 
@@ -452,6 +461,20 @@ export class EditorNext {
         return atmosphere ? atmosphere.uuid : null;
       };
     }
+  }
+
+  private ensureCustomMaterials(): void {
+    if (this.materialsLoaded) return;
+    this.materialsLoaded = true;
+    void loadCustomMaterials().then(() => {
+      if (this.disposed) return;
+      if (this.doc.visual.terrain.material?.startsWith("custom.") && this.scene) {
+        this.compiled = compileDocument(this.doc, { validateNavigation: false });
+        this.scene.updateTerrain(this.compiled.map, this.compiled.visual);
+        this.syncProxies();
+      }
+      this.scheduleInspectorRender();
+    });
   }
 
   private disposeScene(): void {
@@ -679,6 +702,7 @@ export class EditorNext {
         const value = Number(yInput.value);
         if (Number.isFinite(value)) this.toolElevation = Math.max(-50, Math.min(200, value));
       });
+      this.renderPackControls();
       return;
     }
     if (this.libraryTab === "site") {
@@ -704,6 +728,7 @@ export class EditorNext {
           this.renderLibrary();
         });
       }
+      this.renderPackControls();
       return;
     }
     const kind = this.libraryTab === "decor" ? "prop" : "terrain";
@@ -739,6 +764,10 @@ export class EditorNext {
         this.renderLibrary();
       });
     }
+    this.renderPackControls();
+  }
+
+  private renderPackControls(): void {
     const packRow = document.createElement("div");
     packRow.className = "mlnx-actions-row";
     packRow.innerHTML =
@@ -747,6 +776,18 @@ export class EditorNext {
     this.leftContent.appendChild(packRow);
     packRow.querySelector("#mlnx-pack-import")?.addEventListener("click", () => void this.importAssetPack());
     packRow.querySelector("#mlnx-pack-export")?.addEventListener("click", () => void this.exportBuiltinPack());
+    const objRow = document.createElement("div");
+    objRow.className = "mlnx-actions-row";
+    objRow.innerHTML =
+      '<button class="mlnx-btn" id="mlnx-obj-import">导入 OBJ</button>' +
+      '<button class="mlnx-btn" id="mlnx-obj-folder">OBJ 文件夹</button>';
+    this.leftContent.appendChild(objRow);
+    objRow.querySelector("#mlnx-obj-import")?.addEventListener("click", () => void this.importObj(false));
+    objRow.querySelector("#mlnx-obj-folder")?.addEventListener("click", () => void this.importObj(true));
+    const objNote = document.createElement("p");
+    objNote.className = "mlnx-note";
+    objNote.textContent = "OBJ 会连同 MTL 与贴图一起烘焙成 GLB；按当前标签页导入为装饰/据点/地基/地形，单位在地图设置里导入。";
+    this.leftContent.appendChild(objNote);
     const packs = assetRegistry.packList;
     if (packs.length > 0) {
       const list = document.createElement("div");
@@ -787,6 +828,62 @@ export class EditorNext {
     } catch (error) {
       this.notice(error instanceof Error ? error.message : "资产包无法读取");
     }
+  }
+
+  private async importObj(directory: boolean, forcedKind?: "foundation" | "building" | "terrain" | "prop" | "unit"): Promise<void> {
+    const files = await openModelFiles(directory);
+    if (files.length === 0) return;
+    const kind: "foundation" | "building" | "terrain" | "prop" | "unit" =
+      forcedKind ??
+      (this.libraryTab === "foundation"
+        ? "foundation"
+        : this.libraryTab === "site"
+          ? "building"
+          : this.libraryTab === "terrain"
+            ? "terrain"
+            : "prop");
+    this.notice("正在转换 OBJ…");
+    try {
+      const result = await convertObjToPack(files, kind);
+      const loaded = await assetRegistry.loadPack(result.bytes, { persist: true, fileName: result.fileName });
+      if (kind !== "unit") {
+        this.activeAssetId = result.assetId;
+        this.renderLibrary();
+        requestAnimationFrame(() => {
+          const active = this.leftContent.querySelector<HTMLElement>(".mlnx-asset.active");
+          active?.scrollIntoView({ block: "center" });
+        });
+      }
+      this.scheduleInspectorRender();
+      this.notice("已导入 " + result.label + " · " + result.footprint + " × " + result.height + " 米 · " + loaded.count + " 个资产");
+    } catch (error) {
+      this.notice(error instanceof Error ? error.message : "OBJ 转换失败");
+    }
+  }
+
+  private async importGroundMaterial(directory: boolean): Promise<void> {
+    const files = await openTextureFiles(directory);
+    if (files.length === 0) return;
+    this.notice("正在导入地表贴图…");
+    try {
+      const record = await saveCustomMaterial(files);
+      this.commit(
+        updateTerrain(this.doc, { material: record.id }),
+        "已导入地表材质 " + record.label,
+        { terrain: true, sites: true },
+      );
+      this.scheduleInspectorRender();
+    } catch (error) {
+      this.notice(error instanceof Error ? error.message : "地表贴图导入失败");
+    }
+  }
+
+  private async removeGroundMaterial(id: string): Promise<void> {
+    await removeCustomMaterial(id);
+    this.commit(updateTerrain(this.doc, { material: undefined }), "已移除自定义地表材质", {
+      terrain: true,
+      sites: true,
+    });
   }
 
   private async exportBuiltinPack(): Promise<void> {
@@ -1048,15 +1145,17 @@ export class EditorNext {
       (value) => this.commit(updateTerrain(this.doc, { seed: Math.round(value) }), "已修改种子", { terrain: true, sites: true }),
       { step: 1, precision: 0 },
     );
+    const materialOptions: Array<{ t: string; v: string }> = [
+      { t: "顶点色（无贴图）", v: "__none__" },
+      { t: "岩石 · rocks007", v: "rocks007" },
+      { t: "泥土 · ground068", v: "ground068" },
+      { t: "雪地 · snow014", v: "snow014" },
+    ];
+    for (const record of customMaterialList()) materialOptions.push({ t: "自定义 · " + record.label, v: record.id });
     this.addSelect(
       "地表材质",
       this.doc.visual.terrain.material ?? "__none__",
-      [
-        { t: "顶点色（无贴图）", v: "__none__" },
-        { t: "岩石 · rocks007", v: "rocks007" },
-        { t: "泥土 · ground068", v: "ground068" },
-        { t: "雪地 · snow014", v: "snow014" },
-      ],
+      materialOptions,
       (value) =>
         this.commit(
           updateTerrain(this.doc, { material: value === "__none__" ? undefined : String(value) }),
@@ -1064,6 +1163,22 @@ export class EditorNext {
           { terrain: true, sites: true },
         ),
     );
+    const materialRow = document.createElement("div");
+    materialRow.className = "mlnx-actions-row";
+    materialRow.innerHTML =
+      '<button class="mlnx-btn" id="mlnx-material-import">导入贴图材质</button>' +
+      '<button class="mlnx-btn" id="mlnx-material-folder">贴图文件夹</button>';
+    this.inspectorEl.appendChild(materialRow);
+    materialRow.querySelector("#mlnx-material-import")?.addEventListener("click", () => void this.importGroundMaterial(false));
+    materialRow.querySelector("#mlnx-material-folder")?.addEventListener("click", () => void this.importGroundMaterial(true));
+    const currentMaterial = this.doc.visual.terrain.material;
+    if (currentMaterial?.startsWith("custom.")) {
+      const removeMaterial = document.createElement("button");
+      removeMaterial.className = "mlnx-delete";
+      removeMaterial.textContent = "移除当前自定义材质";
+      removeMaterial.addEventListener("click", () => void this.removeGroundMaterial(currentMaterial));
+      this.inspectorEl.appendChild(removeMaterial);
+    }
     this.addSection("道路");
     this.addSelect(
       "风格",
@@ -1116,9 +1231,10 @@ export class EditorNext {
     if (unitAssets.length === 0) {
       const unitNote = document.createElement("p");
       unitNote.className = "mlnx-note";
-      unitNote.textContent = "导入含 unit 资产的 .mlpack 后，可在这里替换兵团外观。";
+      unitNote.textContent = "导入含 unit 资产的 .mlpack 或 OBJ 后，可在这里替换兵团外观。";
       this.inspectorEl.appendChild(unitNote);
     }
+    this.addButton("导入单位 OBJ（静态）", () => void this.importObj(false, "unit"));
     if (this.doc.navigation === "grid" && this.doc.grid) {
       const navPreview = new BooleanInput({ value: false });
       navPreview.on("change", () => this.scene?.setNavPreview(navPreview.value));
