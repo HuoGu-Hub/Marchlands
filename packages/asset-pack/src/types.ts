@@ -1,6 +1,6 @@
-export type AssetKind = "terrain" | "prop" | "building" | "unit";
+export type AssetKind = "terrain" | "prop" | "building" | "unit" | "foundation";
 
-export const ASSET_KINDS: readonly AssetKind[] = ["terrain", "prop", "building", "unit"];
+export const ASSET_KINDS: readonly AssetKind[] = ["terrain", "prop", "building", "unit", "foundation"];
 
 export interface AssetEntry {
   /** 全局唯一资产 ID，格式为 命名空间:路径，例如 builtin:prop.tree_oak。 */

@@ -342,6 +342,27 @@ function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
   }
   const roads = roadDraft(roadsInput as Partial<VisualDraft["roads"]> | undefined, fallback.roads);
   const scatter = typeof value.scatter === "boolean" ? value.scatter : fallback.scatter;
+  let foundation: VisualDraft["foundation"];
+  if (value.foundation !== undefined) {
+    if (!asRecord(value.foundation)) throw new Error("地基模型配置必须是对象");
+    const assetId = value.foundation.assetId;
+    if (!isAssetId(assetId)) throw new Error("地基模型资产 ID 无效");
+    const scale = typeof value.foundation.scale === "number" && Number.isFinite(value.foundation.scale)
+      ? value.foundation.scale
+      : 1;
+    const rotation = typeof value.foundation.rotation === "number" && Number.isFinite(value.foundation.rotation)
+      ? value.foundation.rotation
+      : 0;
+    const offsetY = typeof value.foundation.offsetY === "number" && Number.isFinite(value.foundation.offsetY)
+      ? value.foundation.offsetY
+      : 0;
+    foundation = {
+      assetId,
+      scale: Math.max(0.01, Math.min(100, scale)),
+      rotation: Math.max(-3600, Math.min(3600, rotation)),
+      offsetY: Math.max(-100, Math.min(100, offsetY)),
+    };
+  }
   const propsInput = value.props;
   let props: PropDraft[] = [];
   if (propsInput !== undefined) {
@@ -368,7 +389,14 @@ function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
       units[key] = assetId;
     }
   }
-  return { terrain, roads, props, units, scatter };
+  return {
+    terrain,
+    roads,
+    ...(foundation ? { foundation } : {}),
+    props,
+    units,
+    scatter,
+  };
 }
 
 function roadsFromMapDef(map: MapDef): RoadDraft[] {

@@ -117,6 +117,8 @@ export class BattleScene {
     height: number;
     cellCm: number;
   } | null = null;
+  private foundationGroup: THREE.Group | null = null;
+  private foundationToken = 0;
   private atmosphere: Atmosphere | null = null;
   private sun: THREE.DirectionalLight | null = null;
 
@@ -148,6 +150,7 @@ export class BattleScene {
     this.scene.add(this.propGroup);
     this.scene.add(this.sceneryGroup);
     this.buildGround();
+    this.applyFoundation();
     this.zoom = Math.max(this.fitZoom(), GAMEPLAY_ZOOM);
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
@@ -314,6 +317,7 @@ export class BattleScene {
     if (this.disposed) return;
     this.disposed = true;
     this.propBuildToken += 1;
+    this.foundationToken += 1;
     this.resizeObserver.disconnect();
     this.scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
@@ -774,7 +778,48 @@ export class BattleScene {
       disposeObject(previous.group);
     }
     this.scene.add(this.terrain.group);
+    if (this.foundationGroup) this.terrain.islandGroup.visible = false;
     if (!(previous && reuseIsland)) this.rebuildAtmosphere(terrain?.style);
+  }
+
+  private applyFoundation(): void {
+    this.foundationToken += 1;
+    const token = this.foundationToken;
+    if (this.foundationGroup) {
+      this.scene.remove(this.foundationGroup);
+      disposeObject(this.foundationGroup);
+      this.foundationGroup = null;
+    }
+    const spec = this.visual?.foundation;
+    if (!spec) {
+      this.terrain.islandGroup.visible = true;
+      return;
+    }
+    if (!assetRegistry.has(spec.assetId)) {
+      this.missingAssets.add(spec.assetId);
+      this.terrain.islandGroup.visible = true;
+      return;
+    }
+    void assetRegistry
+      .build(spec.assetId, { seed: hashId(spec.assetId), terrainStyle: this.visual?.terrain.style })
+      .then((model) => {
+        if (this.disposed || token !== this.foundationToken) {
+          disposeObject(model);
+          return;
+        }
+        const group = new THREE.Group();
+        group.name = "map-foundation";
+        group.add(model);
+        group.position.set(this.terrain.island.centerX, spec.offsetY, this.terrain.island.centerZ);
+        group.rotation.y = (spec.rotation * Math.PI) / 180;
+        group.scale.setScalar(spec.scale);
+        this.foundationGroup = group;
+        this.scene.add(group);
+        this.terrain.islandGroup.visible = false;
+      })
+      .catch(() => {
+        this.missingAssets.add(spec.assetId);
+      });
   }
 
   private rebuildAtmosphere(style: string | undefined): void {

@@ -23,6 +23,7 @@ import {
   updateProp,
   updateRoad,
   updateSite,
+  updateFoundation,
   updateTerrain,
   updateUnitVisual,
   unpackGridDef,
@@ -267,6 +268,24 @@ describe("map authoring", () => {
     const packed = unpackGridDef(compiled.map.grid!);
     expect(packed.surface[35 * packed.width + 35]).toBe(Surface.Bridge);
     expect(Number.isFinite(packed.heightCm[35 * packed.width + 35])).toBe(true);
+  });
+
+  it("round-trips a foundation model visual", () => {
+    const document = updateFoundation(createGridDocument(), {
+      assetId: "com.example:island-base",
+      scale: 1.5,
+      rotation: 30,
+      offsetY: -1.2,
+    });
+    const compiled = compileDocument(document);
+    expect(compiled.visual.foundation).toEqual({
+      assetId: "com.example:island-base",
+      scale: 1.5,
+      rotation: 30,
+      offsetY: -1.2,
+    });
+    const parsed = parseDocument(JSON.parse(serializeDocument(document)));
+    expect(parsed.document.visual.foundation).toEqual(compiled.visual.foundation);
   });
 
   it("compiles a grid document with packed heights, footprints and a map hash", () => {

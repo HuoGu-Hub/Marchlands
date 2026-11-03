@@ -302,6 +302,7 @@ export function compileVisual(document: MapDocument): MapVisual {
   return {
     terrain: { ...document.visual.terrain },
     roads: { ...document.visual.roads },
+    ...(document.visual.foundation ? { foundation: { ...document.visual.foundation } } : {}),
     props: document.visual.props.map((entry) => ({
       ...entry,
       pos: [entry.pos[0], entry.pos[1]],

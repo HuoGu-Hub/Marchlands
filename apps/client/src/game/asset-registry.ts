@@ -405,8 +405,8 @@ export class AssetRegistry {
       });
   }
 
-  counts(): { terrain: number; prop: number; building: number; unit: number; packs: number } {
-    const result = { terrain: 0, prop: 0, building: 0, unit: 0, packs: this.packs.size };
+  counts(): { terrain: number; prop: number; building: number; unit: number; foundation: number; packs: number } {
+    const result = { terrain: 0, prop: 0, building: 0, unit: 0, foundation: 0, packs: this.packs.size };
     for (const asset of this.builtins.values()) result[asset.kind] += 1;
     for (const asset of this.packAssets.values()) result[asset.entry.kind] += 1;
     return result;

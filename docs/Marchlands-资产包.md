@@ -39,6 +39,15 @@ models/tower.glb
       "height": 4
     },
     {
+      "id": "com.example:island-base",
+      "kind": "foundation",
+      "label": "精细地基",
+      "file": "models/island-base.glb",
+      "scale": 1,
+      "footprint": 70,
+      "height": 24
+    },
+    {
       "id": "com.example:tower",
       "kind": "building",
       "label": "边境塔楼",
@@ -67,7 +76,7 @@ models/tower.glb
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `id` | 是 | `命名空间:路径`，例如 `com.example:tower`，全局唯一 |
-| `kind` | 是 | `terrain`、`prop`、`building`、`unit` |
+| `kind` | 是 | `terrain`、`prop`、`building`、`unit`、`foundation` |
 | `label` | 是 | 编辑器显示名称 |
 | `file` | 是 | 包内 `.glb` 路径，不能包含 `..` 或绝对路径 |
 | `scale` | 否 | 默认缩放，0.01 到 100 |
@@ -90,6 +99,33 @@ models/tower.glb
 - 队伍色：需要随阵营变色的材质命名为 `team`、`team_primary` 或 `team_secondary`，并在资产条目中设置 `"teamColor": true`。
 - 单位动画：建议使用 glTF 骨骼动画，剪辑名固定为 `idle`、`walk`、`attack`、`death`。当前版本只渲染建筑、地形与装饰；单位资产导入已进入格式，但还没有接入战斗动画。
 - 地形资产只提供外观，不提供寻路或可通行数据。行军仍然由据点与道路图决定。
+- 地基资产用于替换程序化浮岛外壳，不改变网格高度、地表、寻路或碰撞。
+- 地基模型建议按地图实际尺寸制作，原点位于地图中心，顶面与地形边缘对齐。
+
+## 地基模型
+
+地图编辑器右侧“地图设置 → 地基 → 模型”可以选择资产包里的 `foundation` 资产。选择后：
+
+- 程序化浮岛外壳隐藏
+- 地基 GLB 放到地图中心
+- 地形顶面、高度、地表颜色和寻路仍由网格数据决定
+
+地图文档会记录：
+
+~~~json
+{
+  "visual": {
+    "foundation": {
+      "assetId": "com.example:island-base",
+      "scale": 1,
+      "rotation": 0,
+      "offsetY": 0
+    }
+  }
+}
+~~~
+
+地基模型缺失时自动回退程序化浮岛，不影响模拟。
 
 ## 导入与持久化
 
@@ -169,6 +205,7 @@ node tools/asset-convert/run.mjs
 
 ## 当前限制
 
+- 地基模型只替换外壳，不能让模型顶面参与高度采样；地形顶面仍由网格构建。
 - 地形块仍走程序化构建，风格切换与高度场共享同一套噪声。
 - 地形资产不提供自由瓦片寻路；行军仍由据点图决定，坡度只改变边的寻路代价。
 - 单位动画支持 GLB 骨骼或命名节点动画；未指定单位资产时使用程序化三兵模型。

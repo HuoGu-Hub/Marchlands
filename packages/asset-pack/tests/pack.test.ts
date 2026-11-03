@@ -43,6 +43,19 @@ describe("asset pack manifest", () => {
     });
   });
 
+  it("accepts foundation assets", () => {
+    const parsed = parseAssetManifest(manifest([
+      {
+        id: "com.example:island-base",
+        kind: "foundation",
+        label: "地基",
+        file: "models/base.glb",
+        footprint: 70,
+      },
+    ]));
+    expect(parsed.assets[0].kind).toBe("foundation");
+  });
+
   it("rejects malformed ids, duplicate assets and unsafe paths", () => {
     expect(() => parseAssetManifest(manifest([
       { id: "tent", kind: "prop", label: "帐篷", file: "models/tent.glb" },

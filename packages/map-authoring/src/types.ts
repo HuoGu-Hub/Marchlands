@@ -35,6 +35,15 @@ export interface RoadVisualDraft {
   width: number;
 }
 
+export interface FoundationDraft {
+  assetId: string;
+  scale: number;
+  /** 朝向，单位为度。 */
+  rotation: number;
+  /** 垂直偏移，单位为米。 */
+  offsetY: number;
+}
+
 export interface PropDraft {
   id: string;
   assetId: string;
@@ -75,6 +84,7 @@ export interface UnitVisualDraft {
 export interface VisualDraft {
   terrain: TerrainDraft;
   roads: RoadVisualDraft;
+  foundation?: FoundationDraft;
   props: PropDraft[];
   units: UnitVisualDraft;
   /** 是否在空白处自动补树、石头与草丛。 */
@@ -139,6 +149,7 @@ export interface SiteVisual {
 export interface MapVisual {
   terrain: TerrainDraft;
   roads: RoadVisualDraft;
+  foundation?: FoundationDraft;
   props: PropDraft[];
   units: UnitVisualDraft;
   scatter: boolean;

@@ -24,6 +24,7 @@ import {
   removeSite,
   serializeDocument,
   updateDocument,
+  updateFoundation,
   updateProp,
   updateRoad,
   updateRoadVisual,
@@ -36,6 +37,7 @@ import {
 import type {
   CompileResult,
   MapDocument,
+  FoundationDraft,
   MapVisual,
   PropDraft,
   RoadDraft,
@@ -1689,11 +1691,27 @@ export class EditorController {
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
     const unitAssets = assetRegistry.list("unit");
+    const foundationAssets = assetRegistry.list("foundation");
+    const foundation = this.doc.visual.foundation;
+    const foundationMissing = foundation && !assetRegistry.has(foundation.assetId);
     const packRows = assetRegistry.packList
       .map(
         (pack) => `<div class="ml-ed-pack-row"><span>${escapeHtml(pack.name)}</span><button data-pack-remove="${escapeHtml(pack.id)}">移除</button></div>`,
       )
       .join("");
+    const foundationOptions = foundationAssets
+      .map((asset) => option(asset.id, foundation?.assetId ?? "", asset.label + (asset.source === "pack" ? " · 资产包" : "")))
+      .join("");
+    const foundationMissingOption = foundation && foundationMissing
+      ? option(foundation.assetId, foundation.assetId, foundation.assetId + " · 缺失")
+      : "";
+    const foundationControls = foundation
+      ? '<div class="ml-ed-row">'
+        + '<label class="ml-ed-field"><span>缩放</span><input data-field="foundationScale" type="number" min="0.01" max="100" step="0.05" value="' + foundation.scale + '"></label>'
+        + '<label class="ml-ed-field"><span>旋转</span><input data-field="foundationRotation" type="number" min="-360" max="360" step="5" value="' + foundation.rotation + '"></label>'
+        + '</div>'
+        + '<label class="ml-ed-field"><span>高度偏移</span><input data-field="foundationOffsetY" type="number" min="-100" max="100" step="0.1" value="' + foundation.offsetY + '"></label>'
+      : "";
     return `
       <h3>地图设置</h3>
       <div class="ml-ed-kind">${this.doc.sites.length} 个据点 · ${this.doc.visual.props.length} 个装饰 · ${errors} 个错误</div>
@@ -1728,6 +1746,16 @@ export class EditorController {
         </label>
         <label class="ml-ed-field"><span>宽度</span><input data-field="roadWidth" type="number" min="0.6" max="6" step="0.1" value="${this.doc.visual.roads.width}"></label>
       </div>
+      <div class="ml-ed-section-label">地基</div>
+      <label class="ml-ed-field"><span>模型</span>
+        <select data-field="foundationAsset">
+          ${option("", foundation?.assetId ?? "", "程序化浮岛")}
+          ${foundationOptions}
+          ${foundationMissingOption}
+        </select>
+      </label>
+      ${foundationControls}
+      ${foundationAssets.length === 0 ? '<p class="ml-ed-note">导入含 foundation 资产的 .mlpack 后，可在这里替换浮岛外壳。</p>' : ""}
       <label class="ml-ed-check"><input data-field="scatter" type="checkbox" ${this.doc.visual.scatter ? "checked" : ""}><span>自动补树、石头与草丛</span></label>
       <div class="ml-ed-section-label">网格笔刷</div>
       <div class="ml-ed-kind">${this.doc.navigation === "grid" && this.doc.grid ? `${this.doc.grid.width} × ${this.doc.grid.height} 格 · ${this.doc.grid.cellSizeDm / 10} 米` : "据点图模式，未启用网格"}</div>
@@ -1940,6 +1968,30 @@ export class EditorController {
     }
     if (field === "scatter") {
       this.commit(updateScatter(this.doc, value === "true"), value === "true" ? "已开启自动补景" : "已关闭自动补景");
+      return;
+    }
+    if (field === "foundationAsset") {
+      if (!value) {
+        this.commit(updateFoundation(this.doc, null), "已恢复程序化浮岛");
+      } else {
+        const current = this.doc.visual.foundation;
+        this.commit(updateFoundation(this.doc, {
+          assetId: value,
+          scale: current?.scale ?? 1,
+          rotation: current?.rotation ?? 0,
+          offsetY: current?.offsetY ?? 0,
+        }), "已设置地基模型");
+      }
+      return;
+    }
+    if (field === "foundationScale" || field === "foundationRotation" || field === "foundationOffsetY") {
+      const current = this.doc.visual.foundation;
+      if (!current) return;
+      const next = { ...current };
+      if (field === "foundationScale") next.scale = Math.max(0.01, Math.min(100, Number(value) || 1));
+      if (field === "foundationRotation") next.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
+      if (field === "foundationOffsetY") next.offsetY = Math.max(-100, Math.min(100, Number(value) || 0));
+      this.commit(updateFoundation(this.doc, next), "已调整地基模型");
       return;
     }
     if (field === "brushRadius") {

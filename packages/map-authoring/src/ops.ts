@@ -1,6 +1,7 @@
 import type { CityId, Level, Owner, SiteKind } from "@marchlands/sim";
 import { cloneDocument } from "./document";
 import type {
+  FoundationDraft,
   MapDocument,
   PropDraft,
   RoadDraft,
@@ -320,6 +321,16 @@ export function updateUnitVisual(
   const next = cloneDocument(document);
   if (!assetId) delete next.visual.units[player];
   else next.visual.units[player] = assetId;
+  return next;
+}
+
+export function updateFoundation(
+  document: MapDocument,
+  foundation: FoundationDraft | null,
+): MapDocument {
+  const next = cloneDocument(document);
+  if (foundation === null) delete next.visual.foundation;
+  else next.visual.foundation = { ...foundation };
   return next;
 }
 
