@@ -2,12 +2,14 @@ import {
   NavGrid,
   Surface,
   decodeBitmapBase64,
+  surfaceProfile,
   decodeInt16Base64,
   decodeUint8Base64,
   isqrt,
   planPath,
 } from "@marchlands/nav";
-import type { MapDef, Ruleset } from "./types";
+import type { CityState, MapDef, Ruleset, UnitKind } from "./types";
+import { unitProfile } from "./units";
 
 export const GRID_UNIT_RADIUS_CM = 40;
 export const GRID_CAPTURE_RADIUS_CM = 400;
@@ -25,6 +27,75 @@ export function createNavGrid(map: MapDef): NavGrid | null {
     blocked: decodeBitmapBase64(grid.blocked, cells),
     walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
   });
+}
+
+function siteCell(map: MapDef, site: CityState): number {
+  const grid = map.grid;
+  if (!grid) return -1;
+  const x = Math.floor((site.pos[0] * 10 + map.size[0] * 5) / grid.cellSizeCm);
+  const z = Math.floor((site.pos[1] * 10 + map.size[1] * 5) / grid.cellSizeCm);
+  if (x < 0 || z < 0 || x >= grid.width || z >= grid.height) return -1;
+  return z * grid.width + x;
+}
+
+export function createUnitNavGrid(
+  map: MapDef,
+  cities: readonly CityState[],
+  owner: number,
+  kind: UnitKind,
+  destination?: string,
+): NavGrid | null {
+  if (map.navigation !== "grid" || !map.grid) return null;
+  const grid = map.grid;
+  const count = grid.width * grid.height;
+  const profile = unitProfile(kind);
+  const blocked = decodeBitmapBase64(grid.blocked, count);
+  const override = decodeBitmapBase64(grid.walkableOverride, count);
+  const surfaces = decodeUint8Base64(grid.surface, count);
+  for (let index = 0; index < count; index += 1) {
+    if (!profile.surfaces.has(surfaces[index])) {
+      blocked[index] = 1;
+      override[index] = 0;
+    } else if (blocked[index] === 0 && override[index] === 0 && !surfaceProfile(surfaces[index]).walkable) {
+      // 该兵种允许深水等非常规地表时，用可走覆盖打开它。
+      override[index] = 1;
+    }
+  }
+  for (const city of cities) {
+    if (city.owner === owner) continue;
+    if (city.id === destination) continue;
+    if (city.transit === "open") continue;
+    const cell = siteCell(map, city);
+    if (cell >= 0) {
+      blocked[cell] = 1;
+      override[cell] = 0;
+    }
+  }
+  return new NavGrid({
+    cellSizeCm: grid.cellSizeCm,
+    width: grid.width,
+    height: grid.height,
+    heightCm: decodeInt16Base64(grid.heightCm, count),
+    surface: surfaces,
+    blocked,
+    walkableOverride: override,
+    rules: {
+      maxStepCm: profile.maxStepCm,
+      maxSlopePermille: Math.max(1000, Math.round((profile.maxStepCm / grid.cellSizeCm) * 1000)),
+    },
+  });
+}
+
+function shieldPathClear(nav: NavGrid, cells: readonly number[]): boolean {
+  for (const cell of cells) {
+    const x = nav.cellX(cell);
+    const z = nav.cellZ(cell);
+    for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
+      if (!nav.inBounds(x + dx, z + dz)) return false;
+      if (!nav.isWalkable(nav.index(x + dx, z + dz))) return false;
+    }
+  }
+  return true;
 }
 
 export function gridSpeedCmPerTick(rules: Ruleset, speedMilli: number, surface?: number): number {
@@ -53,6 +124,7 @@ export function planGridRoute(
   fromCm: [number, number],
   toCm: [number, number],
   radiusCm = GRID_UNIT_RADIUS_CM,
+  unitKind?: UnitKind,
 ): GridRoute | null {
   const offsetX = map.size[0] * 5;
   const offsetZ = map.size[1] * 5;
@@ -63,6 +135,7 @@ export function planGridRoute(
     { radiusCm, smooth: true },
   );
   if (!path) return null;
+  if (unitKind === "shield" && !shieldPathClear(nav, path.cells)) return null;
   const points = path.points.map((point) => [point.xCm - offsetX, point.zCm - offsetZ] as [number, number]);
   return { cost: path.cost, points, distance: polylineLength(points) };
 }

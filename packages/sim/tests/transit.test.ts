@@ -39,10 +39,45 @@ describe("friendly transit", () => {
     expect(result.state.squads[0]?.path).toEqual(["a", "b", "c"]);
   });
 
-  it("forces friendly transit once a building is captured", () => {
+  it("lets the owner toggle an occupied building between release and intercept", () => {
     const map = mapWith({
       cities: THREE_CITY_MAP.cities.map((city) =>
         city.id === "b" ? { ...city, owner: 2, transit: "open" } : city,
+      ),
+    });
+    let state = createGame(map, 1);
+    const released = step(state, [{ type: "send", from: "a", to: "c" }]);
+    expect(released.rejected).toEqual([]);
+    state = step(released.state, []).state;
+    const closed = step(state, [{ type: "setTransit", city: "b", mode: "intercept" }]);
+    expect(closed.rejected).toEqual([]);
+    expect(closed.state.cities.find((city) => city.id === "b")?.transit).toBe("closed");
+    const blocked = step(closed.state, [{ type: "send", from: "a", to: "c" }]);
+    expect(blocked.rejected[0]?.reason).toBe("no_route");
+  });
+
+  it("rejects toggling a neutral building", () => {
+    const state = createGame(mapWith({}), 1);
+    const result = step(state, [{ type: "setTransit", city: "b", mode: "release" }]);
+    expect(result.rejected[0]?.reason).toBe("not_owned");
+  });
+
+  it("passes through an enemy building that is set to release", () => {
+    const map = mapWith({
+      cities: THREE_CITY_MAP.cities.map((city) =>
+        city.id === "b" ? { ...city, owner: 2, transit: "open" } : city,
+      ),
+    });
+    const state = createGame(map, 1);
+    const result = step(state, [{ type: "send", from: "a", to: "c" }]);
+    expect(result.rejected).toEqual([]);
+    expect(result.state.squads[0]?.path).toEqual(["a", "b", "c"]);
+  });
+
+  it("blocks an enemy building that is set to intercept", () => {
+    const map = mapWith({
+      cities: THREE_CITY_MAP.cities.map((city) =>
+        city.id === "b" ? { ...city, owner: 2, transit: "closed" } : city,
       ),
     });
     const state = createGame(map, 1);

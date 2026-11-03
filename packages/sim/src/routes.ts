@@ -26,10 +26,11 @@ export function blockedTransit(state: SimState, owner: number, destination?: Cit
   if (state.map.transit === undefined) return blocked;
   for (const city of state.cities) {
     if (city.id === destination) continue;
-    // 中立建筑使用自己的规则；被占领后强制友方通行。
-    const rule = city.owner === 0 ? city.transit ?? (state.map.transit === "open" ? "open" : "closed") : "friendly";
+    if (city.owner === owner) continue;
+    // 非己方建筑按自身当前状态判定；己方建筑永远放行。
+    const rule = city.transit ?? (state.map.transit === "open" ? "open" : "closed");
     if (rule === "open") continue;
-    if (city.owner !== owner) blocked.add(city.id);
+    blocked.add(city.id);
   }
   return blocked;
 }

@@ -200,6 +200,7 @@ export type SiteState = CityState;
 export interface SquadState {
   id: string;
   owner: PlayerId;
+  unitKind?: UnitKind;
   from: CityId;
   to: CityId;
   count: number;
@@ -269,6 +270,7 @@ export type SimEvent =
     }
   | { type: "outpostDecayed"; cityId: CityId; loss: number; pop: number }
   | { type: "stanceChanged"; cityId: CityId; stance: Stance }
+  | { type: "transitChanged"; cityId: CityId; transit: "release" | "intercept" }
   | {
       type: "squadRetargeted";
       squadId: string;
@@ -300,6 +302,7 @@ export type Command =
   | { type: "send"; from: CityId; to: CityId }
   | { type: "upgrade"; city: CityId }
   | { type: "setStance"; city: CityId; stance: Stance }
+  | { type: "setTransit"; city: CityId; mode: "release" | "intercept" }
   | { type: "retarget"; squad: string; to: CityId; via?: CityId };
 
 export interface CommandRejection {

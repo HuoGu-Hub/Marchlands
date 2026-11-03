@@ -4,6 +4,7 @@ import { MapGraph } from "./path";
 import {
   GRID_CAPTURE_RADIUS_CM,
   createNavGrid,
+  createUnitNavGrid,
   gridDistance,
   gridSpeedCmPerTick,
   gridTravelTicks,
@@ -12,7 +13,7 @@ import {
   polylineLength,
 } from "./grid";
 import { blockedTransit, buildRetargetPath } from "./routes";
-import { isProductionSiteKind } from "./types";
+import { isProductionSiteKind, siteUnitKind } from "./types";
 import {
   DEFAULT_RULESET,
   granarySpeedMilli,
@@ -303,6 +304,7 @@ function applyCommand(
     const squad: SquadState = {
       id: `s${String(state.nextSquad).padStart(6, "0")}`,
       owner: from.owner,
+      unitKind: siteUnitKind(from.kind) ?? "infantry",
       from: from.id,
       to: to.id,
       count,
@@ -374,6 +376,20 @@ function applyCommand(
     if (city.stance === command.stance) return;
     city.stance = command.stance;
     events.push({ type: "stanceChanged", cityId: city.id, stance: city.stance });
+    return;
+  }
+
+  if (command.type === "setTransit") {
+    const target = findCity(state, command.city);
+    if (!target) return reject(rejected, command, "unknown_city");
+    if (target.owner === 0) return reject(rejected, command, "not_owned");
+    if (command.mode !== "release" && command.mode !== "intercept") {
+      return reject(rejected, command, "invalid_transit");
+    }
+    const next = command.mode === "release" ? "open" : "closed";
+    if (target.transit === next) return;
+    target.transit = next;
+    events.push({ type: "transitChanged", cityId: target.id, transit: command.mode });
     return;
   }
 
@@ -573,9 +589,12 @@ function sendGridSquad(
 ): void {
   const nav = state.nav;
   if (!nav) return;
+  const unitKind = siteUnitKind(from.kind) ?? "infantry";
+  const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind, to.id);
+  if (!unitNav) return;
   const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
   const goal: [number, number] = [to.pos[0] * 10, to.pos[1] * 10];
-  const route = planGridRoute(state.map, nav, start, goal);
+  const route = planGridRoute(state.map, unitNav, start, goal, 40, unitKind);
   if (!route) {
     reject(rejected, command, "no_route");
     return;
@@ -595,6 +614,7 @@ function sendGridSquad(
   const squad: SquadState = {
     id: `s${String(state.nextSquad).padStart(6, "0")}`,
     owner: from.owner as PlayerId,
+    unitKind,
     from: from.id,
     to: to.id,
     count,
@@ -635,12 +655,14 @@ function retargetGridSquad(
   events: SimEvent[],
   rejected: CommandRejection[],
 ): void {
-  const nav = state.nav;
-  if (!nav) return;
+  if (!state.nav) return;
   if (squad.xCm === undefined || squad.zCm === undefined) return reject(rejected, command, "squad_arrived");
+  const unitKind = squad.unitKind ?? "infantry";
+  const unitNav = createUnitNavGrid(state.map, state.cities, squad.owner, unitKind, to.id);
+  if (!unitNav) return reject(rejected, command, "no_route");
   const start: [number, number] = [squad.xCm, squad.zCm];
   const goal: [number, number] = [to.pos[0] * 10, to.pos[1] * 10];
-  const route = planGridRoute(state.map, nav, start, goal);
+  const route = planGridRoute(state.map, unitNav, start, goal, 40, unitKind);
   if (!route) return reject(rejected, command, "no_route");
   const points: Array<[number, number]> = [[start[0], start[1]], ...route.points];
   const distance = polylineLength(points);

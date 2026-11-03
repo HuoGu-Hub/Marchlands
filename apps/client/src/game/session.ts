@@ -189,6 +189,20 @@ export class GameSession {
     this.commands.push({ type: "upgrade", city: this.selected });
   }
 
+  toggleTransit(): void {
+    if (!this.selected) return;
+    const city = this.getCity(this.selected);
+    if (!city || city.owner === 0) {
+      this.options.onToast("中立据点不能切换通行状态");
+      return;
+    }
+    this.commands.push({
+      type: "setTransit",
+      city: city.id,
+      mode: city.transit === "open" ? "intercept" : "release",
+    });
+  }
+
   toggleStance(): void {
     if (!this.selected) {
       this.options.onToast("先选择己方临时驻兵点");

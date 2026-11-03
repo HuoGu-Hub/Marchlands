@@ -133,6 +133,7 @@ const TEMPLATE = `
         <div class="pop-bar"><i id="city-pop-fill"></i></div>
       </div>
       <div class="city-actions">
+        <button class="btn" id="city-transit">通行 · 拦截</button>
         <button class="btn" id="city-upgrade">升级</button>
         <button class="btn ghost" id="btn-deselect">取消</button>
       </div>
@@ -461,6 +462,7 @@ export class App {
     this.on("btn-menu", "click", () => this.backToMenu());
     this.on("btn-deselect", "click", () => this.session?.clearSelection());
     this.on("city-upgrade", "click", () => this.session?.upgradeSelected());
+    this.on("city-transit", "click", () => this.session?.toggleTransit());
     this.on("btn-save-settings", "click", () => this.applySettingsForm(true));
     this.on("btn-settings-back", "click", () => {
       this.applySettingsForm(true);
@@ -926,6 +928,10 @@ export class App {
     const defense = defenseMilliFor(city, this.content.rules) / 1000;
     this.el("city-defense").textContent = defense.toFixed(2);
     const cost = [15, 22, 32][city.level - 1] ?? 0;
+    const transit = this.el("city-transit") as HTMLButtonElement;
+    const release = city.transit === "open";
+    transit.textContent = release ? "通行 · 放行" : "通行 · 拦截";
+    transit.disabled = city.owner === 0;
     const button = this.el("city-upgrade") as HTMLButtonElement;
     if (!isProductionSiteKind(city.kind)) {
       button.textContent = "不可升级";
