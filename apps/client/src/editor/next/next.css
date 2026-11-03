@@ -218,6 +218,41 @@
 .mlnx-empty { color: #877b68; font-size: 11px; padding: 8px 2px; }
 .mlnx-switch { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #b9ac97; margin: 4px 0; }
 .mlnx-switch input { accent-color: #c6a36a; }
+.mlnx-switch input[type="number"] {
+  width: 64px;
+  height: 24px;
+  margin-left: auto;
+  border: 1px solid #2d3d32;
+  background: #111a14;
+  color: #d8ccb8;
+  font: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+}
+.mlnx-pack-list { margin-top: 8px; border: 1px solid #2d3d32; background: #0d150f; }
+.mlnx-pack-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 7px;
+  border-bottom: 1px solid #1d2a20;
+  font-size: 10px;
+  color: #b9ac97;
+}
+.mlnx-pack-row:last-child { border-bottom: 0; }
+.mlnx-pack-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mlnx-pack-row button {
+  flex: 0 0 auto;
+  border: 1px solid #6b3a2c;
+  background: transparent;
+  color: #d98468;
+  font: inherit;
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.mlnx-pack-row button:hover { background: #2a1712; }
 
 /* PCUI theme overrides */
 .mlnx-pcui .pcui-element { font-family: var(--sans); }

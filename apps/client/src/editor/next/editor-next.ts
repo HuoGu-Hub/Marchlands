@@ -46,9 +46,10 @@ import {
   updateScatter,
   updateSite,
   updateTerrain,
+  updateUnitVisual,
   watchCandidates,
 } from "@marchlands/map-authoring";
-import type { CompileResult, GridBrushMode, MapDocument, MapVisual, PropDraft, SiteDraft } from "@marchlands/map-authoring";
+import type { CompileResult, FoundationBoundsDm, GridBrushMode, MapDocument, MapVisual, PropDraft, SiteDraft } from "@marchlands/map-authoring";
 import { assetRegistry } from "../../game/asset-registry";
 import { BattleScene } from "../../game/scene";
 import { openAssetPackFile, openMapText, saveAssetPackFile, saveMapText } from "../map-io";
@@ -151,6 +152,13 @@ export class EditorNext {
   private gizmo: TransformControls | null = null;
   private editorRoot: THREE.Group | null = null;
   private proxyRoot: THREE.Group | null = null;
+  private handleRoot: THREE.Group | null = null;
+  private faceDrag: {
+    id: string;
+    face: "east" | "west" | "north" | "south";
+    rect: FoundationBoundsDm;
+    ghost: THREE.Mesh;
+  } | null = null;
   private readonly proxies: THREE.Object3D[] = [];
   private selectedProxy: THREE.Object3D | null = null;
   private tree: TreeView | null = null;
@@ -361,6 +369,9 @@ export class EditorNext {
     this.proxyRoot = new THREE.Group();
     this.proxyRoot.name = "editor-proxies";
     scene3.add(this.proxyRoot);
+    this.handleRoot = new THREE.Group();
+    this.handleRoot.name = "editor-handles";
+    scene3.add(this.handleRoot);
 
     const gizmo = new TransformControls(camera, this.canvas);
     gizmo.setSize(1.05);
@@ -432,6 +443,8 @@ export class EditorNext {
     this.scene = null;
     this.editorRoot = null;
     this.proxyRoot = null;
+    this.handleRoot = null;
+    this.faceDrag = null;
     this.proxies.length = 0;
     this.selectedProxy = null;
     this.treeItems.clear();
@@ -572,7 +585,7 @@ export class EditorNext {
       this.treeItems.set(site.id, item);
       siteNode.append(item);
     }
-    const roadNode = new TreeViewItem({ text: "道路 (" + this.doc.roads.length + ")", open: false });
+    const roadNode = new TreeViewItem({ text: "道路 (" + this.doc.roads.length + ")", open: true });
     for (const road of this.doc.roads) {
       const ends = road.from && road.to ? road.from + " ↔ " + road.to : "自由道路";
       const item = new TreeViewItem({ text: road.id + " · " + ends });
@@ -709,6 +722,33 @@ export class EditorNext {
     this.leftContent.appendChild(packRow);
     packRow.querySelector("#mlnx-pack-import")?.addEventListener("click", () => void this.importAssetPack());
     packRow.querySelector("#mlnx-pack-export")?.addEventListener("click", () => void this.exportBuiltinPack());
+    const packs = assetRegistry.packList;
+    if (packs.length > 0) {
+      const list = document.createElement("div");
+      list.className = "mlnx-pack-list";
+      for (const pack of packs) {
+        const row = document.createElement("div");
+        row.className = "mlnx-pack-row";
+        const label = document.createElement("span");
+        label.textContent = pack.name;
+        const remove = document.createElement("button");
+        remove.textContent = "移除";
+        remove.addEventListener("click", () => void this.removeAssetPack(pack.id));
+        row.append(label, remove);
+        list.appendChild(row);
+      }
+      this.leftContent.appendChild(list);
+    }
+  }
+
+  private async removeAssetPack(id: string): Promise<void> {
+    if (!window.confirm("移除资产包后，使用其中资产的地图会显示缺失。确定移除？")) return;
+    await assetRegistry.removePack(id);
+    this.renderLibrary();
+    this.renderInspector();
+    this.scene?.updateProps(this.compiled.visual);
+    this.syncProxies();
+    this.notice("资产包已移除");
   }
 
   private async importAssetPack(): Promise<void> {
@@ -991,6 +1031,35 @@ export class EditorNext {
     const scatterGroup = new LabelGroup({ text: "自动补景", field: scatter });
     this.inspectorEl.appendChild(scatterGroup.dom);
     this.addTop(scatterGroup);
+    this.addSection("单位外观");
+    const unitAssets = assetRegistry.list("unit");
+    const unitOptions: Array<{ t: string; v: string }> = [{ t: "默认程序化单位", v: "" }];
+    for (const asset of unitAssets) unitOptions.push({ t: asset.label, v: asset.id });
+    this.addSelect(
+      "绿方单位",
+      this.doc.visual.units.player1 ?? "",
+      unitOptions,
+      (value) => this.commit(updateUnitVisual(this.doc, "player1", value ? String(value) : undefined), "已设置绿方单位"),
+    );
+    this.addSelect(
+      "红方单位",
+      this.doc.visual.units.player2 ?? "",
+      unitOptions,
+      (value) => this.commit(updateUnitVisual(this.doc, "player2", value ? String(value) : undefined), "已设置红方单位"),
+    );
+    if (unitAssets.length === 0) {
+      const unitNote = document.createElement("p");
+      unitNote.className = "mlnx-note";
+      unitNote.textContent = "导入含 unit 资产的 .mlpack 后，可在这里替换兵团外观。";
+      this.inspectorEl.appendChild(unitNote);
+    }
+    if (this.doc.navigation === "grid" && this.doc.grid) {
+      const navPreview = new BooleanInput({ value: false });
+      navPreview.on("change", () => this.scene?.setNavPreview(navPreview.value));
+      const navGroup = new LabelGroup({ text: "导航预览", field: navPreview });
+      this.inspectorEl.appendChild(navGroup.dom);
+      this.addTop(navGroup);
+    }
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const warnings = this.compiled.diagnostics.filter((entry) => entry.severity === "warning").length;
     const diagnostics = document.createElement("div");
@@ -1273,6 +1342,9 @@ export class EditorNext {
       if (target.path) target.path.reverse();
       this.commit(next, "已反转道路", { roads: true });
     });
+    if (road.from && road.to && road.path) {
+      this.addButton("拉直", () => this.commit(updateRoad(this.doc, id, { path: undefined }), "已拉直道路", { roads: true }));
+    }
     const deleteButton = document.createElement("button");
     deleteButton.className = "mlnx-delete";
     deleteButton.textContent = "删除这条道路";
@@ -1283,7 +1355,7 @@ export class EditorNext {
     this.inspectorEl.appendChild(deleteButton);
     const note = document.createElement("p");
     note.className = "mlnx-note";
-    note.textContent = "用道路工具点击加点绘制；这里可以改宽度、反向和删除。";
+    note.textContent = "用道路工具点击加点绘制；这里可以改宽度、反向、拉直和删除。";
     this.inspectorEl.appendChild(note);
   }
 
@@ -1326,6 +1398,7 @@ export class EditorNext {
     } else {
       this.attachGizmo();
     }
+    this.syncFoundationHandles();
     this.canvas.style.cursor = tool === "place" || tool === "road" || tool === "terrain" ? "crosshair" : "default";
     if (this.selection?.kind === "foundation" && (tool === "rotate" || tool === "scale")) {
       this.notice("地基的尺寸和朝向用右侧检查器修改");
@@ -1340,6 +1413,7 @@ export class EditorNext {
     this.selection = selection;
     this.scene?.setSelected(selection?.kind === "site" ? (selection.id as CityId) : null);
     this.attachGizmo();
+    this.syncFoundationHandles();
     this.syncTreeSelection();
     this.renderInspector();
     this.updateStatus();
@@ -1470,6 +1544,7 @@ export class EditorNext {
     }
     this.syncProxyHighlight();
     this.attachGizmo();
+    this.syncFoundationHandles();
   }
 
   private syncProxyHighlight(): void {
@@ -1484,6 +1559,145 @@ export class EditorNext {
         if (lineMaterial) lineMaterial.opacity = selected ? 0.95 : 0.45;
       }
     }
+  }
+
+  private syncFoundationHandles(): void {
+    const root = this.handleRoot;
+    if (!root || this.faceDrag) return;
+    for (const child of [...root.children]) {
+      root.remove(child);
+      child.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+        else material?.dispose();
+      });
+    }
+    if (this.selection?.kind !== "foundation") return;
+    if (this.tool === "road" || this.tool === "terrain" || this.tool === "place") return;
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === this.selection?.id);
+    if (!foundation) return;
+    const rect = foundationRect(foundation);
+    const midX = (rect.minX + rect.maxX) / 20;
+    const midZ = (rect.minZ + rect.maxZ) / 20;
+    const y = foundation.elevation + 1.1;
+    const handles: Array<{ face: "east" | "west" | "north" | "south"; x: number; z: number; rotation: [number, number, number] }> = [
+      { face: "east", x: rect.maxX / 10, z: midZ, rotation: [0, 0, -Math.PI / 2] },
+      { face: "west", x: rect.minX / 10, z: midZ, rotation: [0, 0, Math.PI / 2] },
+      { face: "south", x: midX, z: rect.maxZ / 10, rotation: [Math.PI / 2, 0, 0] },
+      { face: "north", x: midX, z: rect.minZ / 10, rotation: [-Math.PI / 2, 0, 0] },
+    ];
+    for (const handle of handles) {
+      const group = new THREE.Group();
+      group.position.set(handle.x, y, handle.z);
+      group.userData = { face: handle.face, foundationId: foundation.id };
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.9, 2.4, 6),
+        new THREE.MeshBasicMaterial({ color: 0xe6c987, transparent: true, opacity: 0.95, depthTest: false }),
+      );
+      cone.rotation.set(handle.rotation[0], handle.rotation[1], handle.rotation[2]);
+      cone.renderOrder = 20;
+      cone.userData = { face: handle.face, foundationId: foundation.id };
+      group.add(cone);
+      const hit = new THREE.Mesh(
+        new THREE.SphereGeometry(2.6, 8, 6),
+        new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true, opacity: 0, depthTest: false }),
+      );
+      hit.userData = { face: handle.face, foundationId: foundation.id };
+      group.add(hit);
+      root.add(group);
+    }
+  }
+
+  private pickFaceHandle(clientX: number, clientY: number): { id: string; face: "east" | "west" | "north" | "south" } | null {
+    if (!this.scene || !this.handleRoot) return null;
+    const camera = this.scene.getEditorCamera();
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(this.handleRoot.children, true);
+    for (const hit of hits) {
+      let object: THREE.Object3D | null = hit.object;
+      while (object && !(object.userData as { face?: string }).face) object = object.parent;
+      const data = object?.userData as { face?: "east" | "west" | "north" | "south"; foundationId?: string } | undefined;
+      if (data?.face && data.foundationId) return { id: data.foundationId, face: data.face };
+    }
+    return null;
+  }
+
+  private startFaceDrag(face: "east" | "west" | "north" | "south", id: string, pointerId: number): void {
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === id);
+    if (!foundation) return;
+    const rect = foundationRect(foundation);
+    const ghost = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 0.08, 1),
+      new THREE.MeshBasicMaterial({ color: 0xe6c987, wireframe: true, transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    ghost.position.set((rect.minX + rect.maxX) / 20, foundation.elevation + 0.08, (rect.minZ + rect.maxZ) / 20);
+    ghost.scale.set((rect.maxX - rect.minX) / 10, 1, (rect.maxZ - rect.minZ) / 10);
+    this.editorRoot?.add(ghost);
+    this.faceDrag = { id, face, rect, ghost };
+    this.canvas.setPointerCapture(pointerId);
+  }
+
+  private updateFaceDrag(clientX: number, clientY: number): void {
+    const drag = this.faceDrag;
+    if (!drag) return;
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === drag.id);
+    if (!foundation) return;
+    const point = this.groundOnPlane(clientX, clientY, foundation.elevation);
+    if (!point) return;
+    const snap = (value: number): number => Math.round(value / 5) * 5;
+    const rect = { ...drag.rect };
+    if (drag.face === "east") rect.maxX = Math.max(rect.minX + 100, snap(point[0]));
+    if (drag.face === "west") rect.minX = Math.min(rect.maxX - 100, snap(point[0]));
+    if (drag.face === "south") rect.maxZ = Math.max(rect.minZ + 100, snap(point[1]));
+    if (drag.face === "north") rect.minZ = Math.min(rect.maxZ - 100, snap(point[1]));
+    drag.rect = rect;
+    drag.ghost.position.set((rect.minX + rect.maxX) / 20, foundation.elevation + 0.08, (rect.minZ + rect.maxZ) / 20);
+    drag.ghost.scale.set((rect.maxX - rect.minX) / 10, 1, (rect.maxZ - rect.minZ) / 10);
+    const width = ((rect.maxX - rect.minX) / 10).toFixed(1);
+    const depth = ((rect.maxZ - rect.minZ) / 10).toFixed(1);
+    this.viewInfoEl.innerHTML =
+      '<span class="mlnx-chip">扩展地基</span><span class="mlnx-chip">' + width + " × " + depth + " 米</span>";
+  }
+
+  private finishFaceDrag(): void {
+    const drag = this.faceDrag;
+    this.faceDrag = null;
+    if (!drag) return;
+    this.editorRoot?.remove(drag.ghost);
+    drag.ghost.geometry.dispose();
+    (drag.ghost.material as THREE.Material).dispose();
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === drag.id);
+    if (!foundation) return;
+    const before = foundationRect(foundation);
+    if (before.minX === drag.rect.minX && before.minZ === drag.rect.minZ && before.maxX === drag.rect.maxX && before.maxZ === drag.rect.maxZ) {
+      return;
+    }
+    this.commit(
+      updateFoundation(this.doc, drag.id, {
+        pos: [(drag.rect.minX + drag.rect.maxX) / 2, (drag.rect.minZ + drag.rect.maxZ) / 2],
+        size: [drag.rect.maxX - drag.rect.minX, drag.rect.maxZ - drag.rect.minZ],
+      }),
+      "已扩展地基",
+      { terrain: true, sites: true },
+    );
+  }
+
+  private cancelFaceDrag(): void {
+    const drag = this.faceDrag;
+    this.faceDrag = null;
+    if (!drag) return;
+    this.editorRoot?.remove(drag.ghost);
+    drag.ghost.geometry.dispose();
+    (drag.ghost.material as THREE.Material).dispose();
+    this.syncFoundationHandles();
   }
 
   private pick(clientX: number, clientY: number): Selection {
@@ -1721,6 +1935,14 @@ export class EditorNext {
       event.preventDefault();
       return;
     }
+    if (this.selection?.kind === "foundation") {
+      const face = this.pickFaceHandle(event.clientX, event.clientY);
+      if (face) {
+        this.startFaceDrag(face.face, face.id, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+    }
     if (this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale") {
       const hit = this.pick(event.clientX, event.clientY);
       this.select(hit);
@@ -1730,6 +1952,10 @@ export class EditorNext {
   private readonly onPointerMove = (event: PointerEvent): void => {
     const ground = this.scene?.screenToGround(event.clientX, event.clientY) ?? null;
     this.pointer = { x: event.clientX, y: event.clientY, ground };
+    if (this.faceDrag) {
+      this.updateFaceDrag(event.clientX, event.clientY);
+      return;
+    }
     if (this.drag) {
       const point = this.groundOnPlane(event.clientX, event.clientY, this.toolElevation);
       if (point) {
@@ -1757,6 +1983,10 @@ export class EditorNext {
   };
 
   private readonly onPointerUp = (): void => {
+    if (this.faceDrag) {
+      this.finishFaceDrag();
+      return;
+    }
     if (this.gridStroke) {
       this.finishGridStroke();
       return;
@@ -2080,6 +2310,11 @@ export class EditorNext {
     if (event.key === "Enter" && this.roadDraw) {
       event.preventDefault();
       this.finishRoad();
+      return;
+    }
+    if (event.key === "Escape" && this.faceDrag) {
+      event.preventDefault();
+      this.cancelFaceDrag();
       return;
     }
     if (event.key === "Escape" && this.gridStroke) {

@@ -252,6 +252,25 @@ test("next editor expands a foundation and creates a floating island", async ({ 
   await expect(page.locator("#mlnx-inspector")).toContainText("道路 r5");
 });
 
+test("next editor drags a foundation face handle", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor-next");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
+  const east = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlnxProject?: (x: number, y: number, z: number) => { x: number; y: number } })
+      .__mlnxProject;
+    return hook ? hook(35, 1.1, 0) : null;
+  });
+  if (!east) throw new Error("face handle has no screen position");
+  await page.mouse.move(east.x, east.y);
+  await page.mouse.down();
+  await page.mouse.move(east.x + 60, east.y + 10, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("#mlnx-toast")).toContainText("已扩展地基");
+});
+
 test("next editor converts to a grid map and sculpts terrain", async ({ page }) => {
   page.on("dialog", (dialog) => void dialog.accept());
   await page.goto("/");
