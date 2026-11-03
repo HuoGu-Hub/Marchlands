@@ -180,6 +180,7 @@ export interface IslandMetrics {
   radiusZ: number;
   depth: number;
   topY: number;
+  rim: Array<{ x: number; y: number; z: number; innerX: number; innerY: number; innerZ: number }>;
 }
 
 export interface TerrainBounds {
@@ -823,7 +824,22 @@ function buildIsland(
   }
   return {
     group,
-    metrics: { centerX, centerZ, radiusX, radiusZ, depth, topY },
+    metrics: {
+      centerX,
+      centerZ,
+      radiusX,
+      radiusZ,
+      depth,
+      topY,
+      rim: rim.map((point) => ({
+        x: point.x,
+        y: point.y,
+        z: point.z,
+        innerX: point.innerX,
+        innerY: point.innerY,
+        innerZ: point.innerZ,
+      })),
+    },
   };
 }
 

@@ -68,6 +68,25 @@ const TREE_SPECIES_ASH = [
   "tree_pineRoundB",
 ];
 const TREE_SPECIES_COAST = ["tree_palmTall", "tree_palmShort", "tree_oak", "tree_pineRoundD", "tree_small"];
+const RIM_ROCK_SPECIES = [
+  "rock_largeA",
+  "rock_largeC",
+  "rock_largeD",
+  "rock_largeE",
+  "rock_largeF",
+  "stone_largeA",
+  "stone_largeC",
+  "stone_largeE",
+];
+const CLIFF_ROCK_SPECIES = [
+  "rock_largeA",
+  "rock_largeC",
+  "rock_largeD",
+  "rock_largeE",
+  "rock_largeF",
+  "stone_largeA",
+  "stone_largeC",
+];
 const ROCK_SPECIES = [
   "rock_largeB",
   "rock_largeA",
@@ -169,7 +188,7 @@ export class BattleScene {
   private readonly sceneryGroup = new THREE.Group();
   private readonly sceneryInstances: Array<{
     mesh: THREE.InstancedMesh;
-    placements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }>;
+    placements: Array<{ x: number; z: number; y: number; rotation: number; scale: number; fixedY?: number }>;
     partMatrix: THREE.Matrix4;
   }> = [];
   private roadGrid: {
@@ -1298,9 +1317,10 @@ export class BattleScene {
     const nearProp = (x: number, z: number, distance: number): boolean =>
       this.propPoints.some((point) => Math.hypot(point.x - x, point.z - z) < point.radius + distance);
     const random = seededRandom(20261101);
-    const treePlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
-    const rockPlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
-    const plantPlacements: Array<{ x: number; z: number; y: number; rotation: number; scale: number }> = [];
+    type Scatter = { x: number; z: number; y: number; rotation: number; scale: number; fixedY?: number };
+    const treePlacements: Scatter[] = [];
+    const rockPlacements: Scatter[] = [];
+    const plantPlacements: Scatter[] = [];
 
     let guard = 0;
     while (treePlacements.length < 240 && guard < 30000) {
@@ -1335,6 +1355,50 @@ export class BattleScene {
       plantPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
     }
 
+    const rimRocks: Scatter[] = [];
+    const cliffRocks: Scatter[] = [];
+    const rimTrees: Scatter[] = [];
+    const island = this.terrain.island;
+    island.rim.forEach((point, index) => {
+      const theta = Math.atan2(point.z - island.centerZ, point.x - island.centerX);
+      const radius = Math.hypot(point.x - island.centerX, point.z - island.centerZ);
+      const cos = Math.cos(theta);
+      const sin = Math.sin(theta);
+
+      if (index % 2 === 0 && random() > 0.45) {
+        const count = 1 + Math.floor(random() * 3);
+        for (let cluster = 0; cluster < count; cluster += 1) {
+          const t = 0.05 + random() * 0.2;
+          const spread = (random() - 0.5) * 2.6;
+          const x = point.x + (point.innerX - point.x) * t - sin * spread;
+          const z = point.z + (point.innerZ - point.z) * t + cos * spread;
+          const scale = 1.9 + random() * 3.1;
+          const y = point.y - scale * (0.3 + random() * 0.25);
+          rimRocks.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });
+        }
+      }
+
+      if (index % 4 === 1) {
+        const t = 0.16 + random() * 0.34;
+        const shrink = 0.8 * Math.pow(t, 0.9);
+        const cliffRadius = radius * (1 - shrink) * (0.84 + random() * 0.06);
+        const x = island.centerX + cos * cliffRadius;
+        const z = island.centerZ + sin * cliffRadius;
+        const scale = 2.8 + random() * 2.4;
+        const y = point.y - t * island.depth * 0.95 - scale * 0.2;
+        cliffRocks.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });
+      }
+
+      if (index % 5 === 2) {
+        const t = 0.3 + random() * 0.32;
+        const x = point.x + (point.innerX - point.x) * t;
+        const z = point.z + (point.innerZ - point.z) * t;
+        const scale = 2.3 + random() * 1.2;
+        const y = point.innerY + (point.y - point.innerY) * (1 - t);
+        rimTrees.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });
+      }
+    });
+
     const style = this.visual?.terrain?.style ?? "frontier";
     const trees =
       style === "autumn"
@@ -1347,6 +1411,9 @@ export class BattleScene {
     this.instanceSpecies(trees, treePlacements, 0);
     this.instanceSpecies(ROCK_SPECIES, rockPlacements, 1);
     this.instanceSpecies(PLANT_SPECIES, plantPlacements, 2);
+    this.instanceSpecies(RIM_ROCK_SPECIES, rimRocks, 3);
+    this.instanceSpecies(CLIFF_ROCK_SPECIES, cliffRocks, 5);
+    this.instanceSpecies(trees, rimTrees, 4);
   }
 
   private updateSceneryHeights(): void {
@@ -1359,7 +1426,7 @@ export class BattleScene {
     const combined = new THREE.Matrix4();
     for (const record of this.sceneryInstances) {
       record.placements.forEach((placement, index) => {
-        placement.y = this.terrain.heightAt(placement.x, placement.z);
+        if (placement.fixedY === undefined) placement.y = this.terrain.heightAt(placement.x, placement.z);
         dummy.position.set(placement.x, placement.y, placement.z);
         dummy.rotation.set(0, placement.rotation, 0);
         dummy.scale.setScalar(placement.scale);
