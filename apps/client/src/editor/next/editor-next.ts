@@ -511,7 +511,41 @@ export class EditorNext {
     if (!this.tree) return;
     this.leftContent.replaceChildren();
     this.leftContent.appendChild(this.tree.dom);
-    this.tree.filter = this.query || null;
+    this.applyOutlineFilter();
+  }
+
+  private applyOutlineFilter(): void {
+    if (!this.tree) return;
+    const query = this.query.toLowerCase();
+    const childrenOf = (item: TreeViewItem): TreeViewItem[] => {
+      const result: TreeViewItem[] = [];
+      item.forEachChild((child) => {
+        if (child instanceof TreeViewItem) result.push(child);
+      });
+      return result;
+    };
+    const setVisible = (item: TreeViewItem, visible: boolean): void => {
+      item.hidden = !visible;
+      for (const child of childrenOf(item)) setVisible(child, visible);
+    };
+    const visit = (item: TreeViewItem, queryText: string): boolean => {
+      const selfMatch = queryText.length === 0 || item.text.toLowerCase().includes(queryText);
+      let childMatch = false;
+      for (const child of childrenOf(item)) {
+        if (visit(child, queryText)) childMatch = true;
+      }
+      if (selfMatch) {
+        // 分组命中时展示整组，单项命中时只展示自己
+        for (const child of childrenOf(item)) setVisible(child, true);
+        if (queryText.length > 0) item.open = true;
+      }
+      const visible = selfMatch || childMatch;
+      item.hidden = !visible;
+      return visible;
+    };
+    this.tree.forEachChild((child) => {
+      if (child instanceof TreeViewItem) visit(child, query);
+    });
   }
 
   private renderTree(): void {
@@ -560,7 +594,7 @@ export class EditorNext {
     this.tree.append(siteNode);
     this.tree.append(roadNode);
     this.tree.append(propNode);
-    this.tree.filter = this.query || null;
+    this.applyOutlineFilter();
     this.syncTreeSelection();
   }
 
