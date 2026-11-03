@@ -3,7 +3,7 @@
   "tickHz": 20,
   "maxTicks": 18000,
   "sendRatio": 0.5,
-  "speedDmPerSecond": 60,
+  "speedDmPerSecond": 36,
   "maxLevel": 3,
   "levels": [
     {

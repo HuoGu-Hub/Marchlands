@@ -4,15 +4,7 @@ import { createGame, step } from "../src/game";
 import { hash } from "../src/hash";
 import { DEFAULT_RULESET } from "../src/rules";
 import type { Command, SimState } from "../src/types";
-import {
-  AI_OUTPOST_MAP,
-  DECAY_MAP,
-  GRANARY_DEFENSE_MAP,
-  GRANARY_MAP,
-  OUTPOST_MAP,
-  VICTORY_MAP,
-  rulesWith,
-} from "./fixtures";
+import { AI_OUTPOST_MAP, DECAY_MAP, GRANARY_DEFENSE_MAP, GRANARY_MAP, OUTPOST_MAP, VICTORY_MAP, rulesWith, TIMED_RULES } from "./fixtures";
 
 function site(state: SimState, id: string) {
   const found = state.cities.find((city) => city.id === id);
@@ -47,7 +39,7 @@ function fastDecayRules() {
 
 describe("granary", () => {
   it("speeds up marches and strengthens troops while owned", () => {
-    const start = createGame(GRANARY_MAP, 1);
+    const start = createGame(GRANARY_MAP, 1, TIMED_RULES);
     site(start, "b").maxPop = 5;
     const sent = step(start, [{ type: "send", from: "a", to: "b" }]).state;
     const squad = sent.squads[0];
@@ -62,7 +54,7 @@ describe("granary", () => {
   });
 
   it("uses base speed and strength without a granary", () => {
-    const start = createGame(GRANARY_MAP, 1);
+    const start = createGame(GRANARY_MAP, 1, TIMED_RULES);
     site(start, "g1").owner = 0;
     site(start, "b").maxPop = 5;
     const sent = step(start, [{ type: "send", from: "a", to: "b" }]).state;
@@ -77,7 +69,7 @@ describe("granary", () => {
   });
 
   it("holds troops, produces no growth or gold, and cannot be upgraded", () => {
-    let state = createGame(GRANARY_MAP, 1);
+    let state = createGame(GRANARY_MAP, 1, TIMED_RULES);
     state = runUntil(state, 20);
     expect(site(state, "g1").pop).toBe(0);
     expect(player(state, 1).gold).toBe(2);
@@ -92,14 +84,14 @@ describe("granary", () => {
   });
 
   it("stacks its strength bonus on defense", () => {
-    const start = createGame(GRANARY_DEFENSE_MAP, 1);
+    const start = createGame(GRANARY_DEFENSE_MAP, 1, TIMED_RULES);
     site(start, "b").maxPop = 10;
     const sent = step(start, [{ type: "send", from: "a", to: "b" }]).state;
     const arrived = runUntil(sent, 68);
     expect(site(arrived, "b").owner).toBe(2);
     expect(site(arrived, "b").pop).toBe(2);
 
-    const noBuff = createGame(GRANARY_DEFENSE_MAP, 1);
+    const noBuff = createGame(GRANARY_DEFENSE_MAP, 1, TIMED_RULES);
     site(noBuff, "g1").owner = 0;
     site(noBuff, "b").maxPop = 10;
     const baseline = runUntil(step(noBuff, [{ type: "send", from: "a", to: "b" }]).state, 68);
@@ -109,7 +101,7 @@ describe("granary", () => {
 
   it("keeps the same hash for the same command stream", () => {
     const run = () => {
-      let state = createGame(GRANARY_MAP, 7);
+      let state = createGame(GRANARY_MAP, 7, TIMED_RULES);
       for (let tick = 0; tick < 200; tick += 1) {
         const commands: Command[] = tick === 0 ? [{ type: "send", from: "a", to: "b" }] : [];
         state = step(state, commands).state;
@@ -159,6 +151,7 @@ describe("outpost", () => {
 
   it("resets the grace timer when friendly troops arrive", () => {
     const rules = rulesWith({
+      speedDmPerSecond: 60,
       outpost: { ...DEFAULT_RULESET.outpost, graceTicks: 20, decayIntervalTicks: 10, decayPerInterval: 1 },
     });
     let state = createGame(DECAY_MAP, 1, rules);
@@ -173,7 +166,7 @@ describe("outpost", () => {
   });
 
   it("changes stance only on owned outposts", () => {
-    const state = createGame(OUTPOST_MAP, 1);
+    const state = createGame(OUTPOST_MAP, 1, TIMED_RULES);
     const changed = step(state, [{ type: "setStance", city: "o1", stance: "evade" }]);
     expect(changed.rejected).toEqual([]);
     expect(site(changed.state, "o1").stance).toBe("evade");
@@ -182,7 +175,7 @@ describe("outpost", () => {
     const town = step(state, [{ type: "setStance", city: "b", stance: "engage" }]);
     expect(town.rejected[0]?.reason).toBe("not_outpost");
 
-    const neutral = createGame(OUTPOST_MAP, 1);
+    const neutral = createGame(OUTPOST_MAP, 1, TIMED_RULES);
     site(neutral, "o1").owner = 0;
     const unowned = step(neutral, [{ type: "setStance", city: "o1", stance: "engage" }]);
     expect(unowned.rejected[0]?.reason).toBe("not_owned");
@@ -194,7 +187,7 @@ describe("outpost", () => {
   });
 
   it("intercepts passing squads when engaging", () => {
-    let state = createGame(OUTPOST_MAP, 1);
+    let state = createGame(OUTPOST_MAP, 1, TIMED_RULES);
     site(state, "c").maxPop = 5;
     state = step(state, [{ type: "send", from: "a", to: "c" }]).state;
     expect(state.squads[0].count).toBe(10);
@@ -218,7 +211,7 @@ describe("outpost", () => {
   });
 
   it("lets squads pass when the outpost avoids battle", () => {
-    let state = createGame(OUTPOST_MAP, 1);
+    let state = createGame(OUTPOST_MAP, 1, TIMED_RULES);
     site(state, "o1").stance = "evade";
     state = step(state, [{ type: "send", from: "a", to: "c" }]).state;
     state = runUntil(state, 26);
@@ -227,7 +220,7 @@ describe("outpost", () => {
   });
 
   it("destroys a passing squad when the outpost is stronger", () => {
-    let state = createGame(OUTPOST_MAP, 1);
+    let state = createGame(OUTPOST_MAP, 1, TIMED_RULES);
     site(state, "o1").pop = 20;
     state = step(state, [{ type: "send", from: "a", to: "c" }]).state;
     state = runUntil(state, 25);
@@ -240,7 +233,7 @@ describe("outpost", () => {
   });
 
   it("always fights a direct invasion, even when avoiding battle", () => {
-    let state = createGame(OUTPOST_MAP, 1);
+    let state = createGame(OUTPOST_MAP, 1, TIMED_RULES);
     site(state, "o1").stance = "evade";
     state = step(state, [{ type: "send", from: "a", to: "o1" }]).state;
     expect(state.squads[0].arrivalTick).toBe(84);
@@ -255,7 +248,7 @@ describe("outpost", () => {
   });
 
   it("does not count as a town for victory", () => {
-    let state = createGame(VICTORY_MAP, 1);
+    let state = createGame(VICTORY_MAP, 1, TIMED_RULES);
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     state = runUntil(state, 68);
     expect(state.status).toBe("finished");
@@ -265,7 +258,7 @@ describe("outpost", () => {
   });
 
   it("does not block capture when only buildings remain neutral", () => {
-    let state = createGame(GRANARY_MAP, 1);
+    let state = createGame(GRANARY_MAP, 1, TIMED_RULES);
     site(state, "g1").owner = 0;
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     state = runUntil(state, 68);
@@ -276,7 +269,7 @@ describe("outpost", () => {
 
   it("keeps a deterministic hash with outposts and timers", () => {
     const run = () => {
-      let state = createGame(OUTPOST_MAP, 9);
+      let state = createGame(OUTPOST_MAP, 9, TIMED_RULES);
       for (let tick = 0; tick < 300; tick += 1) {
         const commands: Command[] = tick === 0 ? [{ type: "send", from: "a", to: "c" }] : [];
         state = step(state, commands).state;
@@ -289,7 +282,7 @@ describe("outpost", () => {
 
 describe("ai", () => {
   it("switches an owned outpost to engage", () => {
-    const state = createGame(AI_OUTPOST_MAP, 1);
+    const state = createGame(AI_OUTPOST_MAP, 1, TIMED_RULES);
     const commands = createAi(2).decide(state);
     expect(commands).toContainEqual({ type: "setStance", city: "o1", stance: "engage" });
   });

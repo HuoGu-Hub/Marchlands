@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Surface, encodeBitmapBase64, encodeInt16Base64, encodeUint8Base64 } from "@marchlands/nav";
 import { createAi, createGame, gridSpeedCmPerTick, hash, step } from "../src";
 import type { MapDef } from "../src/types";
+import { TIMED_RULES } from "./fixtures";
 
 const WIDTH = 40;
 const HEIGHT = 20;
@@ -63,7 +64,7 @@ function gridMap(blockedCells: Array<[number, number]> = [], aiOwner = 2): MapDe
 
 describe("grid simulation", () => {
   it("moves faster on road and bridge surfaces", () => {
-    const rules = createGame(gridMap(), 1).rules;
+    const rules = createGame(gridMap(), 1, TIMED_RULES).rules;
     const grass = gridSpeedCmPerTick(rules, 1000, Surface.Grass);
     const road = gridSpeedCmPerTick(rules, 1000, Surface.Road);
     const bridge = gridSpeedCmPerTick(rules, 1000, Surface.Bridge);
@@ -72,7 +73,7 @@ describe("grid simulation", () => {
   });
 
   it("sends a squad along the grid and captures the target", () => {
-    let state = createGame(gridMap(), 1);
+    let state = createGame(gridMap(), 1, TIMED_RULES);
     expect(state.nav).not.toBeNull();
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     expect(state.squads).toHaveLength(1);
@@ -96,7 +97,7 @@ describe("grid simulation", () => {
   it("rejects a grid destination split by a wall", () => {
     const blocked: Array<[number, number]> = [];
     for (let z = 0; z < HEIGHT; z += 1) blocked.push([20, z]);
-    let state = createGame(gridMap(blocked), 1);
+    let state = createGame(gridMap(blocked), 1, TIMED_RULES);
     const result = step(state, [{ type: "send", from: "a", to: "b" }]);
     state = result.state;
     expect(result.rejected[0]?.reason).toBe("no_route");
@@ -105,7 +106,7 @@ describe("grid simulation", () => {
 
   it("keeps grid replays deterministic", () => {
     const play = () => {
-      let state = createGame(gridMap(), 7);
+      let state = createGame(gridMap(), 7, TIMED_RULES);
       state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
       for (let tick = 0; tick < 40; tick += 1) state = step(state, []).state;
       return state;
@@ -120,7 +121,7 @@ describe("grid simulation", () => {
     const map = gridMap();
     map.cities[0].pop = 5;
     map.cities[1].pop = 30;
-    let state = createGame(map, 11);
+    let state = createGame(map, 11, TIMED_RULES);
     const ai = createAi(2);
     for (let tick = 0; tick < 4000 && state.status === "playing"; tick += 1) {
       state = step(state, ai.decide(state)).state;
@@ -133,7 +134,7 @@ describe("grid simulation", () => {
     const map = gridMap();
     map.cities[0].pop = 2;
     map.cities[1].pop = 30;
-    const state = createGame(map, 3);
+    const state = createGame(map, 3, TIMED_RULES);
     const commands = createAi(2).decide(state);
     expect(commands.some((command) => command.type === "send" && command.from === "b")).toBe(true);
     const next = step(state, commands).state;

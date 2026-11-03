@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createAi } from "../src/ai";
 import { createGame, step } from "../src/game";
-import { AI_MAP, AI_OUTPOST_MAP, OUTPOST_MAP } from "./fixtures";
+import { AI_MAP, AI_OUTPOST_MAP, OUTPOST_MAP, TIMED_RULES } from "./fixtures";
 
 describe("ai", () => {
   it("finishes a match within the tick limit", () => {
-    let state = createGame(AI_MAP, 11);
+    let state = createGame(AI_MAP, 11, TIMED_RULES);
     const one = createAi(1);
     const two = createAi(2);
     let guard = 0;
@@ -19,7 +19,7 @@ describe("ai", () => {
   });
 
   it("issues only valid, owned commands", () => {
-    let state = createGame(AI_MAP, 5);
+    let state = createGame(AI_MAP, 5, TIMED_RULES);
     const one = createAi(1);
     for (let tick = 0; tick < 2000; tick += 1) {
       const commands = tick % 40 === 0 ? one.decide(state) : [];
@@ -41,14 +41,14 @@ describe("ai", () => {
   });
 
   it("does nothing between decision ticks", () => {
-    const state = createGame(AI_MAP, 2);
+    const state = createGame(AI_MAP, 2, TIMED_RULES);
     const ai = createAi(1);
     const offset = { ...state, tick: 3 };
     expect(ai.decide(offset)).toEqual([]);
   });
 
   it("switches an owned outpost to engage", () => {
-    const state = createGame(AI_OUTPOST_MAP, 1);
+    const state = createGame(AI_OUTPOST_MAP, 1, TIMED_RULES);
     expect(createAi(2).decide(state)).toContainEqual({
       type: "setStance",
       city: "o1",
@@ -57,7 +57,7 @@ describe("ai", () => {
   });
 
   it("finishes a match that contains buildings", () => {
-    let state = createGame(OUTPOST_MAP, 11);
+    let state = createGame(OUTPOST_MAP, 11, TIMED_RULES);
     const one = createAi(1);
     const two = createAi(2);
     let guard = 0;

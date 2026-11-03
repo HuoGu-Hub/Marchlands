@@ -79,6 +79,12 @@ export function rulesWith(overrides: Partial<Ruleset>): Ruleset {
   return { ...DEFAULT_RULESET, ...overrides };
 }
 
+/**
+ * 场景测试固定行军速度为 60dm/s。
+ * 这些用例按固定 tick 编排时序，与平衡调参解耦，避免调整 speedDmPerSecond 后成批断言失效。
+ */
+export const TIMED_RULES: Ruleset = rulesWith({ speedDmPerSecond: 60 });
+
 export const OUTPOST_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "outpost",

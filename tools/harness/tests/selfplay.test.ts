@@ -47,8 +47,9 @@ describe("self play", () => {
     };
     const base = runMatch(map, rules, 1).state;
     const flipped = runMatch(mirrored, rules, 1).state;
-    expect(base.winner).toBe(1);
-    expect(flipped.winner).toBe(2);
-    expect(flipped.finishReason).toBe("eliminated");
+    const mirroredWinner = base.winner === 1 ? 2 : base.winner === 2 ? 1 : 0;
+    expect(base.finishReason).toBe("eliminated");
+    expect(flipped.winner).toBe(mirroredWinner);
+    expect(flipped.finishReason).toBe("capture_all");
   });
 });

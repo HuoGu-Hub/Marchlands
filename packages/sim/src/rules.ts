@@ -5,7 +5,7 @@ export const DEFAULT_RULESET: Ruleset = {
   tickHz: 20,
   maxTicks: 18000,
   sendRatio: 0.5,
-  speedDmPerSecond: 60,
+  speedDmPerSecond: 36,
   maxLevel: 3,
   levels: [
     { level: 1, maxPop: 30, upgradeCost: 15, defense: 1.0, growthMilli: 50, goldMilli: 100 },

@@ -3,7 +3,7 @@ import { createGame, step } from "../src/game";
 import { hash } from "../src/hash";
 import { DEFAULT_RULESET } from "../src/rules";
 import type { Command } from "../src/types";
-import { THREE_CITY_MAP, TWO_CITY_MAP, rulesWith } from "./fixtures";
+import { THREE_CITY_MAP, TWO_CITY_MAP, rulesWith, TIMED_RULES } from "./fixtures";
 
 function city(state: ReturnType<typeof createGame>, id: string) {
   const found = state.cities.find((entry) => entry.id === id);
@@ -22,7 +22,7 @@ function runUntil(state: ReturnType<typeof createGame>, tick: number, commands: 
 
 describe("send", () => {
   it("sends half rounded down and records a squad", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     const result = step(state, [{ type: "send", from: "a", to: "b" }]);
     expect(result.rejected).toEqual([]);
     const from = city(result.state, "a");
@@ -36,7 +36,7 @@ describe("send", () => {
   });
 
   it("does not mutate the input state", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     const before = hash(state);
     step(state, [{ type: "send", from: "a", to: "b" }]);
     expect(hash(state)).toBe(before);
@@ -45,7 +45,7 @@ describe("send", () => {
   });
 
   it("rejects invalid commands without changing state", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     const result = step(state, [
       { type: "send", from: "a", to: "a" },
       { type: "send", from: "b", to: "a" },
@@ -63,14 +63,14 @@ describe("send", () => {
   });
 
   it("rejects sends below two population", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     city(state, "a").pop = 1;
     const result = step(state, [{ type: "send", from: "a", to: "b" }]);
     expect(result.rejected[0]?.reason).toBe("too_few_troops");
   });
 
   it("resolves combat on arrival", () => {
-    let state = createGame(THREE_CITY_MAP, 1);
+    let state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     state = runUntil(state, 35);
     expect(state.squads).toHaveLength(0);
@@ -82,7 +82,7 @@ describe("send", () => {
   });
 
   it("captures after the defenders are worn down", () => {
-    let state = createGame(THREE_CITY_MAP, 1);
+    let state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     state = runUntil(state, 35);
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
@@ -95,7 +95,7 @@ describe("send", () => {
 
 describe("upgrade", () => {
   it("upgrades through the command pipeline", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     city(state, "a").pop = 15;
     const result = step(state, [{ type: "upgrade", city: "a" }]);
     expect(result.rejected).toEqual([]);
@@ -107,7 +107,7 @@ describe("upgrade", () => {
 
 describe("finish", () => {
   it("wins by capturing every city", () => {
-    let state = createGame(TWO_CITY_MAP, 1);
+    let state = createGame(TWO_CITY_MAP, 1, TIMED_RULES);
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     state = runUntil(state, 68);
     expect(state.status).toBe("finished");
@@ -117,7 +117,7 @@ describe("finish", () => {
   });
 
   it("eliminates a player with no cities", () => {
-    let state = createGame(THREE_CITY_MAP, 1);
+    let state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     city(state, "a").pop = 30;
     city(state, "a").maxPop = 65;
     city(state, "a").level = 3;
@@ -147,7 +147,7 @@ describe("finish", () => {
 
 describe("gold", () => {
   it("adds city income to the owner", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     const after = runUntil(state, 20);
     expect(city(after, "a").owner).toBe(1);
     expect(after.players.find((player) => player.id === 1)?.gold).toBe(2);
@@ -157,7 +157,7 @@ describe("gold", () => {
 describe("determinism", () => {
   it("produces the same hash for the same command stream", () => {
     const run = () => {
-      let state = createGame(THREE_CITY_MAP, 7);
+      let state = createGame(THREE_CITY_MAP, 7, TIMED_RULES);
       for (let tick = 0; tick < 400; tick += 1) {
         const commands: Command[] = [];
         if (tick === 0 || tick === 40) commands.push({ type: "send", from: "a", to: "b" });
@@ -170,8 +170,8 @@ describe("determinism", () => {
   });
 
   it("does not depend on rule json key order", () => {
-    const state = createGame(THREE_CITY_MAP, 3);
-    const reordered = { ...DEFAULT_RULESET, levels: DEFAULT_RULESET.levels.map((entry) => entry) };
+    const state = createGame(THREE_CITY_MAP, 3, TIMED_RULES);
+    const reordered = { ...TIMED_RULES, levels: TIMED_RULES.levels.map((entry) => entry) };
     const other = createGame(THREE_CITY_MAP, 3, reordered);
     expect(hash(state)).toBe(hash(other));
   });

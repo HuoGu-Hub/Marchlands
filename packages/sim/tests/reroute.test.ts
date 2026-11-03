@@ -4,7 +4,7 @@ import { hash } from "../src/hash";
 import { nextAnchor, routeOptions } from "../src/routes";
 import { DEFAULT_RULESET } from "../src/rules";
 import type { Command, SimState } from "../src/types";
-import { JUNCTION_MAP, rulesWith } from "./fixtures";
+import { JUNCTION_MAP, rulesWith, TIMED_RULES } from "./fixtures";
 
 function site(state: SimState, id: string) {
   const found = state.cities.find((city) => city.id === id);
@@ -27,7 +27,7 @@ function runUntil(state: SimState, tick: number, commands: Command[] = []): SimS
 }
 
 function sendToD(): SimState {
-  const state = createGame(JUNCTION_MAP, 1);
+  const state = createGame(JUNCTION_MAP, 1, TIMED_RULES);
   site(state, "d").maxPop = 5;
   return step(state, [{ type: "send", from: "a", to: "d" }]).state;
 }

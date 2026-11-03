@@ -3,11 +3,11 @@ import { createGame } from "../src/game";
 import { growCity, growGold, applyUpgrade } from "../src/economy";
 import { levelRule } from "../src/rules";
 import { DEFAULT_RULESET } from "../src/rules";
-import { THREE_CITY_MAP } from "./fixtures";
+import { THREE_CITY_MAP, TIMED_RULES } from "./fixtures";
 
 describe("economy", () => {
   it("grows one pop after twenty level-1 ticks", () => {
-    const city = { ...createGame(THREE_CITY_MAP, 1).cities[0], pop: 0, maxPop: 30, growthCarry: 0 };
+    const city = { ...createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0], pop: 0, maxPop: 30, growthCarry: 0 };
     const rule = levelRule(DEFAULT_RULESET, 1);
     for (let tick = 0; tick < 20; tick += 1) growCity(city, rule);
     expect(city.pop).toBe(1);
@@ -15,7 +15,7 @@ describe("economy", () => {
   });
 
   it("carries level-2 remainder", () => {
-    const city = { ...createGame(THREE_CITY_MAP, 1).cities[0], pop: 0, maxPop: 45, growthCarry: 0 };
+    const city = { ...createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0], pop: 0, maxPop: 45, growthCarry: 0 };
     const rule = levelRule(DEFAULT_RULESET, 2);
     for (let tick = 0; tick < 20; tick += 1) growCity(city, rule);
     expect(city.pop).toBe(1);
@@ -23,7 +23,7 @@ describe("economy", () => {
   });
 
   it("stops at max population and drops the carry", () => {
-    const city = { ...createGame(THREE_CITY_MAP, 1).cities[0], pop: 29, maxPop: 30, growthCarry: 900 };
+    const city = { ...createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0], pop: 29, maxPop: 30, growthCarry: 900 };
     const rule = levelRule(DEFAULT_RULESET, 1);
     for (let tick = 0; tick < 40; tick += 1) growCity(city, rule);
     expect(city.pop).toBe(30);
@@ -38,7 +38,7 @@ describe("economy", () => {
   });
 
   it("upgrades only with enough population", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     const city = state.cities.find((entry) => entry.id === "a");
     if (!city) throw new Error("missing city");
     city.pop = 14;
@@ -51,7 +51,7 @@ describe("economy", () => {
   });
 
   it("refuses to upgrade past max level", () => {
-    const state = createGame(THREE_CITY_MAP, 1);
+    const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);
     const city = state.cities.find((entry) => entry.id === "a");
     if (!city) throw new Error("missing city");
     city.level = 3;
