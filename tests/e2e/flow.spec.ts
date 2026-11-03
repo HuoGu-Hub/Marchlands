@@ -40,7 +40,7 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
 test("creates a map in the editor and returns from playtest", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor");
+  await page.click("#btn-editor-classic");
   await expect(page.locator("#page-editor")).toBeVisible();
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   const box = await page.locator("#ml-ed-canvas").boundingBox();
@@ -64,7 +64,7 @@ test("creates a map in the editor and returns from playtest", async ({ page }) =
 test("creates a grid map, sculpts terrain and previews navigation", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor");
+  await page.click("#btn-editor-classic");
   await expect(page.locator("#page-editor")).toBeVisible();
   await page.click("#ml-ed-new-grid");
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
@@ -107,7 +107,7 @@ test("creates a grid map, sculpts terrain and previews navigation", async ({ pag
 test("draws and reshapes a road in the editor", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor");
+  await page.click("#btn-editor-classic");
   await expect(page.locator("#page-editor")).toBeVisible();
   await page.click("#ml-ed-new-grid");
   await page.waitForTimeout(500);
@@ -159,7 +159,7 @@ test("draws and reshapes a road in the editor", async ({ page }) => {
 test("draws a free road with empty endpoints", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor");
+  await page.click("#btn-editor-classic");
   await expect(page.locator("#page-editor")).toBeVisible();
   await page.click("#ml-ed-new-grid");
   await page.waitForTimeout(500);
@@ -178,7 +178,7 @@ test("draws a free road with empty endpoints", async ({ page }) => {
 test("places and rotates a terrain prop in the editor", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor");
+  await page.click("#btn-editor-classic");
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   const label = page.locator("#ml-ed-map-label");
   const before = await label.textContent();
@@ -199,7 +199,7 @@ test("places and rotates a terrain prop in the editor", async ({ page }) => {
 test("adds a floating foundation and deletes it", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor");
+  await page.click("#btn-editor-classic");
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   await page.click('[data-mode="foundation"]');
   await expect(page.locator(".ml-ed-foundation-row")).toHaveCount(1);
@@ -224,7 +224,7 @@ test("adds a floating foundation and deletes it", async ({ page }) => {
 test("next editor expands a foundation and creates a floating island", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-next");
+  await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
   await expect(page.locator("#mlnx-status")).toContainText("地图有效");
   await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
@@ -255,7 +255,7 @@ test("next editor expands a foundation and creates a floating island", async ({ 
 test("next editor drags a foundation face handle", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-next");
+  await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
   await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
   const east = await page.evaluate(() => {
@@ -275,7 +275,7 @@ test("next editor converts to a grid map and sculpts terrain", async ({ page }) 
   page.on("dialog", (dialog) => void dialog.accept());
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-editor-next");
+  await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
   await page.keyboard.press("g");
   await page.click("#mlnx-convert-grid");

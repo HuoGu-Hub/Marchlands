@@ -25,6 +25,7 @@ import {
   compileDocument,
   convertToGrid,
   createGridDocument,
+  createGridDraft,
   createStarterDocument,
   documentBounds,
   duplicateFoundation,
@@ -805,6 +806,8 @@ export class EditorNext {
       host.innerHTML =
         '<div class="mlnx-group-label">网格地形</div>' +
         '<p class="mlnx-note">当前是据点图。转换为网格地图后可以用笔刷抬高、压低、刷水与阻挡。</p>' +
+        '<label class="mlnx-switch">宽 <input id="mlnx-grid-w" type="number" min="20" max="300" step="5" value="70"></label>' +
+        '<label class="mlnx-switch">高 <input id="mlnx-grid-h" type="number" min="20" max="300" step="5" value="70"></label>' +
         '<button class="mlnx-btn" id="mlnx-convert-grid">转换为网格地图</button>' +
         '<button class="mlnx-btn" id="mlnx-new-grid">新建网格地图</button>';
       this.leftContent.appendChild(host);
@@ -816,7 +819,15 @@ export class EditorNext {
       });
       host.querySelector("#mlnx-new-grid")?.addEventListener("click", () => {
         if (this.dirty && !window.confirm("当前草稿还没保存，确定新建网格地图？")) return;
-        this.doc = createGridDocument();
+        const widthInput = host.querySelector<HTMLInputElement>("#mlnx-grid-w");
+        const heightInput = host.querySelector<HTMLInputElement>("#mlnx-grid-h");
+        const widthM = Math.max(20, Math.min(300, Number(widthInput?.value) || 70));
+        const heightM = Math.max(20, Math.min(300, Number(heightInput?.value) || 70));
+        const size: [number, number] = [Math.round(widthM * 10), Math.round(heightM * 10)];
+        const next = createGridDocument();
+        next.size = size;
+        next.grid = createGridDraft(size);
+        this.doc = next;
         this.undoStack = [];
         this.redoStack = [];
         this.selection = null;
@@ -824,7 +835,7 @@ export class EditorNext {
         this.rebuildScene();
         this.renderAll();
         this.setTool("terrain");
-        this.notice("已新建网格地图");
+        this.notice("已新建网格地图 " + widthM + " × " + heightM + " 米");
       });
       return;
     }
@@ -1031,6 +1042,16 @@ export class EditorNext {
       (value) => this.commit(updateRoadVisual(this.doc, { width: Math.max(0.6, Math.min(6, value)) }), "已修改道路宽度", { roads: true }),
       { min: 0.6, max: 6, step: 0.1 },
     );
+    this.addSection("规则");
+    this.addSelect(
+      "通行",
+      this.doc.transit,
+      [
+        { t: "友方通行", v: "friendly" },
+        { t: "开放通行", v: "open" },
+      ],
+      (value) => this.commit(updateDocument(this.doc, { transit: value as "open" | "friendly" }), "已修改通行规则"),
+    );
     const scatter = new BooleanInput({ value: this.doc.visual.scatter });
     scatter.on("change", () => {
       this.commit(updateScatter(this.doc, scatter.value), scatter.value ? "已开启自动补景" : "已关闭自动补景", { rebuild: true });
@@ -1187,6 +1208,20 @@ export class EditorNext {
       shellOptions,
       (value) => this.commit(updateFoundation(this.doc, id, { assetId: value ? String(value) : null }), value ? "已设置外壳" : "已恢复程序化浮岛", { terrain: true, sites: true }),
     );
+    if (foundation.assetId) {
+      this.addNumber(
+        "外壳缩放",
+        foundation.scale,
+        (value) => this.commit(updateFoundation(this.doc, id, { scale: value }), "已调整外壳缩放", { terrain: true, sites: true }),
+        { min: 0.01, max: 50, step: 0.05 },
+      );
+      this.addNumber(
+        "外壳朝向",
+        foundation.rotation,
+        (value) => this.commit(updateFoundation(this.doc, id, { rotation: value }), "已调整外壳朝向", { terrain: true, sites: true }),
+        { step: 5, precision: 0 },
+      );
+    }
     this.addButton("复制地基", () => {
       const result = duplicateFoundation(this.doc, id);
       if (!result) return;
