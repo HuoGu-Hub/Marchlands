@@ -657,8 +657,8 @@ function buildIslandBase(
   for (let layer = 0; layer <= layers; layer += 1) {
     const t = layer / layers;
     const ledge = (valueNoise(t * 9.3, 0.5, seed + 3) - 0.5) * 2.1;
-    const taperT = Math.pow(t, 0.9);
-    const shrink = 0.8 * taperT;
+    const taperT = Math.pow(t, 1.35);
+    const shrink = 0.52 * taperT;
     const ring: Array<{ x: number; y: number; z: number; theta: number }> = [];
     for (const point of rim) {
       const theta = point.theta;
@@ -669,7 +669,7 @@ function buildIslandBase(
         (valueNoise(Math.cos(theta) * 3.1 + 5, Math.sin(theta) * 3.1 - 2, seed + 17) - 0.5) * 0.1 +
         (valueNoise(Math.cos(theta) * 10.5 - 3, Math.sin(theta) * 10.5 + 7, seed + 51) - 0.5) * 0.035;
       const radius = Math.max(2, point.radius * (1 - shrink * ridge) + ledge);
-      const fall = Math.pow(t, 0.92) * (0.97 + Math.sin(theta * 3.1) * 0.05);
+      const fall = Math.pow(Math.sin(Math.min(1, t) * Math.PI * 0.5), 0.85) * (0.98 + Math.sin(theta * 3.1) * 0.04);
       ring.push({
         x: centerX + Math.cos(theta) * radius,
         y: point.y - point.depth * fall,
@@ -728,9 +728,9 @@ function buildIslandBase(
     }
   }
 
-  const tipY = Math.min(...bottomRing.map((point) => point.y)) - 6;
+  const tipY = Math.min(...bottomRing.map((point) => point.y)) + Math.max(...rim.map((point) => point.depth)) * 0.16;
   const tipIndex = positions.length / 3;
-  positions.push(centerX + 1.6, tipY, centerZ - 1.2);
+  positions.push(centerX, tipY, centerZ);
   color.copy(dark).multiplyScalar(0.44);
   colors.push(color.r, color.g, color.b);
   const bottomStart = layers * cols;
@@ -822,7 +822,7 @@ function buildIsland(
   const halfX = Math.max(1, (maxX - minX) / 2);
   const halfZ = Math.max(1, (maxZ - minZ) / 2);
   const span = Math.max(halfX, halfZ) * 2;
-  const depth = THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 1.35, 40, 170);
+  const depth = THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 0.24, 14, 38);
   const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt);
   const group = new THREE.Group();
   group.name = "island";
