@@ -228,6 +228,13 @@ export interface SquadState {
   gridIndex?: number;
   /** 网格模式下每 tick 前进的厘米数。 */
   gridSpeedCmPerTick?: number;
+  /** 正在通过的建筑；passed 是已经无损通过的士兵数。 */
+  transit?: {
+    cityId: CityId;
+    totalTicks: number;
+    ticksLeft: number;
+    passed: number;
+  };
 }
 
 export interface PlayerState {

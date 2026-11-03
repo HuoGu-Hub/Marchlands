@@ -684,10 +684,88 @@ function retargetGridSquad(
   });
 }
 
+function cityAtGridCell(state: SimState, xCm: number, zCm: number): CityState | null {
+  const grid = state.map.grid;
+  if (!grid) return null;
+  const offsetX = state.map.size[0] * 5;
+  const offsetZ = state.map.size[1] * 5;
+  const x = Math.floor((xCm + offsetX) / grid.cellSizeCm);
+  const z = Math.floor((zCm + offsetZ) / grid.cellSizeCm);
+  for (const city of state.cities) {
+    const cx = Math.floor((city.pos[0] * 10 + offsetX) / grid.cellSizeCm);
+    const cz = Math.floor((city.pos[1] * 10 + offsetZ) / grid.cellSizeCm);
+    if (cx === x && cz === z) return city;
+  }
+  return null;
+}
+
+function advanceGridTransit(
+  state: SimState,
+  squad: SquadState,
+  events: SimEvent[],
+  removed: Set<string>,
+): void {
+  const transit = squad.transit;
+  if (!transit) return;
+  const city = findCity(state, transit.cityId);
+  if (!city) {
+    delete squad.transit;
+    return;
+  }
+  const allows = city.owner === squad.owner || city.transit === "open";
+  if (allows) {
+    const total = squad.count + transit.passed;
+    const chunk = Math.max(1, Math.ceil(total / Math.max(1, transit.totalTicks)));
+    const moved = Math.min(squad.count, chunk);
+    squad.count -= moved;
+    transit.passed += moved;
+    transit.ticksLeft -= 1;
+    if (squad.count <= 0 || transit.ticksLeft <= 0) {
+      squad.count += transit.passed;
+      delete squad.transit;
+    }
+    return;
+  }
+
+  const beforeOwner = city.owner;
+  const remaining = squad.count;
+  const passed = transit.passed;
+  delete squad.transit;
+  if (remaining <= 0) {
+    squad.count = passed;
+    if (squad.count <= 0) removed.add(squad.id);
+    return;
+  }
+  const outcome = resolveAttack(city, squad.owner, remaining, state.rules, {
+    attackerStrengthMilli: squad.strengthMilli,
+    defenderStrengthMilli: strengthFor(state, beforeOwner),
+  });
+  events.push({
+    type: "combatResolved",
+    cityId: city.id,
+    attacker: squad.owner,
+    defender: beforeOwner,
+    attackerLoss: outcome.attackerLoss,
+    defenderLoss: outcome.defenderLoss,
+    captured: outcome.captured,
+  });
+  if (outcome.captured) {
+    events.push({ type: "cityCaptured", cityId: city.id, fromOwner: beforeOwner, toOwner: squad.owner, pop: city.pop });
+    squad.count = passed + Math.max(0, remaining - outcome.attackerLoss);
+  } else {
+    squad.count = passed;
+  }
+  if (squad.count <= 0) removed.add(squad.id);
+}
+
 function advanceGridSquads(state: SimState, events: SimEvent[]): void {
   const removed = new Set<string>();
   for (const squad of state.squads.slice().sort(byId)) {
     if (removed.has(squad.id)) continue;
+    if (squad.transit) {
+      advanceGridTransit(state, squad, events, removed);
+      continue;
+    }
     if (squad.xCm === undefined || squad.zCm === undefined || !squad.gridPath) {
       removed.add(squad.id);
       continue;
@@ -700,6 +778,13 @@ function advanceGridSquads(state: SimState, events: SimEvent[]): void {
     squad.xCm = moved.xCm;
     squad.zCm = moved.zCm;
     squad.gridIndex = moved.index;
+
+    const transitCity = cityAtGridCell(state, moved.xCm, moved.zCm);
+    if (transitCity && transitCity.id !== squad.to && transitCity.owner !== squad.owner) {
+      squad.transit = { cityId: transitCity.id, totalTicks: 5, ticksLeft: 5, passed: 0 };
+      advanceGridTransit(state, squad, events, removed);
+      continue;
+    }
 
     const city = findCity(state, squad.to);
     const radius = city?.captureRadiusCm ?? GRID_CAPTURE_RADIUS_CM;
