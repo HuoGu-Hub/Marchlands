@@ -22,13 +22,12 @@ export interface RetargetPath {
 
 export function blockedTransit(state: SimState, owner: number, destination?: CityId): Set<CityId> {
   const blocked = new Set<CityId>();
+  // 旧地图的 open/未标注模式保持完全不限制；只有 friendly 地图启用逐建筑规则。
+  if (state.map.transit !== "friendly") return blocked;
   for (const city of state.cities) {
     if (city.id === destination) continue;
     // 中立建筑使用自己的规则；被占领后强制友方通行。
-    const rule =
-      city.owner === 0
-        ? city.transit ?? (state.map.transit === "open" ? "open" : "closed")
-        : "friendly";
+    const rule = city.owner === 0 ? city.transit ?? "closed" : "friendly";
     if (rule === "open") continue;
     if (city.owner !== owner) blocked.add(city.id);
   }
