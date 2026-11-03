@@ -876,5 +876,15 @@ export function buildUnit(kind: UnitKind, palette: TeamPalette, variant: number 
   const rig = kind === "cavalry" ? makeCavalry(palette, variant) : makeHumanoid(kind, palette, variant);
   rig.root.name = "unit-" + kind;
   rig.root.userData.unitKind = kind;
+  rig.torso.name = "torso";
+  rig.head.name = "head";
+  rig.leftArm.name = "leftArm";
+  rig.rightArm.name = "rightArm";
+  rig.leftLeg.name = "leftLeg";
+  rig.rightLeg.name = "rightLeg";
+  if (rig.mount) rig.mount.name = "mount";
+  rig.mountLegs.forEach((leg, index) => {
+    leg.name = "mountLeg" + index;
+  });
   return rig;
 }

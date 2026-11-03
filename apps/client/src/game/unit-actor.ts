@@ -3,6 +3,44 @@ import { buildUnit } from "./unit-models";
 import type { UnitKind, UnitRig } from "./unit-models";
 import type { TeamPalette } from "./building-kit";
 
+/**
+ * 兵团按实际人数出模，单个兵团可能有二三十个士兵。
+ * 骨架按 兵种 + 阵营 + 变体 缓存成模板，实例只 clone 节点，几何与材质共享。
+ */
+const RIG_TEMPLATES = new Map<string, UnitRig>();
+
+function rigTemplate(kind: UnitKind, palette: TeamPalette, variant: number): UnitRig {
+  const key = kind + ":" + palette.roof + ":" + palette.cloth + ":" + variant;
+  let template = RIG_TEMPLATES.get(key);
+  if (!template) {
+    template = buildUnit(kind, palette, variant);
+    RIG_TEMPLATES.set(key, template);
+  }
+  return template;
+}
+
+function cloneRig(template: UnitRig): UnitRig {
+  const root = template.root.clone(true);
+  const pick = (name: string): THREE.Group => {
+    const found = root.getObjectByName(name);
+    if (!found) throw new Error("缺少骨架节点：" + name);
+    return found as THREE.Group;
+  };
+  return {
+    root,
+    torso: pick("torso"),
+    head: pick("head"),
+    leftArm: pick("leftArm"),
+    rightArm: pick("rightArm"),
+    leftLeg: pick("leftLeg"),
+    rightLeg: pick("rightLeg"),
+    ...(template.mount ? { mount: pick("mount") } : {}),
+    mountLegs: template.mountLegs.map((leg) => pick(leg.name)),
+    height: template.height,
+    kind: template.kind,
+  };
+}
+
 export interface UnitActorOptions {
   kind: UnitKind;
   palette: TeamPalette;
@@ -23,7 +61,7 @@ export class UnitActor extends THREE.Group {
   constructor(options: UnitActorOptions) {
     super();
     this.kind = options.kind;
-    this.rig = buildUnit(options.kind, options.palette, options.variant ?? 0);
+    this.rig = cloneRig(rigTemplate(options.kind, options.palette, (options.variant ?? 0) % 3));
     this.add(this.rig.root);
     this.phase = options.phase ?? Math.random() * Math.PI * 2;
     this.leftArmRest = this.rig.leftArm.rotation.x;
@@ -93,10 +131,7 @@ export class UnitActor extends THREE.Group {
   }
 
   dispose(): void {
-    this.rig.root.traverse((object) => {
-      const mesh = object as THREE.Mesh;
-      if (mesh.geometry) mesh.geometry.dispose();
-    });
+    // 几何与材质由模板共享，只摘掉本实例的节点。
     this.remove(this.rig.root);
   }
 }
