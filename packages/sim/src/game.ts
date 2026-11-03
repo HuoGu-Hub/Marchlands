@@ -41,6 +41,7 @@ import type {
   SquadState,
   Stance,
   StepResult,
+  UnitKind,
 } from "./types";
 
 function byId(a: { id: string }, b: { id: string }): number {
@@ -73,6 +74,7 @@ function cloneState(state: SimState): SimState {
       ...(squad.gridPath
         ? { gridPath: squad.gridPath.map((point) => [point[0], point[1]] as [number, number]) }
         : {}),
+      ...(squad.toCell ? { toCell: [squad.toCell[0], squad.toCell[1]] as [number, number] } : {}),
     })),
     events: [],
   };
@@ -333,6 +335,20 @@ function applyCommand(
     return;
   }
 
+  if (command.type === "sendCell") {
+    const from = findCity(state, command.from);
+    if (!from) return reject(rejected, command, "unknown_city");
+    if (from.owner === 0) return reject(rejected, command, "not_owned");
+    if (!isProductionSiteKind(from.kind)) return reject(rejected, command, "not_producer");
+    if (from.pop < 2) return reject(rejected, command, "too_few_troops");
+    if (!Number.isFinite(command.xCm) || !Number.isFinite(command.zCm)) {
+      return reject(rejected, command, "no_route");
+    }
+    if (!state.nav) return reject(rejected, command, "no_route");
+    sendGridSquadToCell(state, from, command.xCm, command.zCm, command, events, rejected);
+    return;
+  }
+
   if (command.type === "retarget") {
     const squad = findSquad(state, command.squad);
     if (!squad) return reject(rejected, command, "unknown_squad");
@@ -362,6 +378,17 @@ function applyCommand(
       via: command.via ?? null,
       arrivalTick,
     });
+    return;
+  }
+
+  if (command.type === "retargetCell") {
+    const squad = findSquad(state, command.squad);
+    if (!squad) return reject(rejected, command, "unknown_squad");
+    if (squad.owner !== 1 && squad.owner !== 2) return reject(rejected, command, "unknown_squad");
+    if (!Number.isFinite(command.xCm) || !Number.isFinite(command.zCm)) {
+      return reject(rejected, command, "no_route");
+    }
+    retargetGridSquadToCell(state, squad, command.xCm, command.zCm, command, events, rejected);
     return;
   }
 
@@ -461,6 +488,8 @@ function starveSquads(state: SimState, events: SimEvent[]): void {
   if (state.squads.length === 0) return;
   const removed = new Set<string>();
   for (const squad of state.squads) {
+    // 驻留在格子上的兵团不再消耗行军粮草，改道后重新计时。
+    if (isIdleGridSquad(squad)) continue;
     if (state.tick > squad.departTick && squad.supplyLeft > 0) squad.supplyLeft -= 1;
     if (state.tick < squad.nextStarveTick) continue;
 
@@ -599,16 +628,60 @@ function sendGridSquad(
     reject(rejected, command, "no_route");
     return;
   }
+  spawnGridSquad(
+    state,
+    from,
+    to.id,
+    null,
+    unitKind,
+    [[start[0], start[1]], ...route.points],
+    events,
+  );
+}
+
+/** 网格模式下把兵团派往任意格子；抵达后原地驻留，可再次改道。 */
+function sendGridSquadToCell(
+  state: SimState,
+  from: CityState,
+  xCm: number,
+  zCm: number,
+  command: Command,
+  events: SimEvent[],
+  rejected: CommandRejection[],
+): void {
+  if (!state.nav) return reject(rejected, command, "no_route");
+  const unitKind = siteUnitKind(from.kind) ?? "infantry";
+  const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind);
+  if (!unitNav) return reject(rejected, command, "no_route");
+  const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
+  const route = planGridRoute(state.map, unitNav, start, [xCm, zCm], 40, unitKind);
+  if (!route) return reject(rejected, command, "no_route");
+  spawnGridSquad(
+    state,
+    from,
+    "",
+    [xCm, zCm],
+    unitKind,
+    [[start[0], start[1]], ...route.points],
+    events,
+  );
+}
+
+function spawnGridSquad(
+  state: SimState,
+  from: CityState,
+  to: CityId,
+  toCell: [number, number] | null,
+  unitKind: UnitKind,
+  points: Array<[number, number]>,
+  events: SimEvent[],
+): void {
   const count = Math.max(1, Math.floor((from.pop * sendPercent(state.rules)) / 100));
   from.pop -= count;
 
   const hasGranary = playerHasGranary(state, from.owner);
   const speedMilli = granarySpeedMilli(state.rules, hasGranary);
   const strengthMilli = granaryStrengthMilli(state.rules, hasGranary);
-  const points: Array<[number, number]> = [
-    [start[0], start[1]],
-    ...route.points,
-  ];
   const speedCm = gridSpeedCmPerTick(state.rules, speedMilli);
   const arrivalTick = state.tick + gridTravelTicks(polylineLength(points), state.rules, speedMilli);
   const squad: SquadState = {
@@ -616,9 +689,10 @@ function sendGridSquad(
     owner: from.owner as PlayerId,
     unitKind,
     from: from.id,
-    to: to.id,
+    to,
+    ...(toCell ? { toCell } : {}),
     count,
-    path: [from.id, to.id],
+    path: to ? [from.id, to] : [from.id],
     pathIndex: 0,
     legStartTick: state.tick,
     legEndTick: arrivalTick,
@@ -629,8 +703,8 @@ function sendGridSquad(
     supplyLeft: state.rules.supply.carryTicks,
     nextStarveTick: state.tick + state.rules.supply.carryTicks,
     intercepted: [],
-    xCm: start[0],
-    zCm: start[1],
+    xCm: points[0][0],
+    zCm: points[0][1],
     gridPath: points,
     gridIndex: 1,
     gridSpeedCmPerTick: speedCm,
@@ -667,10 +741,13 @@ function retargetGridSquad(
   const points: Array<[number, number]> = [[start[0], start[1]], ...route.points];
   const distance = polylineLength(points);
   const arrivalTick = state.tick + gridTravelTicks(distance, state.rules, squad.speedMilli);
+  const idle = isIdleGridSquad(squad);
   squad.path = [squad.from, to.id];
   squad.pathIndex = 0;
   squad.to = to.id;
+  delete squad.toCell;
   squad.gridPath = points;
+  if (idle) squad.nextStarveTick = state.tick + Math.max(1, squad.supplyLeft);
   squad.gridIndex = 1;
   squad.legStartTick = state.tick;
   squad.legEndTick = arrivalTick;
@@ -680,6 +757,55 @@ function retargetGridSquad(
     squadId: squad.id,
     to: squad.to,
     via: command.type === "retarget" ? command.via ?? null : null,
+    arrivalTick,
+  });
+}
+
+function isIdleGridSquad(squad: SquadState): boolean {
+  return squad.toCell !== undefined && soldierAtPathEnd(squad);
+}
+
+function soldierAtPathEnd(squad: SquadState): boolean {
+  return squad.gridPath !== undefined && (squad.gridIndex ?? 0) >= squad.gridPath.length;
+}
+
+/** 网格模式下把驻留中的兵团改派到另一个格子。 */
+function retargetGridSquadToCell(
+  state: SimState,
+  squad: SquadState,
+  xCm: number,
+  zCm: number,
+  command: Command,
+  events: SimEvent[],
+  rejected: CommandRejection[],
+): void {
+  if (!state.nav) return reject(rejected, command, "no_route");
+  if (squad.xCm === undefined || squad.zCm === undefined) return reject(rejected, command, "squad_arrived");
+  const unitKind = squad.unitKind ?? "infantry";
+  const unitNav = createUnitNavGrid(state.map, state.cities, squad.owner, unitKind);
+  if (!unitNav) return reject(rejected, command, "no_route");
+  const start: [number, number] = [squad.xCm, squad.zCm];
+  const route = planGridRoute(state.map, unitNav, start, [xCm, zCm], 40, unitKind);
+  if (!route) return reject(rejected, command, "no_route");
+  const points: Array<[number, number]> = [[start[0], start[1]], ...route.points];
+  const distance = polylineLength(points);
+  const arrivalTick = state.tick + gridTravelTicks(distance, state.rules, squad.speedMilli);
+  const idle = isIdleGridSquad(squad);
+  squad.path = [squad.from];
+  squad.pathIndex = 0;
+  squad.to = "";
+  squad.toCell = [xCm, zCm];
+  squad.gridPath = points;
+  squad.gridIndex = 1;
+  squad.legStartTick = state.tick;
+  squad.legEndTick = arrivalTick;
+  squad.arrivalTick = arrivalTick;
+  if (idle) squad.nextStarveTick = state.tick + Math.max(1, squad.supplyLeft);
+  events.push({
+    type: "squadRetargeted",
+    squadId: squad.id,
+    to: "",
+    via: null,
     arrivalTick,
   });
 }
@@ -770,6 +896,8 @@ function advanceGridSquads(state: SimState, events: SimEvent[]): void {
       removed.add(squad.id);
       continue;
     }
+    // 以格子为目标的兵团抵达后原地驻留，等待再次指挥。
+    if (soldierAtPathEnd(squad)) continue;
     const surface = state.nav
       ? state.nav.surfaceAtXZ(squad.xCm + state.map.size[0] * 5, squad.zCm + state.map.size[1] * 5)
       : undefined;
@@ -797,6 +925,10 @@ function advanceGridSquads(state: SimState, events: SimEvent[]): void {
       }
     }
     if (moved.index >= squad.gridPath.length) {
+      if (squad.toCell) {
+        squad.arrivalTick = state.tick;
+        continue;
+      }
       removed.add(squad.id);
       resolveSquad(state, squad, events);
     }

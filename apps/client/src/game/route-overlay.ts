@@ -16,10 +16,11 @@ interface RouteOverlayOptions {
   map: MapDef;
 }
 
-/** 批量指定目标时已经编好组、等待松开发兵的派兵计划。 */
+/** 批量指定目标时已经编好组的派兵计划：目标可以是据点，也可以是任意网格（地图坐标厘米）。 */
 export interface PlannedAssignment {
   sources: readonly CityId[];
-  to: CityId;
+  to?: CityId;
+  cell?: [number, number];
 }
 
 // BattleScene.projectCity projects every site at this height.
@@ -202,7 +203,17 @@ export class RouteOverlay {
   }
 
   setPlan(assignments: readonly PlannedAssignment[]): void {
-    this.plan = assignments.map((group) => ({ sources: group.sources.slice(), to: group.to }));
+    this.plan = assignments.map((group) => ({
+      sources: group.sources.slice(),
+      ...(group.to !== undefined ? { to: group.to } : {}),
+      ...(group.cell ? { cell: [group.cell[0], group.cell[1]] as [number, number] } : {}),
+    }));
+  }
+
+  private planTargetPoint(group: PlannedAssignment): ScreenPoint | null {
+    if (group.to !== undefined) return this.sitePoint(group.to, GROUND_Y);
+    if (group.cell) return this.projector.point(group.cell[0] / 100, group.cell[1] / 100, GROUND_Y);
+    return null;
   }
 
   render(state: SimState, selectedSquadId: string | null): void {
@@ -313,7 +324,7 @@ export class RouteOverlay {
 
   private squadPoint(squad: SquadState, state: SimState): ScreenPoint | null {
     if (squad.xCm !== undefined && squad.zCm !== undefined) {
-      return this.projector.point(squad.xCm / 10, squad.zCm / 10, SQUAD_Y);
+      return this.projector.point(squad.xCm / 100, squad.zCm / 100, SQUAD_Y);
     }
     const from = this.sites.get(squad.path[squad.pathIndex]);
     const to = this.sites.get(squad.path[squad.pathIndex + 1]);
@@ -350,7 +361,7 @@ export class RouteOverlay {
       if (start) points.push(start);
       for (let index = squad.gridIndex ?? 0; index < squad.gridPath.length; index += 1) {
         const target = squad.gridPath[index];
-        const projected = this.projector.point(target[0] / 10, target[1] / 10, GROUND_Y);
+        const projected = this.projector.point(target[0] / 100, target[1] / 100, GROUND_Y);
         if (projected) points.push(projected);
       }
       if (points.length >= 2) {
@@ -402,7 +413,7 @@ export class RouteOverlay {
     let bestDistance = 11;
     for (let groupIndex = 0; groupIndex < this.plan.length; groupIndex += 1) {
       const group = this.plan[groupIndex];
-      const target = this.sitePoint(group.to, GROUND_Y);
+      const target = this.planTargetPoint(group);
       if (!target) continue;
       group.sources.forEach((sourceId, sourceIndex) => {
         const source = this.sitePoint(sourceId, GROUND_Y);
@@ -427,7 +438,7 @@ export class RouteOverlay {
     if (!group) return null;
     this.resize();
     this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
-    const target = this.sitePoint(group.to, GROUND_Y);
+    const target = this.planTargetPoint(group);
     const first = group.sources[0];
     const source = first ? this.sitePoint(first, GROUND_Y) : null;
     if (!target || !source) return null;
@@ -441,7 +452,7 @@ export class RouteOverlay {
     if (this.plan.length === 0) return;
     const context = this.context;
     for (const group of this.plan) {
-      const target = this.sitePoint(group.to, GROUND_Y);
+      const target = this.planTargetPoint(group);
       if (!target) continue;
       group.sources.forEach((sourceId, sourceIndex) => {
         const source = this.sitePoint(sourceId, GROUND_Y);
@@ -550,7 +561,7 @@ export class RouteOverlay {
     const bar = this.panelRefs["supply-bar"];
     if (id) id.textContent = squad.id;
     if (count) count.textContent = `${squad.count} 兵`;
-    if (dest) dest.textContent = squad.to;
+    if (dest) dest.textContent = squad.to || (squad.toCell ? "网格" : "—");
     if (eta) eta.textContent = `${Math.max(0, Math.ceil((squad.arrivalTick - state.tick) / 20))}s`;
 
     const carry = Math.max(1, state.rules.supply.carryTicks);

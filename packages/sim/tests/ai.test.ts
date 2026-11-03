@@ -30,7 +30,7 @@ describe("ai", () => {
         } else if (command.type === "retarget") {
           const squad = state.squads.find((entry) => entry.id === command.squad);
           expect(squad?.owner).toBe(1);
-        } else {
+        } else if (command.type === "upgrade" || command.type === "setStance" || command.type === "setTransit") {
           const city = state.cities.find((entry) => entry.id === command.city);
           expect(city?.owner).toBe(1);
         }

@@ -993,3 +993,60 @@ test("double-clicking an arched arrow cancels its task", async ({ page }) => {
   await expect.poll(async () => (await plan())?.groups).toEqual([]);
   await expect(page.locator("#btn-dispatch")).not.toHaveClass(/on/);
 });
+
+test("dispatches troops to any reachable grid cell", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openClassicEditor(page);
+  await page.click("#ml-ed-new-grid");
+  await page.waitForTimeout(500);
+  await page.click("#ml-ed-play");
+  await expect(page.locator("#page-game")).toBeVisible();
+
+  const reach = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __mlReach?: { gridCells: number } }).__mlReach?.gridCells ?? 0,
+    );
+  await expect.poll(reach).toBeGreaterThan(4000);
+
+  const projectGround = (x: number, z: number) =>
+    page.evaluate(
+      (point) =>
+        (window as unknown as { __mlDebug?: { projectGround(x: number, z: number): { x: number; y: number } | null } })
+          .__mlDebug?.projectGround(point[0], point[1]),
+      [x, z] as [number, number],
+    );
+  const ownSquads = () =>
+    page.evaluate(
+      () => (window as unknown as { __mlSquads?: { own: number } }).__mlSquads?.own ?? 0,
+    );
+
+  // 单选状态下直接点浅绿网格派兵。
+  const ground = await projectGround(0, 0);
+  if (!ground) throw new Error("grid cell has no screen position");
+  await page.mouse.click(ground.x, ground.y);
+  await expect.poll(ownSquads).toBeGreaterThan(0);
+
+  // 多选状态下把编组指定到另一个网格，再点“派遣”。
+  await page.keyboard.press("Control");
+  const c1 = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+        .__mlDebug?.projectCity("c1"),
+  );
+  if (!c1) throw new Error("c1 has no screen position");
+  await page.mouse.click(c1.x, c1.y);
+  const cell = await projectGround(-100, 100);
+  if (!cell) throw new Error("target cell has no screen position");
+  await page.mouse.click(cell.x, cell.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const plan = (window as unknown as { __mlPlan?: { groups: Array<{ cell?: number[] }> } }).__mlPlan;
+        return plan?.groups[0]?.cell ?? null;
+      }),
+    )
+    .not.toBeNull();
+  await page.click("#btn-dispatch");
+  await expect(page.locator("#toast")).toContainText("已派遣");
+});

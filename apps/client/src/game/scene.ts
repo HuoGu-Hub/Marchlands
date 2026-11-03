@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { CityId, CityState, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
+import type { CityId, CityState, GridReach, MapDef, Owner, SimState, SquadState } from "@marchlands/sim";
 import type { MapVisual } from "@marchlands/map-authoring";
 import { Surface, decodeInt16Base64, decodeUint8Base64 } from "@marchlands/nav";
 import { art } from "./assets";
@@ -197,10 +197,12 @@ export class BattleScene {
     side: THREE.DoubleSide,
   });
   private readonly reachGroup = new THREE.Group();
+  private readonly reachCellGroup = new THREE.Group();
+  private reachCellMesh: THREE.Mesh | null = null;
   private readonly reachFillMaterial = new THREE.MeshBasicMaterial({
-    color: 0x8ef0a8,
+    color: 0x2f7d3e,
     transparent: true,
-    opacity: 0.34,
+    opacity: 0.5,
     depthWrite: false,
     side: THREE.FrontSide,
     toneMapped: false,
@@ -293,6 +295,7 @@ export class BattleScene {
     this.scene.add(this.propGroup);
     this.scene.add(this.sceneryGroup);
     this.scene.add(this.reachGroup);
+    this.scene.add(this.reachCellGroup);
     this.buildGround();
     this.applyFoundations();
     this.zoom = Math.max(this.fitZoom(), GAMEPLAY_ZOOM);
@@ -309,6 +312,7 @@ export class BattleScene {
       (window as unknown as Record<string, unknown>).__mlDebug = {
         projectCity: (id: string) => this.projectCity(id as CityId),
         projectCityBase: (id: string) => this.projectCityBase(id as CityId),
+        projectGround: (x: number, z: number) => this.projectGround(x, z, 0.1),
       };
     }
   }
@@ -316,6 +320,97 @@ export class BattleScene {
   setSelected(cityIds: readonly CityId[] | CityId | null): void {
     this.selectedIds = cityIds === null ? [] : typeof cityIds === "string" ? [cityIds] : cityIds.slice();
     this.updateRings();
+  }
+
+  /**
+   * 网格地图：浅绿色标出可抵达的地面格，深绿色标出可抵达建筑占地内的格子。
+   * 非网格地图传 null，清空网格高亮。
+   */
+  setReachableCells(reach: GridReach | null, buildings: readonly CityId[]): void {
+    this.clearReachCells();
+    if (!reach) return;
+    const nav = reach.nav;
+    const cellM = nav.cellSizeCm / 100;
+    const halfX = this.map.size[0] / 20;
+    const halfZ = this.map.size[1] / 20;
+    const dark = new Set<number>();
+    for (const id of buildings) {
+      const city = this.map.cities.find((entry) => entry.id === id);
+      if (!city) continue;
+      const radius = (city.footprintCm ?? 800) / 200;
+      const cx = city.pos[0] / 10;
+      const cz = city.pos[1] / 10;
+      const minX = Math.max(0, Math.floor((cx - radius + halfX) / cellM));
+      const maxX = Math.min(nav.width - 1, Math.floor((cx + radius + halfX) / cellM));
+      const minZ = Math.max(0, Math.floor((cz - radius + halfZ) / cellM));
+      const maxZ = Math.min(nav.height - 1, Math.floor((cz + radius + halfZ) / cellM));
+      for (let z = minZ; z <= maxZ; z += 1) {
+        for (let x = minX; x <= maxX; x += 1) {
+          const px = (x + 0.5) * cellM - halfX;
+          const pz = (z + 0.5) * cellM - halfZ;
+          if (Math.hypot(px - cx, pz - cz) > radius) continue;
+          dark.add(nav.index(x, z));
+        }
+      }
+    }
+
+    const positions: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    const light = new THREE.Color(0x9fe8a8);
+    const heavy = new THREE.Color(0x2f7d3e);
+    const addCell = (index: number, color: THREE.Color): void => {
+      const x = nav.cellX(index);
+      const z = nav.cellZ(index);
+      const cx = (x + 0.5) * cellM - halfX;
+      const cz = (z + 0.5) * cellM - halfZ;
+      const y = nav.heightCm(index) / 100 + 0.07;
+      const half = cellM * 0.42;
+      const base = positions.length / 3;
+      positions.push(cx - half, y, cz - half);
+      positions.push(cx + half, y, cz - half);
+      positions.push(cx + half, y, cz + half);
+      positions.push(cx - half, y, cz + half);
+      for (let vertex = 0; vertex < 4; vertex += 1) colors.push(color.r, color.g, color.b);
+      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    };
+
+    for (let index = 0; index < nav.cellCount; index += 1) {
+      if (dark.has(index)) {
+        addCell(index, heavy);
+        continue;
+      }
+      if (reach.cells[index] === 1) addCell(index, light);
+    }
+    if (positions.length === 0) return;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    const material = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.renderOrder = 2;
+    this.reachCellMesh = mesh;
+    this.reachCellGroup.add(mesh);
+  }
+
+  private clearReachCells(): void {
+    if (!this.reachCellMesh) return;
+    this.reachCellGroup.remove(this.reachCellMesh);
+    this.reachCellMesh.geometry.dispose();
+    const material = this.reachCellMesh.material as THREE.Material;
+    material.dispose();
+    this.reachCellMesh = null;
   }
 
   /** 用浅绿色格子标出当前可派兵抵达的据点。 */
@@ -502,11 +597,6 @@ export class BattleScene {
       }
     }
     return bestId ? { id: bestId, distance: bestDistance } : null;
-  }
-
-  pickCity(clientX: number, clientY: number, state: SimState): CityId | null {
-    const nearest = this.nearestCity(clientX, clientY, state);
-    return nearest && nearest.distance < 72 ? nearest.id : null;
   }
 
   update(state: SimState, deltaMs: number): void {
@@ -710,7 +800,7 @@ export class BattleScene {
 
   private squadPoint(squad: SquadState, tick: number): THREE.Vector3 {
     if (squad.xCm !== undefined && squad.zCm !== undefined) {
-      return new THREE.Vector3(squad.xCm / 10, 0, squad.zCm / 10);
+      return new THREE.Vector3(squad.xCm / 100, 0, squad.zCm / 100);
     }
     const start = this.positions.get(squad.path[0] ?? squad.from) ?? new THREE.Vector3();
     const end = this.positions.get(squad.path[squad.path.length - 1] ?? squad.to) ?? new THREE.Vector3();

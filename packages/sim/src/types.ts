@@ -202,7 +202,10 @@ export interface SquadState {
   owner: PlayerId;
   unitKind?: UnitKind;
   from: CityId;
+  /** 目标据点；以网格为目标时为空字符串。 */
   to: CityId;
+  /** 网格模式下以任意格子为目标时的终点，地图坐标厘米；抵达后原地驻留。 */
+  toCell?: [number, number];
   count: number;
   path: CityId[];
   /** 当前正在走的边在 path 中的下标。 */
@@ -307,10 +310,12 @@ export type SimEvent =
 
 export type Command =
   | { type: "send"; from: CityId; to: CityId }
+  | { type: "sendCell"; from: CityId; xCm: number; zCm: number }
   | { type: "upgrade"; city: CityId }
   | { type: "setStance"; city: CityId; stance: Stance }
   | { type: "setTransit"; city: CityId; mode: "release" | "intercept" }
-  | { type: "retarget"; squad: string; to: CityId; via?: CityId };
+  | { type: "retarget"; squad: string; to: CityId; via?: CityId }
+  | { type: "retargetCell"; squad: string; xCm: number; zCm: number };
 
 export interface CommandRejection {
   command: Command;

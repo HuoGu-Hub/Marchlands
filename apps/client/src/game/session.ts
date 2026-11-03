@@ -5,12 +5,13 @@ import type {
   CityId,
   CityState,
   Command,
+  GridReach,
   MapDef,
   Ruleset,
   SimState,
   SquadState,
 } from "@marchlands/sim";
-import { isProductionSiteKind, sendReachableTargets } from "@marchlands/sim";
+import { isProductionSiteKind, reachableGridCells, sendReachableTargets } from "@marchlands/sim";
 import { audio } from "../audio";
 import { RouteOverlay } from "./route-overlay";
 import type { PlannedAssignment } from "./route-overlay";
@@ -59,6 +60,8 @@ export class GameSession {
   private state: SimState;
   private selected: CityId[] = [];
   private selectedSquad: string | null = null;
+  private gridReach = new Map<CityId, GridReach>();
+  private gridUnion: GridReach | null = null;
   private multiSelect = false;
   private plan: PlannedAssignment[] = [];
   private lastPlanClick: { index: number; at: number } | null = null;
@@ -257,7 +260,7 @@ export class GameSession {
     }
   }
 
-  /** 只用己方可派兵的据点标注浅绿色可达格子；己方据点本身只用于切换选择。 */
+  /** 标注当前选择可以派兵抵达的据点与网格。 */
   private refreshReach(force = false): void {
     const signature = `${this.selected.join(",")}|${this.state.cities
       .map((city) => `${city.id}:${city.owner}:${city.transit ?? ""}:${city.pop >= 2 ? 1 : 0}`)
@@ -272,11 +275,40 @@ export class GameSession {
       }
     }
     this.reachTargets = [...targets].filter((id) => this.getCity(id)?.owner !== 1).sort();
-    this.scene.setReachable(this.reachTargets);
+
+    if (this.state.nav) {
+      this.gridReach.clear();
+      let unionNav: GridReach["nav"] | null = null;
+      let union: Uint8Array | null = null;
+      for (const id of this.selected) {
+        const reach = reachableGridCells(this.state, id);
+        if (!reach) continue;
+        this.gridReach.set(id, reach);
+        if (!union) {
+          unionNav = reach.nav;
+          union = new Uint8Array(reach.nav.cellCount);
+        }
+        for (let index = 0; index < reach.cells.length; index += 1) {
+          if (reach.cells[index] === 1) union[index] = 1;
+        }
+      }
+      this.gridUnion = union && unionNav ? { nav: unionNav, cells: union } : null;
+      this.scene.setReachable([]);
+      this.scene.setReachableCells(this.gridUnion, this.reachTargets);
+    } else {
+      this.gridReach.clear();
+      this.gridUnion = null;
+      this.scene.setReachableCells(null, []);
+      this.scene.setReachable(this.reachTargets);
+    }
+
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__mlReach = {
         selected: this.selected.slice(),
         targets: this.reachTargets.slice(),
+        gridCells: this.gridUnion
+          ? this.gridUnion.cells.reduce((sum, value) => sum + value, 0)
+          : 0,
       };
     }
   }
@@ -362,11 +394,11 @@ export class GameSession {
     this.lastPlanClick = null;
     this.routeOverlay.setPlan(this.plan);
     this.updatePlanUi();
-    this.options.onToast(`已取消 ${group.sources.length} 座 → ${group.to}`);
+    this.options.onToast(`已取消 ${group.sources.length} 座 → ${group.to ?? "网格"}`);
   }
 
   /** 点击敌方据点：把编组里能抵达的据点登记到该目标，其余留在编组里继续指定。 */
-  private assignPlan(to: CityId): void {
+  private assignPlanCity(to: CityId): void {
     if (this.selected.length === 0) {
       this.options.onToast("先点击己方据点编组");
       return;
@@ -392,6 +424,34 @@ export class GameSession {
     );
   }
 
+  /** 点击浅绿网格：把编组里能抵达该格的据点登记到网格目标。 */
+  private assignPlanCell(xCm: number, zCm: number, index: number): void {
+    if (this.selected.length === 0) {
+      this.options.onToast("先点击己方据点编组");
+      return;
+    }
+    const sources: CityId[] = [];
+    const left: CityId[] = [];
+    for (const id of this.selected) {
+      const reach = this.gridReach.get(id);
+      if (reach && reach.cells[index] === 1) sources.push(id);
+      else left.push(id);
+    }
+    if (sources.length === 0) {
+      this.options.onToast("无法抵达该网格");
+      return;
+    }
+    this.plan.push({ sources, cell: [xCm, zCm] });
+    this.lastPlanClick = null;
+    this.routeOverlay.setPlan(this.plan);
+    this.setSelection(left);
+    this.options.onToast(
+      left.length > 0
+        ? `${sources.length} 座据点 → 网格 · ${left.length} 座无法抵达`
+        : `${sources.length} 座据点 → 网格`,
+    );
+  }
+
   /** 把据点从已指定的目标中撤回，便于重新编组。 */
   private removeFromPlan(id: CityId): void {
     let changed = false;
@@ -403,7 +463,13 @@ export class GameSession {
       }
       changed = true;
       const sources = group.sources.filter((source) => source !== id);
-      if (sources.length > 0) next.push({ sources, to: group.to });
+      if (sources.length > 0) {
+        next.push({
+          sources,
+          ...(group.to !== undefined ? { to: group.to } : {}),
+          ...(group.cell ? { cell: [group.cell[0], group.cell[1]] as [number, number] } : {}),
+        });
+      }
     }
     if (!changed) return;
     this.plan = next;
@@ -427,6 +493,18 @@ export class GameSession {
           if (!problem) problem = `${id} 守军不足两人`;
           continue;
         }
+        if (group.cell) {
+          const reach = reachableGridCells(this.state, id);
+          const index = this.cellIndexAt(group.cell[0], group.cell[1]);
+          if (!reach || index < 0 || reach.cells[index] !== 1) {
+            if (!problem) problem = `${id} 无法抵达该网格`;
+            continue;
+          }
+          this.commands.push({ type: "sendCell", from: id, xCm: group.cell[0], zCm: group.cell[1] });
+          sent += 1;
+          continue;
+        }
+        if (group.to === undefined) continue;
         if (!sendReachableTargets(this.state, id).includes(group.to)) {
           if (!problem) problem = `${id} 路线被阻断`;
           continue;
@@ -450,7 +528,11 @@ export class GameSession {
       (window as unknown as Record<string, unknown>).__mlPlan = {
         multiSelect: this.multiSelect,
         pending: this.selected.slice(),
-        groups: this.plan.map((group) => ({ sources: group.sources.slice(), to: group.to })),
+        groups: this.plan.map((group) => ({
+          sources: group.sources.slice(),
+          ...(group.to !== undefined ? { to: group.to } : {}),
+          ...(group.cell ? { cell: [group.cell[0], group.cell[1]] as [number, number] } : {}),
+        })),
         arcs: this.plan.map((_, index) => this.routeOverlay.planMidpoint(index)),
       };
     }
@@ -463,11 +545,11 @@ export class GameSession {
     if (pending > 0 && groups > 0) {
       this.setPlanHint(`多选模式 · 待指定 ${pending} 座 · 已指定 ${groups} 组 · 点击“派遣”发兵`);
     } else if (pending > 0) {
-      this.setPlanHint(`多选模式 · 已编组 ${pending} 座 · 点击敌方据点指定目标`);
+      this.setPlanHint(`多选模式 · 已编组 ${pending} 座 · 点击敌方据点或浅绿网格指定目标`);
     } else if (groups > 0) {
       this.setPlanHint(`多选模式 · 已指定 ${groups} 组 · 点击“派遣”发兵`);
     } else {
-      this.setPlanHint("多选模式 · 点击己方据点编组，再点敌方据点指定目标 · Ctrl 退出");
+      this.setPlanHint("多选模式 · 点击己方据点编组，再点敌方据点或浅绿网格指定目标 · Ctrl 退出");
     }
   }
 
@@ -613,6 +695,12 @@ export class GameSession {
     this.setText("hud-pop", String(pop));
     this.setText("hud-gold", String(gold));
     this.setText("hud-timer", this.formatTime(this.state.tick));
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__mlSquads = {
+        total: this.state.squads.length,
+        own: this.state.squads.filter((squad) => squad.owner === 1).length,
+      };
+    }
   }
 
   private floatText(cityId: CityId, text: string, tone: "gain" | "loss" | "gold"): void {
@@ -697,14 +785,107 @@ export class GameSession {
     if (!city) return;
     this.lastPlanClick = null;
     if (city.owner === 1) this.togglePending(cityId);
-    else this.assignPlan(cityId);
+    else this.assignPlanCity(cityId);
+  }
+
+  private cellIndexAt(xCm: number, zCm: number): number {
+    const nav = this.state.nav;
+    if (!nav) return -1;
+    const offsetX = this.state.map.size[0] * 5;
+    const offsetZ = this.state.map.size[1] * 5;
+    return nav.cellFromWorld(xCm + offsetX, zCm + offsetZ);
+  }
+
+  /** 屏幕点击落在哪一格，返回格心地图坐标（厘米）。 */
+  private gridCellAt(clientX: number, clientY: number): { index: number; xCm: number; zCm: number } | null {
+    const nav = this.state.nav;
+    if (!nav) return null;
+    const point = this.scene.screenToGround(clientX, clientY);
+    if (!point) return null;
+    const offsetX = this.state.map.size[0] * 5;
+    const offsetZ = this.state.map.size[1] * 5;
+    const index = nav.cellFromWorld(point[0] * 10 + offsetX, point[1] * 10 + offsetZ);
+    if (index < 0) return null;
+    const center = nav.centerOf(index);
+    return { index, xCm: center.xCm - offsetX, zCm: center.zCm - offsetZ };
+  }
+
+  /** 该格是否落在某个可抵达建筑的占地内。 */
+  private cellCityAt(xCm: number, zCm: number): CityId | null {
+    for (const id of this.reachTargets) {
+      const city = this.getCity(id);
+      if (!city) continue;
+      const radius = (city.footprintCm ?? 800) / 2;
+      if (Math.hypot(city.pos[0] * 10 - xCm, city.pos[1] * 10 - zCm) <= radius) return id;
+    }
+    return null;
+  }
+
+  private clickCellDuringMultiSelect(cell: { index: number; xCm: number; zCm: number }): void {
+    const cityId = this.cellCityAt(cell.xCm, cell.zCm);
+    if (cityId) {
+      this.clickDuringMultiSelect(cityId);
+      return;
+    }
+    if (this.gridUnion && this.gridUnion.cells[cell.index] === 1) {
+      this.assignPlanCell(cell.xCm, cell.zCm, cell.index);
+      return;
+    }
+    if (this.selected.length > 0) this.options.onToast("无法抵达该网格");
+  }
+
+  /** 单选模式下直接向网格派兵，所有选中据点在同一 tick 出发。 */
+  private sendToCell(cell: { index: number; xCm: number; zCm: number }): void {
+    const sources = this.selected;
+    if (sources.length === 0) return;
+    let sent = 0;
+    let problem = "";
+    for (const id of sources) {
+      const from = this.getCity(id);
+      if (!from || from.owner !== 1) continue;
+      if (!isProductionSiteKind(from.kind)) {
+        if (!problem) problem = `${id} 不产兵`;
+        continue;
+      }
+      if (from.pop < 2) {
+        if (!problem) problem = `${id} 守军不足两人`;
+        continue;
+      }
+      const reach = this.gridReach.get(id);
+      if (!reach || reach.cells[cell.index] !== 1) {
+        if (!problem) problem = `${id} 无法抵达该网格`;
+        continue;
+      }
+      this.commands.push({ type: "sendCell", from: id, xCm: cell.xCm, zCm: cell.zCm });
+      sent += 1;
+    }
+    if (sent === 0) {
+      this.options.onToast(problem || "无法抵达该网格");
+      return;
+    }
+    if (sent < sources.length && problem) this.options.onToast(`${sent} 座发兵 · ${problem}`);
+    else if (sent > 1) this.options.onToast(`${sent} 座据点同时发兵`);
+  }
+
+  private clickCity(cityId: CityId): void {
+    const city = this.getCity(cityId);
+    if (!city) return;
+    if (city.owner === 1) {
+      this.select(cityId);
+      return;
+    }
+    if (this.selected.length === 0) {
+      this.options.onToast("先选择己方据点");
+      return;
+    }
+    this.sendTo(cityId);
   }
 
   private readonly onClick = (event: MouseEvent): void => {
     if (this.suppressClick) { this.suppressClick = false; return; }
     if (this.paused || this.finished) return;
     if (this.multiSelect) {
-      // 点击落在据点本体上时优先操作据点，避免箭头端点盖住建筑。
+      // 点击落在据点本体上时优先操作据点，避免箭头或网格盖住建筑。
       const nearest = this.scene.nearestCity(event.clientX, event.clientY, this.state);
       if (nearest && nearest.distance <= 20) {
         this.clickDuringMultiSelect(nearest.id);
@@ -726,6 +907,16 @@ export class GameSession {
         return;
       }
       this.lastPlanClick = null;
+      // 箭头优先于 20~36px 的据点判定，保证贴着建筑的箭头也能双击取消。
+      if (nearest && nearest.distance <= 36) {
+        this.clickDuringMultiSelect(nearest.id);
+        return;
+      }
+      const cell = this.gridCellAt(event.clientX, event.clientY);
+      if (cell) {
+        this.clickCellDuringMultiSelect(cell);
+        return;
+      }
       if (nearest && nearest.distance < 72) this.clickDuringMultiSelect(nearest.id);
       return;
     }
@@ -753,7 +944,8 @@ export class GameSession {
         return;
       }
     }
-    const cityId = this.scene.pickCity(event.clientX, event.clientY, this.state);
+    const nearest = this.scene.nearestCity(event.clientX, event.clientY, this.state);
+    const cityId = nearest && nearest.distance < 72 ? nearest.id : null;
 
     if (this.selectedSquad) {
       const squad = this.getSquad(this.selectedSquad);
@@ -774,22 +966,38 @@ export class GameSession {
         this.retargetSquad(squad.to, via);
         return;
       }
+      const cell = this.gridCellAt(event.clientX, event.clientY);
+      if (cell && this.state.nav) {
+        this.commands.push({ type: "retargetCell", squad: squad.id, xCm: cell.xCm, zCm: cell.zCm });
+        this.options.onToast(`${squad.id} 改道 网格`);
+        return;
+      }
+      this.clearSelection();
+      return;
+    }
+
+    if (nearest && nearest.distance <= 36 && cityId) {
+      this.clickCity(cityId);
+      return;
+    }
+
+    const cell = this.gridCellAt(event.clientX, event.clientY);
+    if (cell) {
+      const cellCity = this.cellCityAt(cell.xCm, cell.zCm);
+      if (cellCity) {
+        this.clickCity(cellCity);
+        return;
+      }
+      if (this.selected.length > 0) {
+        this.sendToCell(cell);
+        return;
+      }
       this.clearSelection();
       return;
     }
 
     if (cityId) {
-      const city = this.getCity(cityId);
-      if (!city) return;
-      if (city.owner === 1) {
-        this.select(cityId);
-        return;
-      }
-      if (this.selected.length === 0) {
-        this.options.onToast("先选择己方据点");
-        return;
-      }
-      this.sendTo(cityId);
+      this.clickCity(cityId);
       return;
     }
 
