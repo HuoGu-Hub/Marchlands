@@ -33,7 +33,6 @@ const CITY_BASE_HEIGHT = 0.26;
 const CITY_LABEL_HEIGHT = 4.3;
 const UNIT_SCALE = 1.15;
 const CAVALRY_SCALE = 0.95;
-const GLB_UNIT_SCALE = 1.05;
 const SQUAD_LABEL_HEIGHT = 1.55;
 /** 兵团按实际人数铺开，每行站位与行列间距，单位：米。 */
 const SQUAD_COLUMNS = 5;
@@ -835,7 +834,10 @@ export class BattleScene {
         const [x, z] = offsets[index];
         const unit = new GlbUnitActor(built.object, built.animations);
         unit.position.set(x, 0, z);
-        unit.scale.setScalar(GLB_UNIT_SCALE);
+        // 外部兵团资产尺寸不可控，统一按包围盒缩放到身高 1.55 m
+        const box = new THREE.Box3().setFromObject(built.object);
+        const height = box.max.y - box.min.y;
+        unit.scale.setScalar(height > 0.01 ? 1.55 / height : 1);
         this.enableShadows(unit);
         view.group.add(unit);
         view.units.push(unit);

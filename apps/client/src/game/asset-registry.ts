@@ -33,6 +33,25 @@ const FOUNDATION_URLS = import.meta.glob("../assets/foundations/*.glb", {
   eager: true,
 }) as Record<string, string>;
 
+const CHARACTER_URLS = import.meta.glob("../assets/characters/*.glb", {
+  query: "?url",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+/** 内置兵团皮肤：Quaternius 角色经过细分与换装处理，战斗动作统一为 idle / walk / attack / death。 */
+const UNIT_SKINS = [
+  { key: "warrior", label: "剑士" },
+  { key: "cleric", label: "祭司" },
+  { key: "monk", label: "武僧" },
+  { key: "rogue", label: "游侠" },
+] as const;
+
+const CHARACTER_TEMPLATES = new Map<string, string>();
+for (const [path, url] of Object.entries(CHARACTER_URLS)) {
+  CHARACTER_TEMPLATES.set(buildingKey(path), url);
+}
+
 const BUILDING_TEMPLATES = new Map<string, string>();
 for (const [path, url] of Object.entries(BUILDING_URLS)) {
   BUILDING_TEMPLATES.set(buildingKey(path), url);
@@ -225,6 +244,8 @@ export class AssetRegistry {
   private readonly packs = new Map<string, AssetManifest>();
   private readonly warnings: string[] = [];
   private readonly buildingTemplates = new Map<string, THREE.Object3D>();
+  private readonly characterTemplates = new Map<string, { object: THREE.Object3D; animations: THREE.AnimationClip[] }>();
+  private readonly characterLoads = new Map<string, Promise<{ object: THREE.Object3D; animations: THREE.AnimationClip[] } | null>>();
   private readonly buildingLoads = new Map<string, Promise<THREE.Object3D | null>>();
   private readonly foundationTemplates = new Map<string, THREE.Object3D>();
   private registered = false;
@@ -361,11 +382,54 @@ export class AssetRegistry {
         },
       });
     }
+
+    for (const skin of UNIT_SKINS) {
+      this.addBuiltin({
+        id: `builtin:unit.${skin.key}`,
+        kind: "unit",
+        label: skin.label,
+        tags: ["兵团皮肤"],
+        scale: 1,
+        rotation: 0,
+        footprint: 1.2,
+        height: 1.6,
+        source: "builtin",
+        build: async () => {
+          const template = await this.characterTemplate(skin.key);
+          if (!template) throw new Error(`单位皮肤模型缺失：${skin.key}`);
+          return cloneSkeleton(template.object);
+        },
+      });
+    }
     return true;
   }
 
   private addBuiltin(asset: BuiltinAsset): void {
     this.builtins.set(asset.id, asset);
+  }
+
+  /** 内置兵团皮肤的 GLB 模板，按需加载并缓存；克隆交给 SkeletonUtils。 */
+  private characterTemplate(key: string): Promise<{ object: THREE.Object3D; animations: THREE.AnimationClip[] } | null> {
+    const cached = this.characterTemplates.get(key);
+    if (cached) return Promise.resolve(cached);
+    const pending = this.characterLoads.get(key);
+    if (pending) return pending;
+    const url = CHARACTER_TEMPLATES.get(key);
+    if (!url) return Promise.resolve(null);
+    const load = new GLTFLoader()
+      .loadAsync(url)
+      .then((gltf) => {
+        markShared(gltf.scene);
+        const template = { object: gltf.scene, animations: gltf.animations };
+        this.characterTemplates.set(key, template);
+        return template;
+      })
+      .catch(() => null)
+      .finally(() => {
+        this.characterLoads.delete(key);
+      });
+    this.characterLoads.set(key, load);
+    return load;
   }
 
   private buildingTemplate(file: string): Promise<THREE.Object3D | null> {
@@ -479,6 +543,13 @@ export class AssetRegistry {
     id: string,
     context: AssetBuildContext = {},
   ): Promise<{ object: THREE.Object3D; animations: THREE.AnimationClip[] }> {
+    const builtin = this.builtins.get(id);
+    if (builtin) {
+      const key = id.startsWith("builtin:unit.") ? id.slice("builtin:unit.".length) : "";
+      const template = await this.characterTemplate(key);
+      if (!template) throw new Error(`单位皮肤缺少模型：${id}`);
+      return { object: cloneSkeleton(template.object), animations: template.animations };
+    }
     const asset = this.packAssets.get(id);
     if (!asset) throw new Error(`未知资产：${id}`);
     return { object: this.packObject(asset, normalizeContext(context)), animations: asset.animations };
