@@ -262,6 +262,54 @@ test("next editor drags a foundation face handle", async ({ page }) => {
   await expect(page.locator("#mlnx-toast")).toContainText("已扩展地基");
 });
 
+test("next editor switches ground material and keeps atmosphere on foundation add", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  const material = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "顶点色" }).first();
+  await material.locator(".pcui-select-input-value").click();
+  await material.locator(".pcui-select-input-list .pcui-label", { hasText: "岩石" }).first().click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { visual: { terrain: { material?: string } } } }).__mlnxDoc().visual
+            .terrain.material,
+      ),
+    )
+    .toBe("rocks007");
+  const snapshot = () =>
+    page.evaluate(() => {
+      const hooks = window as unknown as {
+        __mlnxFog?: () => { near: number; far: number } | null;
+        __mlnxAtmosphere?: () => string | null;
+      };
+      return { fog: hooks.__mlnxFog?.() ?? null, atmosphere: hooks.__mlnxAtmosphere?.() ?? null };
+    });
+  const before = await snapshot();
+  const box = await page.locator("#mlnx-canvas").boundingBox();
+  if (!box) throw new Error("next editor canvas has no box");
+  await page.keyboard.press("b");
+  await page.click('[data-tab="foundation"]');
+  await page.locator("#mlnx-foundation-y").fill("24");
+  await page.locator("#mlnx-foundation-y").dispatchEvent("change");
+  await page.mouse.move(box.x + 80, box.y + 260);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 190, box.y + 350, { steps: 8 });
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { visual: { foundations: unknown[] } } }).__mlnxDoc().visual
+            .foundations.length,
+      ),
+    )
+    .toBe(2);
+  expect(await snapshot()).toEqual(before);
+});
+
 test("next editor converts to a grid map and sculpts terrain", async ({ page }) => {
   page.on("dialog", (dialog) => void dialog.accept());
   await page.goto("/");

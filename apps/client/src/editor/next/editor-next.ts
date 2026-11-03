@@ -200,6 +200,7 @@ export class EditorNext {
   private toastTimer = 0;
   private mounted = false;
   private disposed = false;
+  private inspectorFrame = 0;
   private gizmoDirty = false;
   private cameraState: CameraState | null = null;
 
@@ -244,6 +245,8 @@ export class EditorNext {
 
   dispose(): void {
     this.disposed = true;
+    if (this.inspectorFrame) cancelAnimationFrame(this.inspectorFrame);
+    this.inspectorFrame = 0;
     this.suspend();
     if (this.resizeObserver) this.resizeObserver.disconnect();
     window.removeEventListener("keydown", this.onKeyDown);
@@ -439,6 +442,14 @@ export class EditorNext {
               fov: active.fov,
             }
           : null;
+      };
+      (window as unknown as Record<string, unknown>).__mlnxFog = () => {
+        const fog = this.scene?.getEditorScene().fog;
+        return fog && "near" in fog ? { near: fog.near, far: fog.far } : null;
+      };
+      (window as unknown as Record<string, unknown>).__mlnxAtmosphere = () => {
+        const atmosphere = this.scene?.getEditorScene().getObjectByName("atmosphere");
+        return atmosphere ? atmosphere.uuid : null;
       };
     }
   }
@@ -1032,6 +1043,22 @@ export class EditorNext {
       (value) => this.commit(updateTerrain(this.doc, { seed: Math.round(value) }), "已修改种子", { terrain: true, sites: true }),
       { step: 1, precision: 0 },
     );
+    this.addSelect(
+      "地表材质",
+      this.doc.visual.terrain.material ?? "__none__",
+      [
+        { t: "顶点色（无贴图）", v: "__none__" },
+        { t: "岩石 · rocks007", v: "rocks007" },
+        { t: "泥土 · ground068", v: "ground068" },
+        { t: "雪地 · snow014", v: "snow014" },
+      ],
+      (value) =>
+        this.commit(
+          updateTerrain(this.doc, { material: value === "__none__" ? undefined : String(value) }),
+          value === "__none__" ? "已恢复顶点色" : "已更换地表材质",
+          { terrain: true, sites: true },
+        ),
+    );
     this.addSection("道路");
     this.addSelect(
       "风格",
@@ -1067,19 +1094,19 @@ export class EditorNext {
     this.addTop(scatterGroup);
     this.addSection("单位外观");
     const unitAssets = assetRegistry.list("unit");
-    const unitOptions: Array<{ t: string; v: string }> = [{ t: "默认程序化单位", v: "" }];
+    const unitOptions: Array<{ t: string; v: string }> = [{ t: "默认程序化单位", v: "__none__" }];
     for (const asset of unitAssets) unitOptions.push({ t: asset.label, v: asset.id });
     this.addSelect(
       "绿方单位",
-      this.doc.visual.units.player1 ?? "",
+      this.doc.visual.units.player1 ?? "__none__",
       unitOptions,
-      (value) => this.commit(updateUnitVisual(this.doc, "player1", value ? String(value) : undefined), "已设置绿方单位"),
+      (value) => this.commit(updateUnitVisual(this.doc, "player1", value === "__none__" ? undefined : String(value)), "已设置绿方单位"),
     );
     this.addSelect(
       "红方单位",
-      this.doc.visual.units.player2 ?? "",
+      this.doc.visual.units.player2 ?? "__none__",
       unitOptions,
-      (value) => this.commit(updateUnitVisual(this.doc, "player2", value ? String(value) : undefined), "已设置红方单位"),
+      (value) => this.commit(updateUnitVisual(this.doc, "player2", value === "__none__" ? undefined : String(value)), "已设置红方单位"),
     );
     if (unitAssets.length === 0) {
       const unitNote = document.createElement("p");
@@ -1206,13 +1233,13 @@ export class EditorNext {
     this.inspectorEl.appendChild(actions);
     this.addSection("外壳");
     const assets = assetRegistry.list("foundation");
-    const shellOptions: Array<{ t: string; v: string }> = [{ t: "程序化浮岛", v: "" }];
+    const shellOptions: Array<{ t: string; v: string }> = [{ t: "程序化浮岛", v: "__none__" }];
     for (const asset of assets) shellOptions.push({ t: asset.label, v: asset.id });
     this.addSelect(
       "模型",
-      foundation.assetId ?? "",
+      foundation.assetId ?? "__none__",
       shellOptions,
-      (value) => this.commit(updateFoundation(this.doc, id, { assetId: value ? String(value) : null }), value ? "已设置外壳" : "已恢复程序化浮岛", { terrain: true, sites: true }),
+      (value) => this.commit(updateFoundation(this.doc, id, { assetId: value === "__none__" ? null : String(value) }), value === "__none__" ? "已恢复程序化浮岛" : "已设置外壳", { terrain: true, sites: true }),
     );
     if (foundation.assetId) {
       this.addNumber(
@@ -1302,15 +1329,15 @@ export class EditorNext {
     }
     this.addSection("外观");
     const buildings = assetRegistry.list("building");
-    const buildingOptions: Array<{ t: string; v: string }> = [{ t: "默认外观", v: "" }];
+    const buildingOptions: Array<{ t: string; v: string }> = [{ t: "默认外观", v: "__none__" }];
     for (const building of buildings) buildingOptions.push({ t: building.label, v: building.id });
     this.addSelect(
       "模型",
-      site.visualAssetId ?? "",
+      site.visualAssetId ?? "__none__",
       buildingOptions,
       (value) =>
         this.commit(
-          updateSite(this.doc, id, { visualAssetId: value ? String(value) : undefined }),
+          updateSite(this.doc, id, { visualAssetId: value === "__none__" ? undefined : String(value) }),
           "已修改据点外观",
           { sites: true },
         ),
@@ -1339,11 +1366,11 @@ export class EditorNext {
         (value) => this.commit(updateSite(this.doc, id, { stance: value as "evade" | "engage" }), "已修改驻守状态", { sites: true }),
       );
       const candidates = watchCandidates(this.doc, id);
-      const watchValue = site.watch ? site.watch[0] + "|" + site.watch[1] : "";
-      const watchOptions: Array<{ t: string; v: string }> = [{ t: "未设置", v: "" }];
+      const watchValue = site.watch ? site.watch[0] + "|" + site.watch[1] : "__none__";
+      const watchOptions: Array<{ t: string; v: string }> = [{ t: "未设置", v: "__none__" }];
       for (const road of candidates) watchOptions.push({ t: road.from + " ↔ " + road.to, v: road.from + "|" + road.to });
       this.addSelect("监视道路", watchValue, watchOptions, (value) => {
-        if (!value) {
+        if (value === "__none__") {
           this.commit(updateSite(this.doc, id, { watch: undefined }), "已清除监视道路", { sites: true });
           return;
         }
@@ -2367,12 +2394,20 @@ export class EditorNext {
       this.attachGizmo();
     }
     this.renderTree();
-    this.renderInspector();
+    this.scheduleInspectorRender();
     this.updateTop();
     this.updateStatus();
     this.updateViewInfo();
     this.autosave();
     this.notice(message);
+  }
+
+  private scheduleInspectorRender(): void {
+    if (this.inspectorFrame) cancelAnimationFrame(this.inspectorFrame);
+    this.inspectorFrame = requestAnimationFrame(() => {
+      this.inspectorFrame = 0;
+      if (!this.disposed) this.renderInspector();
+    });
   }
 
   private updateSitesScene(): void {

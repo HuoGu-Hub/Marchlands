@@ -995,9 +995,8 @@ export class BattleScene {
     camera.updateProjectionMatrix();
   }
 
-  private buildGround(previous?: Terrain, reuseIsland = false): void {
+  private buildGround(previous?: Terrain, reuseIsland = false, atmosphereChanged = true): void {
     const terrain = this.visual?.terrain;
-    const previousSignature = previous?.islandSignature;
     this.terrain = buildTerrain(this.map, this.positions, {
       ...terrain,
       visual: this.visual,
@@ -1009,9 +1008,8 @@ export class BattleScene {
     }
     this.scene.add(this.terrain.group);
     this.refreshBounds();
-    if (!(previous && reuseIsland) || previousSignature !== this.terrain.islandSignature) {
-      this.rebuildAtmosphere(terrain?.style);
-    }
+    // 只在整体地貌参数变化时重建大气；增删地基或更换地表材质不应让云层/雾突然覆盖平台。
+    if (atmosphereChanged) this.rebuildAtmosphere(terrain?.style);
   }
 
   /** 按地基逐块套用外壳模型；没有外壳的地基保留程序化浮岛。 */
@@ -1125,11 +1123,17 @@ export class BattleScene {
       previousVisual &&
         previousVisual.terrain.style === visual?.terrain.style &&
         previousVisual.terrain.seed === visual?.terrain.seed &&
-        previousVisual.terrain.amplitude === visual?.terrain.amplitude,
+        previousVisual.terrain.amplitude === visual?.terrain.amplitude &&
+        previousVisual.terrain.material === visual?.terrain.material,
     );
+    const atmosphereChanged =
+      !previousVisual ||
+      previousVisual.terrain.style !== visual?.terrain.style ||
+      previousVisual.terrain.seed !== visual?.terrain.seed ||
+      previousVisual.terrain.amplitude !== visual?.terrain.amplitude;
     this.map = map;
     this.visual = visual;
-    this.buildGround(previous, reuseIsland);
+    this.buildGround(previous, reuseIsland, atmosphereChanged);
     this.applyFoundations();
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
