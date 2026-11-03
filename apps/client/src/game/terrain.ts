@@ -203,6 +203,7 @@ export interface FoundationPlatform {
   depth: number;
   assetId?: string;
   shape?: FoundationShape;
+  scatter?: boolean;
   material?: string;
   scale: number;
   rotation: number;
@@ -225,6 +226,8 @@ export interface Terrain {
   heightAt(x: number, z: number): number;
   /** 该点是否落在任一块地基上。 */
   hasGround(x: number, z: number): boolean;
+  /** 该点最高地基是否允许自动补景。 */
+  hasScatterGround(x: number, z: number): boolean;
   setNavPreview(visible: boolean): void;
   bounds: TerrainBounds;
   island: IslandMetrics;
@@ -382,6 +385,7 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         depth: source ? foundationDepth(source) : platformDepth(halfX, halfZ),
         ...(source?.material ? { material: source.material } : {}),
         ...(source?.shape ? { shape: source.shape } : {}),
+        ...(source?.scatter !== undefined ? { scatter: source.scatter } : {}),
         scale: 1,
         rotation: 0,
       },
@@ -401,6 +405,7 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         depth: foundationDepth(foundation),
         ...(foundation.assetId ? { assetId: foundation.assetId } : {}),
         ...(foundation.shape ? { shape: foundation.shape } : {}),
+        ...(foundation.scatter !== undefined ? { scatter: foundation.scatter } : {}),
         ...(foundation.material ? { material: foundation.material } : {}),
         scale: foundation.scale,
         rotation: foundation.rotation,
@@ -560,6 +565,14 @@ export function buildTerrain(
     return best ?? baseHeightAt(x, z);
   };
   const hasGround = (x: number, z: number): boolean => platforms.some((platform) => inside(platform, x, z));
+  const hasScatterGround = (x: number, z: number): boolean => {
+    let top: FoundationPlatform | null = null;
+    for (const platform of platforms) {
+      if (!inside(platform, x, z)) continue;
+      if (!top || platform.elevation > top.elevation) top = platform;
+    }
+    return top !== null && top.scatter !== false;
+  };
 
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -586,6 +599,7 @@ export function buildTerrain(
           Math.round(platform.depth * 100),
           platform.shape ?? "",
           platform.material ?? "",
+          platform.scatter === false ? "bare" : "decorated",
         ].join(":"),
       )
       .join("|") + "|" + boundarySignature(bounds, heightAt);
@@ -625,6 +639,7 @@ export function buildTerrain(
       ground,
       platform.depth,
       platform.shape ?? "plateau",
+      platform.scatter !== false,
     );
     built.group.name = `island-${platform.id}`;
     islandGroup.add(built.group);
@@ -682,6 +697,7 @@ export function buildTerrain(
     navOverlay,
     heightAt,
     hasGround,
+    hasScatterGround,
     setNavPreview,
     bounds,
     island,
@@ -928,6 +944,7 @@ function buildIslandBase(
   seed: number,
   ground: THREE.Material | null,
   shape: FoundationShape = "plateau",
+  decorated = true,
 ): THREE.Group {
   const group = new THREE.Group();
   const layers = shape === "mesa" ? 32 : shape === "terrace" ? 44 : shape === "spire" ? 64 : 56;
@@ -1043,6 +1060,7 @@ function buildIslandBase(
   mesh.name = "island-base";
   group.add(mesh);
 
+  if (!decorated) return group;
   const random = seeded(seed + 733);
   const rockMaterial = new THREE.MeshStandardMaterial({
     color: palette.ridge,
@@ -1107,6 +1125,7 @@ function buildIsland(
   ground: THREE.Material | null,
   depthOverride?: number,
   shape: FoundationShape = "plateau",
+  decorated = true,
 ): { group: THREE.Group; metrics: IslandMetrics } {
   const centerX = (minX + maxX) / 2;
   const centerZ = (minZ + maxZ) / 2;
@@ -1118,7 +1137,7 @@ function buildIsland(
   const group = new THREE.Group();
   group.name = "island";
   group.add(buildIslandApron(rim, palette, seed, ground, shape));
-  group.add(buildIslandBase(rim, centerX, centerZ, palette, seed, ground, shape));
+  group.add(buildIslandBase(rim, centerX, centerZ, palette, seed, ground, shape, decorated));
   let radiusX = 0;
   let radiusZ = 0;
   let topY = 0;

@@ -263,6 +263,28 @@ test("next editor drags a foundation face handle", async ({ page }) => {
   await expect(page.locator("#mlnx-toast")).toContainText("已扩展地基");
 });
 
+test("next editor pans the view with a left drag", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  const box = await page.locator("#mlnx-canvas").boundingBox();
+  if (!box) throw new Error("next editor canvas has no box");
+  const camera = () =>
+    page.evaluate(() => {
+      const hook = (window as unknown as { __mlnxCamera?: () => { target: number[] } | null }).__mlnxCamera;
+      return hook?.() ?? null;
+    });
+  const before = await camera();
+  await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.42, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const after = await camera();
+  expect(after?.target).not.toEqual(before?.target);
+});
+
 test("next editor retextures a procedural foundation without changing its shape", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
@@ -413,16 +435,23 @@ test("next editor adds varied foundation shapes and sizes", async ({ page }) => 
       page.evaluate(() => {
         const foundations = (
           window as unknown as {
-            __mlnxDoc: () => { visual: { foundations: Array<{ shape?: string; size: number[]; elevation: number }> } };
+            __mlnxDoc: () => {
+              visual: { foundations: Array<{ shape?: string; size: number[]; elevation: number; scatter?: boolean }> };
+            };
           }
         ).__mlnxDoc().visual.foundations;
-        return foundations.map((foundation) => [foundation.shape ?? null, foundation.size.join("x"), foundation.elevation]);
+        return foundations.map((foundation) => [
+          foundation.shape ?? null,
+          foundation.size.join("x"),
+          foundation.elevation,
+          foundation.scatter ?? true,
+        ]);
       }),
     )
     .toEqual([
-      [null, "700x700", 0],
-      ["round", "300x300", 0],
-      ["spire", "400x400", 14],
+      [null, "700x700", 0, true],
+      ["round", "300x300", 0, false],
+      ["spire", "400x400", 14, false],
     ]);
   await page.keyboard.press("v");
   await page.waitForTimeout(300);

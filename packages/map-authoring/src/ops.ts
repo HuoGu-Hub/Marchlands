@@ -357,7 +357,7 @@ export function addFoundation(
   input: FoundationInput = {},
 ): { document: MapDocument; foundation: FoundationDraft } {
   const next = cloneDocument(document);
-  const foundation = createFoundation(next.visual.foundations, input);
+  const foundation = createFoundation(next.visual.foundations, { ...input, scatter: input.scatter ?? false });
   next.visual.foundations.push(foundation);
   return { document: applyFoundationChanges(next), foundation };
 }
@@ -386,6 +386,7 @@ export function updateFoundation(
     if (patch.shape) foundation.shape = patch.shape;
     else delete foundation.shape;
   }
+  if (patch.scatter !== undefined) foundation.scatter = patch.scatter;
   if ("material" in patch) {
     if (patch.material) foundation.material = patch.material;
     else delete foundation.material;
@@ -419,6 +420,7 @@ export function duplicateFoundation(
     depth: source.depth,
     ...(source.assetId ? { assetId: source.assetId } : {}),
     ...(source.shape ? { shape: source.shape } : {}),
+    scatter: false,
     ...(source.material ? { material: source.material } : {}),
     scale: source.scale,
     rotation: source.rotation,

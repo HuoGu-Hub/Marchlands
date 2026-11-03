@@ -92,6 +92,7 @@ export interface FoundationInput {
   depth?: number;
   assetId?: string;
   shape?: FoundationShape;
+  scatter?: boolean;
   material?: string;
   scale?: number;
   rotation?: number;
@@ -118,6 +119,7 @@ export function createFoundation(
     depth: clampDepth(input.depth ?? Math.min(38, Math.max(14, Math.hypot(halfX, halfZ) * 0.24))),
     ...(input.assetId ? { assetId: input.assetId } : {}),
     ...(isFoundationShape(input.shape) ? { shape: input.shape } : {}),
+    ...(input.scatter !== undefined ? { scatter: input.scatter } : {}),
     ...(input.material ? { material: input.material } : {}),
     scale: clampScale(input.scale ?? 1),
     rotation: clampRotation(input.rotation ?? 0),
@@ -162,6 +164,7 @@ export function mergeFoundationRects(foundations: ReadonlyArray<FoundationDraft>
         if (Math.abs(first.elevation - second.elevation) > 0.001) continue;
         if ((first.assetId ?? "") !== (second.assetId ?? "")) continue;
         if ((first.shape ?? "plateau") !== (second.shape ?? "plateau")) continue;
+        if ((first.scatter ?? true) !== (second.scatter ?? true)) continue;
         if ((first.material ?? "") !== (second.material ?? "")) continue;
         const merged = mergePair(first, second);
         if (!merged) continue;
@@ -215,6 +218,7 @@ function mergePair(first: FoundationDraft, second: FoundationDraft): FoundationD
     depth: keep.depth,
     ...(keep.assetId ? { assetId: keep.assetId } : {}),
     ...(keep.shape ? { shape: keep.shape } : {}),
+    ...(keep.scatter !== undefined ? { scatter: keep.scatter } : {}),
     ...(keep.material ? { material: keep.material } : {}),
     scale: keep.scale,
     rotation: keep.rotation,

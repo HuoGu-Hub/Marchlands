@@ -140,6 +140,7 @@ export function convertToGrid(document: MapDocument): MapDocument {
       elevation: primary?.elevation ?? 0,
       ...(primary?.assetId ? { assetId: primary.assetId } : {}),
       ...(primary?.shape ? { shape: primary.shape } : {}),
+      ...(primary?.scatter !== undefined ? { scatter: primary.scatter } : {}),
       ...(primary?.material ? { material: primary.material } : {}),
       scale: primary?.scale ?? 1,
       rotation: primary?.rotation ?? 0,
@@ -390,6 +391,7 @@ function foundationFromUnknown(value: unknown, index: number): FoundationDraft {
     if (!isFoundationShape(value.shape)) throw new Error(`地基 ${id} 的外形无效`);
     foundation.shape = value.shape;
   }
+  if (typeof value.scatter === "boolean") foundation.scatter = value.scatter;
   if (typeof value.material === "string" && value.material.trim().length > 0) {
     foundation.material = value.material.trim().slice(0, 128);
   }

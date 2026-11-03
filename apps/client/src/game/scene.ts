@@ -1490,7 +1490,7 @@ export class BattleScene {
       guard += 1;
       const x = scatter.minX + 3 + random() * (scatter.maxX - scatter.minX - 6);
       const z = scatter.minZ + 3 + random() * (scatter.maxZ - scatter.minZ - 6);
-      if (!this.terrain.hasGround(x, z)) continue;
+      if (!this.terrain.hasScatterGround(x, z)) continue;
       if (nearCity(this.positions, x, z, 3.9)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
       if (nearProp(x, z, 1.2)) continue;
@@ -1502,7 +1502,7 @@ export class BattleScene {
       guard += 1;
       const x = scatter.minX + 3 + random() * (scatter.maxX - scatter.minX - 6);
       const z = scatter.minZ + 3 + random() * (scatter.maxZ - scatter.minZ - 6);
-      if (!this.terrain.hasGround(x, z)) continue;
+      if (!this.terrain.hasScatterGround(x, z)) continue;
       if (nearCity(this.positions, x, z, 3.4)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.5)) continue;
       if (nearProp(x, z, 1.0)) continue;
@@ -1514,7 +1514,7 @@ export class BattleScene {
       guard += 1;
       const x = scatter.minX + 3 + random() * (scatter.maxX - scatter.minX - 6);
       const z = scatter.minZ + 3 + random() * (scatter.maxZ - scatter.minZ - 6);
-      if (!this.terrain.hasGround(x, z)) continue;
+      if (!this.terrain.hasScatterGround(x, z)) continue;
       if (nearCity(this.positions, x, z, 2.7)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
       if (nearProp(x, z, 0.8)) continue;
@@ -1526,7 +1526,12 @@ export class BattleScene {
     const rimTrees: Scatter[] = [];
     const island = this.terrain.island;
     const rimCenter = this.terrain.primaryCenter;
-    this.terrain.primaryRim.forEach((point, index) => {
+    const primary = this.terrain.platforms.reduce((best, entry) => {
+      const area = (entry.platform.maxX - entry.platform.minX) * (entry.platform.maxZ - entry.platform.minZ);
+      const bestArea = (best.platform.maxX - best.platform.minX) * (best.platform.maxZ - best.platform.minZ);
+      return area > bestArea ? entry : best;
+    }, this.terrain.platforms[0]);
+    if (primary.platform.scatter !== false) this.terrain.primaryRim.forEach((point, index) => {
       const theta = Math.atan2(point.z - rimCenter.z, point.x - rimCenter.x);
       const radius = Math.hypot(point.x - rimCenter.x, point.z - rimCenter.z);
       const cos = Math.cos(theta);
@@ -1653,6 +1658,10 @@ export class BattleScene {
     });
   }
 
+
+  refreshScenery(): void {
+    this.buildScenery();
+  }
 
   updateProps(visual: MapVisual | null): void {
     this.syncProps(visual);

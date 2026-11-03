@@ -453,9 +453,10 @@ export class EditorNext {
     orbit.minDistance = 2;
     orbit.maxDistance = radius * 10;
     orbit.maxPolarAngle = Math.PI / 2 - 0.03;
-    orbit.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE } as unknown as typeof orbit.mouseButtons;
+    orbit.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE } as unknown as typeof orbit.mouseButtons;
     orbit.update();
     this.orbit = orbit;
+    this.updateOrbitButtons();
 
     this.editorRoot = new THREE.Group();
     this.editorRoot.name = "editor-helpers";
@@ -1543,6 +1544,22 @@ export class EditorNext {
       shellOptions,
       (value) => this.commit(updateFoundation(this.doc, id, { assetId: value === "__none__" ? null : String(value) }), value === "__none__" ? "已恢复程序化浮岛" : "已设置外壳", { terrain: true, sites: true }),
     );
+    const scatter = new BooleanInput({ value: foundation.scatter !== false });
+    scatter.on("change", () => {
+      this.commit(
+        updateFoundation(this.doc, id, { scatter: scatter.value }),
+        scatter.value ? "已开启自动补景" : "已关闭自动补景",
+        { terrain: true, sites: true },
+      );
+      this.scene?.refreshScenery();
+    });
+    const scatterGroup = new LabelGroup({ text: "自动补景", field: scatter });
+    this.inspectorEl.appendChild(scatterGroup.dom);
+    this.addTop(scatterGroup);
+    const scatterNote = document.createElement("p");
+    scatterNote.className = "mlnx-note";
+    scatterNote.textContent = "新建地基默认不带树石；开启后该地基会生成程序化树木、岩石和草丛。";
+    this.inspectorEl.appendChild(scatterNote);
     if (foundation.assetId) {
       this.addNumber(
         "外壳缩放",
@@ -1769,10 +1786,22 @@ export class EditorNext {
     this.inspectorEl.appendChild(deleteButton);
   }
 
+  private updateOrbitButtons(): void {
+    if (!this.orbit) return;
+    const leftPan =
+      this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale";
+    this.orbit.mouseButtons = {
+      LEFT: leftPan ? THREE.MOUSE.PAN : null,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.ROTATE,
+    } as unknown as typeof this.orbit.mouseButtons;
+  }
+
   private setTool(tool: NextTool): void {
     if (this.gridStroke && tool !== "terrain") this.finishGridStroke();
     if (this.roadDraw && tool !== "road") this.cancelRoad();
     this.tool = tool;
+    this.updateOrbitButtons();
     for (const button of document.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.classList.toggle("active", button.dataset.tool === tool);
     }
@@ -2053,12 +2082,14 @@ export class EditorNext {
     }) as THREE.Mesh | undefined;
     if (!mesh) return;
     this.roadPointDrag = { id: handle.id, index: handle.index, mesh };
+    if (this.orbit) this.orbit.enabled = false;
     this.canvas.setPointerCapture(pointerId);
   }
 
   private finishRoadPointDrag(): void {
     const drag = this.roadPointDrag;
     this.roadPointDrag = null;
+    if (this.orbit) this.orbit.enabled = true;
     if (!drag || !this.pointer.ground) {
       this.syncRoadHandles();
       return;
@@ -2154,6 +2185,7 @@ export class EditorNext {
 
   private cancelRoadPointDrag(): void {
     this.roadPointDrag = null;
+    if (this.orbit) this.orbit.enabled = true;
     this.syncRoadHandles();
   }
 
@@ -2189,6 +2221,7 @@ export class EditorNext {
     ghost.scale.set((rect.maxX - rect.minX) / 10, 1, (rect.maxZ - rect.minZ) / 10);
     this.editorRoot?.add(ghost);
     this.faceDrag = { id, face, rect, ghost };
+    if (this.orbit) this.orbit.enabled = false;
     this.canvas.setPointerCapture(pointerId);
   }
 
@@ -2217,6 +2250,7 @@ export class EditorNext {
   private finishFaceDrag(): void {
     const drag = this.faceDrag;
     this.faceDrag = null;
+    if (this.orbit) this.orbit.enabled = true;
     if (!drag) return;
     this.editorRoot?.remove(drag.ghost);
     drag.ghost.geometry.dispose();
@@ -2240,6 +2274,7 @@ export class EditorNext {
   private cancelFaceDrag(): void {
     const drag = this.faceDrag;
     this.faceDrag = null;
+    if (this.orbit) this.orbit.enabled = true;
     if (!drag) return;
     this.editorRoot?.remove(drag.ghost);
     drag.ghost.geometry.dispose();

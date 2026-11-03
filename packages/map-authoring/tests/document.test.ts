@@ -170,6 +170,14 @@ describe("map authoring", () => {
     expect(after.edges.map((edge) => edge.grade)).not.toEqual(before.edges.map((edge) => edge.grade));
   });
 
+  it("creates new foundations without automatic scenery", () => {
+    const starter = createStarterDocument();
+    const added = addFoundation(starter, { pos: [500, 0], size: [200, 200], shape: "round" });
+    expect(added.foundation.scatter).toBe(false);
+    const parsed = parseDocument(JSON.parse(serializeDocument(added.document))).document;
+    expect(parsed.visual.foundations.find((foundation) => foundation.id === added.foundation.id)?.scatter).toBe(false);
+  });
+
   it("preserves foundation shape through save and load", () => {
     const starter = createStarterDocument();
     const next = updateFoundation(starter, "f1", { shape: "mesa", material: "snow014" });
@@ -315,7 +323,7 @@ describe("map authoring", () => {
 
   it("merges same-height touching foundations into one platform", () => {
     const starter = createStarterDocument();
-    const added = addFoundation(starter, { pos: [700, 0], size: [700, 700] });
+    const added = addFoundation(starter, { pos: [700, 0], size: [700, 700], scatter: true });
     expect(added.document.visual.foundations).toHaveLength(1);
     const bounds = foundationBounds(added.document.visual.foundations)!;
     expect(bounds.minX).toBe(-350);

@@ -63,6 +63,8 @@ export interface FoundationDraft {
   assetId?: string;
   /** 程序化外壳外形；缺省为高原。 */
   shape?: FoundationShape;
+  /** 是否在该地基上生成自动补景；缺省 true，新建地基默认 false。 */
+  scatter?: boolean;
   /** 外壳/顶面贴图名；缺省跟随地图地表材质。 */
   material?: string;
   /** 外壳缩放。 */
