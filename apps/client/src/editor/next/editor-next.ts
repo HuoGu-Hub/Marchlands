@@ -19,15 +19,19 @@ import {
   addProp,
   addRoad,
   addSite,
+  applyGridBrush,
   clampPosition,
   cloneDocument,
   compileDocument,
+  convertToGrid,
+  createGridDocument,
   createStarterDocument,
   documentBounds,
   duplicateFoundation,
   foundationContains,
   foundationDepth,
   foundationRect,
+  gridCellFromGround,
   parseDocument,
   removeFoundation,
   removeProp,
@@ -42,11 +46,13 @@ import {
   updateScatter,
   updateSite,
   updateTerrain,
+  watchCandidates,
 } from "@marchlands/map-authoring";
-import type { CompileResult, MapDocument, MapVisual, PropDraft, SiteDraft } from "@marchlands/map-authoring";
+import type { CompileResult, GridBrushMode, MapDocument, MapVisual, PropDraft, SiteDraft } from "@marchlands/map-authoring";
 import { assetRegistry } from "../../game/asset-registry";
 import { BattleScene } from "../../game/scene";
-import { openMapText, saveMapText } from "../map-io";
+import { openAssetPackFile, openMapText, saveAssetPackFile, saveMapText } from "../map-io";
+import { buildBuiltinAssetPack } from "../../game/asset-pack-export";
 import "./next.css";
 
 type NextTool = "select" | "move" | "rotate" | "scale" | "place" | "road" | "terrain";
@@ -166,6 +172,18 @@ export class EditorNext {
   private redoStack: MapDocument[] = [];
   private drag: { start: [number, number]; current: [number, number]; ghost: THREE.Mesh } | null = null;
   private roadDraw: { points: [number, number][]; from?: CityId; to?: CityId; line: THREE.Line } | null = null;
+  private terrainBrush: GridBrushMode = "raise";
+  private brushRadius = 2;
+  private brushStrength = 20;
+  private surfaceBrush = 0;
+  private gridStroke: {
+    before: MapDocument;
+    document: MapDocument;
+    lastCell: [number, number];
+    startCell: [number, number];
+    changed: boolean;
+  } | null = null;
+  private brushRing: THREE.Mesh | null = null;
   private pointer: { x: number; y: number; ground: [number, number] | null } = { x: 0, y: 0, ground: null };
   private resizeObserver: ResizeObserver | null = null;
   private toastTimer = 0;
@@ -407,6 +425,7 @@ export class EditorNext {
     this.gizmo?.dispose();
     this.gizmo = null;
     this.roadDraw = null;
+    this.gridStroke = null;
     this.orbit?.dispose();
     this.orbit = null;
     this.scene?.dispose();
@@ -648,6 +667,37 @@ export class EditorNext {
         this.renderLibrary();
       });
     }
+    const packRow = document.createElement("div");
+    packRow.className = "mlnx-actions-row";
+    packRow.innerHTML =
+      '<button class="mlnx-btn" id="mlnx-pack-import">导入资产包</button>' +
+      '<button class="mlnx-btn" id="mlnx-pack-export">导出内置包</button>';
+    this.leftContent.appendChild(packRow);
+    packRow.querySelector("#mlnx-pack-import")?.addEventListener("click", () => void this.importAssetPack());
+    packRow.querySelector("#mlnx-pack-export")?.addEventListener("click", () => void this.exportBuiltinPack());
+  }
+
+  private async importAssetPack(): Promise<void> {
+    const opened = await openAssetPackFile();
+    if (!opened) return;
+    this.notice("正在导入资产包…");
+    try {
+      const result = await assetRegistry.loadPack(opened.bytes, { persist: true, fileName: opened.name });
+      this.renderLibrary();
+      this.notice("已导入 " + result.manifest.name + " · " + result.count + " 个资产");
+    } catch (error) {
+      this.notice(error instanceof Error ? error.message : "资产包无法读取");
+    }
+  }
+
+  private async exportBuiltinPack(): Promise<void> {
+    try {
+      const pack = await buildBuiltinAssetPack();
+      const saved = await saveAssetPackFile(pack.bytes, "Marchlands-Builtin-" + pack.count + ".mlpack");
+      this.notice(saved ? "已导出 " + pack.count + " 个内置模型" : "已取消导出");
+    } catch (error) {
+      this.notice(error instanceof Error ? error.message : "内置资产包导出失败");
+    }
   }
 
   private renderRoadPanel(): void {
@@ -669,11 +719,85 @@ export class EditorNext {
 
   private renderTerrainPanel(): void {
     this.leftContent.replaceChildren();
+    if (this.doc.navigation !== "grid" || !this.doc.grid) {
+      const host = document.createElement("div");
+      host.innerHTML =
+        '<div class="mlnx-group-label">网格地形</div>' +
+        '<p class="mlnx-note">当前是据点图。转换为网格地图后可以用笔刷抬高、压低、刷水与阻挡。</p>' +
+        '<button class="mlnx-btn" id="mlnx-convert-grid">转换为网格地图</button>' +
+        '<button class="mlnx-btn" id="mlnx-new-grid">新建网格地图</button>';
+      this.leftContent.appendChild(host);
+      host.querySelector("#mlnx-convert-grid")?.addEventListener("click", () => {
+        if (!window.confirm("转换为网格地图会创建与地图同心的网格地基，确定继续？")) return;
+        this.commit(convertToGrid(this.doc), "已转换为网格地图", { rebuild: true });
+        this.setTool("terrain");
+        this.notice("已转换为网格地图，选择笔刷开始刷地形");
+      });
+      host.querySelector("#mlnx-new-grid")?.addEventListener("click", () => {
+        if (this.dirty && !window.confirm("当前草稿还没保存，确定新建网格地图？")) return;
+        this.doc = createGridDocument();
+        this.undoStack = [];
+        this.redoStack = [];
+        this.selection = null;
+        this.dirty = false;
+        this.rebuildScene();
+        this.renderAll();
+        this.setTool("terrain");
+        this.notice("已新建网格地图");
+      });
+      return;
+    }
+    const brushes: Array<{ id: GridBrushMode; label: string }> = [
+      { id: "raise", label: "抬高" },
+      { id: "lower", label: "压低" },
+      { id: "smooth", label: "平滑" },
+      { id: "ramp", label: "坡道" },
+      { id: "cliff", label: "悬崖" },
+      { id: "water", label: "水面" },
+      { id: "surface", label: "地表" },
+      { id: "blocker", label: "阻挡" },
+      { id: "passable", label: "可走" },
+    ];
     const host = document.createElement("div");
-    host.innerHTML =
-      '<div class="mlnx-group-label">地形</div>' +
-      '<p class="mlnx-note">网格地形笔刷还在迁移。据点图的地貌在右侧地图设置里调整；网格图请先用旧版编辑器刷地形。</p>';
+    let html = '<div class="mlnx-group-label">笔刷</div><div class="mlnx-library-grid">';
+    for (const brush of brushes) {
+      html += '<button class="mlnx-asset' + (this.terrainBrush === brush.id ? " active" : "") + '" data-brush="' + brush.id + '">' + brush.label + "</button>";
+    }
+    html += "</div>";
+    html += '<div class="mlnx-group-label">参数</div>';
+    html += '<label class="mlnx-switch">半径 <input id="mlnx-brush-radius" type="number" min="1" max="8" step="1" value="' + this.brushRadius + '"></label>';
+    html += '<label class="mlnx-switch">强度 <input id="mlnx-brush-strength" type="number" min="5" max="200" step="5" value="' + this.brushStrength + '"></label>';
+    html += '<div class="mlnx-group-label">地表</div>';
+    html += '<select class="mlnx-search" id="mlnx-surface-brush">' +
+      '<option value="0">草地</option><option value="1">泥土</option><option value="2">岩石</option><option value="3">雪地</option></select>';
+    html += '<p class="mlnx-note">左键拖动刷地形。坡道先点起点再拖到终点；笔刷只影响画面与网格导航。</p>';
+    host.innerHTML = html;
     this.leftContent.appendChild(host);
+    for (const button of host.querySelectorAll<HTMLElement>("[data-brush]")) {
+      button.addEventListener("click", () => {
+        const brush = button.dataset.brush as GridBrushMode | undefined;
+        if (!brush) return;
+        this.terrainBrush = brush;
+        this.renderTerrainPanel();
+      });
+    }
+    const radius = host.querySelector<HTMLInputElement>("#mlnx-brush-radius");
+    radius?.addEventListener("change", () => {
+      const value = Number(radius.value);
+      if (Number.isFinite(value)) this.brushRadius = Math.max(1, Math.min(8, Math.round(value)));
+    });
+    const strength = host.querySelector<HTMLInputElement>("#mlnx-brush-strength");
+    strength?.addEventListener("change", () => {
+      const value = Number(strength.value);
+      if (Number.isFinite(value)) this.brushStrength = Math.max(5, Math.min(200, Math.round(value)));
+    });
+    const surface = host.querySelector<HTMLSelectElement>("#mlnx-surface-brush");
+    if (surface) {
+      surface.value = String(this.surfaceBrush);
+      surface.addEventListener("change", () => {
+        this.surfaceBrush = Math.max(0, Math.min(9, Math.round(Number(surface.value) || 0)));
+      });
+    }
   }
 
   private renderInspector(): void {
@@ -1025,6 +1149,59 @@ export class EditorNext {
       );
       this.addNumber("驻军", site.pop, (value) => this.commit(updateSite(this.doc, id, { pop: Math.max(0, Math.round(value)) }), "已修改驻军", { sites: true }), { min: 0, max: 999, step: 1, precision: 0 });
     }
+    this.addSection("外观");
+    const buildings = assetRegistry.list("building");
+    const buildingOptions: Array<{ t: string; v: string }> = [{ t: "默认外观", v: "" }];
+    for (const building of buildings) buildingOptions.push({ t: building.label, v: building.id });
+    this.addSelect(
+      "模型",
+      site.visualAssetId ?? "",
+      buildingOptions,
+      (value) =>
+        this.commit(
+          updateSite(this.doc, id, { visualAssetId: value ? String(value) : undefined }),
+          "已修改据点外观",
+          { sites: true },
+        ),
+    );
+    this.addNumber(
+      "朝向",
+      site.visualRotation ?? 0,
+      (value) => this.commit(updateSite(this.doc, id, { visualRotation: Math.round(value) }), "已调整据点朝向", { sites: true }),
+      { step: 15, precision: 0 },
+    );
+    this.addNumber(
+      "缩放",
+      site.visualScale ?? 1,
+      (value) => this.commit(updateSite(this.doc, id, { visualScale: Math.max(0.1, Math.min(10, value)) }), "已调整据点缩放", { sites: true }),
+      { min: 0.1, max: 10, step: 0.1 },
+    );
+    if (site.kind === "outpost") {
+      this.addSection("驻兵点");
+      this.addSelect(
+        "状态",
+        site.stance ?? "evade",
+        [
+          { t: "避战", v: "evade" },
+          { t: "迎战", v: "engage" },
+        ],
+        (value) => this.commit(updateSite(this.doc, id, { stance: value as "evade" | "engage" }), "已修改驻守状态", { sites: true }),
+      );
+      const candidates = watchCandidates(this.doc, id);
+      const watchValue = site.watch ? site.watch[0] + "|" + site.watch[1] : "";
+      const watchOptions: Array<{ t: string; v: string }> = [{ t: "未设置", v: "" }];
+      for (const road of candidates) watchOptions.push({ t: road.from + " ↔ " + road.to, v: road.from + "|" + road.to });
+      this.addSelect("监视道路", watchValue, watchOptions, (value) => {
+        if (!value) {
+          this.commit(updateSite(this.doc, id, { watch: undefined }), "已清除监视道路", { sites: true });
+          return;
+        }
+        const parts = String(value).split("|");
+        if (parts.length === 2) {
+          this.commit(updateSite(this.doc, id, { watch: [parts[0], parts[1]] }), "已设置监视道路", { sites: true });
+        }
+      });
+    }
     const deleteButton = document.createElement("button");
     deleteButton.className = "mlnx-delete";
     deleteButton.textContent = "删除这个据点";
@@ -1102,23 +1279,20 @@ export class EditorNext {
   }
 
   private setTool(tool: NextTool): void {
-    if (tool === "terrain") {
-      this.notice("网格地形笔刷还在迁移，先用旧版编辑器处理");
-      return;
-    }
+    if (this.gridStroke && tool !== "terrain") this.finishGridStroke();
     if (this.roadDraw && tool !== "road") this.cancelRoad();
     this.tool = tool;
     for (const button of document.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.classList.toggle("active", button.dataset.tool === tool);
     }
     this.renderLeftPanel();
-    if (tool === "road") {
+    if (tool === "road" || tool === "terrain") {
       this.gizmo?.detach();
       this.selectedProxy = null;
     } else {
       this.attachGizmo();
     }
-    this.canvas.style.cursor = tool === "place" || tool === "road" ? "crosshair" : "default";
+    this.canvas.style.cursor = tool === "place" || tool === "road" || tool === "terrain" ? "crosshair" : "default";
     if (this.selection?.kind === "foundation" && (tool === "rotate" || tool === "scale")) {
       this.notice("地基的尺寸和朝向用右侧检查器修改");
     }
@@ -1421,6 +1595,63 @@ export class EditorNext {
     this.setTool("select");
   }
 
+  private beginGridStroke(ground: [number, number]): void {
+    const cell = gridCellFromGround(this.doc, ground);
+    if (!cell) return;
+    this.gridStroke = {
+      before: cloneDocument(this.doc),
+      document: this.doc,
+      lastCell: cell,
+      startCell: cell,
+      changed: false,
+    };
+    this.applyGridAt(cell);
+  }
+
+  private applyGridAt(cell: [number, number]): void {
+    const stroke = this.gridStroke;
+    if (!stroke) return;
+    const next = applyGridBrush(stroke.document, {
+      mode: this.terrainBrush,
+      cell,
+      radiusCells: this.brushRadius,
+      strengthCm: this.terrainBrush === "cliff" ? 100 : this.brushStrength,
+      startCell: stroke.startCell,
+      surface: this.surfaceBrush,
+    });
+    if (next === stroke.document) return;
+    stroke.document = next;
+    stroke.changed = true;
+    this.doc = next;
+    this.compiled = compileDocument(next, { validateNavigation: false });
+    this.scene?.updateTerrain(this.compiled.map, this.compiled.visual);
+    this.syncProxies();
+  }
+
+  private finishGridStroke(): void {
+    const stroke = this.gridStroke;
+    this.gridStroke = null;
+    if (!stroke) return;
+    if (!stroke.changed) {
+      this.doc = stroke.before;
+      return;
+    }
+    this.undoStack.push(stroke.before);
+    if (this.undoStack.length > 60) this.undoStack.shift();
+    this.redoStack = [];
+    this.doc = stroke.document;
+    this.compiled = compileDocument(this.doc, { validateNavigation: false });
+    this.preview = this.createPreview();
+    this.scene?.updateTerrain(this.compiled.map, this.compiled.visual);
+    this.syncProxies();
+    this.renderTree();
+    this.renderInspector();
+    this.updateTop();
+    this.updateStatus();
+    this.autosave();
+    this.notice("已修改网格地形");
+  }
+
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0 || !this.scene) return;
     if (this.gizmo?.axis) return;
@@ -1442,6 +1673,18 @@ export class EditorNext {
     if (this.tool === "road") {
       const ground = this.scene.screenToGround(event.clientX, event.clientY);
       if (ground) this.handleRoadClick(ground);
+      return;
+    }
+    if (this.tool === "terrain") {
+      if (this.doc.navigation !== "grid" || !this.doc.grid) {
+        this.notice("先转换为网格地图再刷地形");
+        return;
+      }
+      const ground = this.scene.screenToGround(event.clientX, event.clientY);
+      if (!ground) return;
+      this.beginGridStroke(ground);
+      this.canvas.setPointerCapture(event.pointerId);
+      event.preventDefault();
       return;
     }
     if (this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale") {
@@ -1467,10 +1710,23 @@ export class EditorNext {
       this.updateStatus();
       return;
     }
+    if (this.gridStroke) {
+      const cell = ground ? gridCellFromGround(this.doc, ground) : null;
+      if (cell && (cell[0] !== this.gridStroke.lastCell[0] || cell[1] !== this.gridStroke.lastCell[1])) {
+        this.gridStroke.lastCell = cell;
+        this.applyGridAt(cell);
+      }
+      this.updateStatus();
+      return;
+    }
     this.updateViewInfo();
   };
 
   private readonly onPointerUp = (): void => {
+    if (this.gridStroke) {
+      this.finishGridStroke();
+      return;
+    }
     if (this.drag) {
       const drag = this.drag;
       this.drag = null;
@@ -1696,7 +1952,9 @@ export class EditorNext {
         ? "左键拖拽/点击放置"
         : this.tool === "road"
           ? "点击加点 · Enter 完成 · Esc 取消"
-          : "右键环绕 · 中键平移 · 滚轮缩放";
+          : this.tool === "terrain"
+            ? "左键拖动刷地形 · 网格图专用"
+            : "右键环绕 · 中键平移 · 滚轮缩放";
     this.viewInfoEl.innerHTML =
       '<span class="mlnx-chip">' + escapeHtml(tool) + '</span><span class="mlnx-chip">' + escapeHtml(selection) + '</span><span class="mlnx-chip">' + escapeHtml(hint) + "</span>";
   }
@@ -1788,6 +2046,11 @@ export class EditorNext {
     if (event.key === "Enter" && this.roadDraw) {
       event.preventDefault();
       this.finishRoad();
+      return;
+    }
+    if (event.key === "Escape" && this.gridStroke) {
+      event.preventDefault();
+      this.finishGridStroke();
       return;
     }
     if (event.key === "Escape" && this.roadDraw) {
