@@ -1,0 +1,719 @@
+{
+  "schema": 1,
+  "slug": "highland01",
+  "name": "Highland 01",
+  "biome": "frontier",
+  "size": [
+    1700,
+    1300
+  ],
+  "scale": 0.1,
+  "ruleset": "1",
+  "players": [
+    {
+      "id": 1,
+      "name": "Player",
+      "color": "green",
+      "ai": false
+    },
+    {
+      "id": 2,
+      "name": "AI",
+      "color": "red",
+      "ai": true
+    }
+  ],
+  "cities": [
+    {
+      "id": "c1",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -195,
+        230
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c2",
+      "kind": "town",
+      "owner": 0,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -621,
+        55
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c3",
+      "kind": "town",
+      "owner": 1,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -639,
+        -113
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c4",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -17,
+        -379
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c5",
+      "kind": "town",
+      "owner": 0,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -147,
+        341
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c6",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        250,
+        -353
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c7",
+      "kind": "town",
+      "owner": 0,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -443,
+        279
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c8",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -464,
+        490
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c9",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        608,
+        29
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c10",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        91,
+        242
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c11",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        134,
+        -67
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c12",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -674,
+        -25
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c13",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        599,
+        43
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c14",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        142,
+        -230
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c15",
+      "kind": "town",
+      "owner": 0,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -5,
+        -106
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c16",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        -23,
+        58
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c17",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        612,
+        -85
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c18",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        -564,
+        348
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c19",
+      "kind": "town",
+      "owner": 0,
+      "level": 2,
+      "pop": 20,
+      "pos": [
+        217,
+        123
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c20",
+      "kind": "town",
+      "owner": 0,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        -193,
+        304
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c21",
+      "kind": "town",
+      "owner": 2,
+      "level": 3,
+      "pop": 30,
+      "pos": [
+        395,
+        370
+      ],
+      "layer": 0
+    },
+    {
+      "id": "c22",
+      "kind": "town",
+      "owner": 0,
+      "level": 1,
+      "pop": 10,
+      "pos": [
+        -77,
+        172
+      ],
+      "layer": 0
+    },
+    {
+      "id": "o1",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -68,
+        58
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c16",
+        "c22"
+      ]
+    },
+    {
+      "id": "o2",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        254,
+        365
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c21",
+        "c19"
+      ]
+    },
+    {
+      "id": "o3",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        57,
+        189
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c10",
+        "c19"
+      ]
+    },
+    {
+      "id": "o4",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        354,
+        245
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c21",
+        "c19"
+      ]
+    },
+    {
+      "id": "o5",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -56,
+        109
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c16",
+        "c22"
+      ]
+    },
+    {
+      "id": "o6",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -72,
+        313
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c5",
+        "c20"
+      ]
+    },
+    {
+      "id": "o7",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        596,
+        52
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c13",
+        "c9"
+      ]
+    },
+    {
+      "id": "o8",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        15,
+        -13
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c16",
+        "c22"
+      ]
+    },
+    {
+      "id": "o9",
+      "kind": "outpost",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        664,
+        -399
+      ],
+      "layer": 0,
+      "stance": "engage",
+      "watch": [
+        "c17",
+        "c9"
+      ]
+    },
+    {
+      "id": "g1",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -211,
+        303
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g2",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        -317,
+        -427
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g3",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        698,
+        156
+      ],
+      "layer": 0
+    },
+    {
+      "id": "g4",
+      "kind": "granary",
+      "owner": 0,
+      "level": 1,
+      "pop": 0,
+      "pos": [
+        115,
+        115
+      ],
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "c9",
+      "to": "c13",
+      "length": 17
+    },
+    {
+      "from": "c5",
+      "to": "c20",
+      "length": 59
+    },
+    {
+      "from": "c1",
+      "to": "c20",
+      "length": 74
+    },
+    {
+      "from": "c3",
+      "to": "c12",
+      "length": 95
+    },
+    {
+      "from": "c2",
+      "to": "c12",
+      "length": 95
+    },
+    {
+      "from": "c9",
+      "to": "c17",
+      "length": 114
+    },
+    {
+      "from": "c16",
+      "to": "c22",
+      "length": 126
+    },
+    {
+      "from": "c1",
+      "to": "c22",
+      "length": 131
+    },
+    {
+      "from": "c7",
+      "to": "c18",
+      "length": 139
+    },
+    {
+      "from": "c11",
+      "to": "c15",
+      "length": 144
+    },
+    {
+      "from": "c11",
+      "to": "c14",
+      "length": 163
+    },
+    {
+      "from": "c6",
+      "to": "c14",
+      "length": 164
+    },
+    {
+      "from": "c15",
+      "to": "c16",
+      "length": 165
+    },
+    {
+      "from": "c10",
+      "to": "c19",
+      "length": 173
+    },
+    {
+      "from": "c8",
+      "to": "c18",
+      "length": 174
+    },
+    {
+      "from": "c10",
+      "to": "c22",
+      "length": 181
+    },
+    {
+      "from": "c14",
+      "to": "c15",
+      "length": 192
+    },
+    {
+      "from": "c11",
+      "to": "c16",
+      "length": 200
+    },
+    {
+      "from": "c4",
+      "to": "c14",
+      "length": 219
+    },
+    {
+      "from": "c7",
+      "to": "c20",
+      "length": 252
+    },
+    {
+      "from": "c1",
+      "to": "c10",
+      "length": 285
+    },
+    {
+      "from": "c2",
+      "to": "c7",
+      "length": 286
+    },
+    {
+      "from": "c10",
+      "to": "c20",
+      "length": 290
+    },
+    {
+      "from": "c19",
+      "to": "c21",
+      "length": 304
+    },
+    {
+      "from": "c6",
+      "to": "c11",
+      "length": 309
+    },
+    {
+      "from": "c10",
+      "to": "c11",
+      "length": 312
+    },
+    {
+      "from": "c10",
+      "to": "c21",
+      "length": 330
+    },
+    {
+      "from": "c7",
+      "to": "c12",
+      "length": 381
+    },
+    {
+      "from": "c13",
+      "to": "c21",
+      "length": 385
+    },
+    {
+      "from": "c12",
+      "to": "c18",
+      "length": 388
+    },
+    {
+      "from": "o1",
+      "to": "c16",
+      "length": 46
+    },
+    {
+      "from": "o2",
+      "to": "c21",
+      "length": 141
+    },
+    {
+      "from": "o3",
+      "to": "c10",
+      "length": 63
+    },
+    {
+      "from": "o4",
+      "to": "c21",
+      "length": 131
+    },
+    {
+      "from": "o5",
+      "to": "c16",
+      "length": 61
+    },
+    {
+      "from": "o6",
+      "to": "c5",
+      "length": 79
+    },
+    {
+      "from": "o7",
+      "to": "c13",
+      "length": 9
+    },
+    {
+      "from": "o8",
+      "to": "c16",
+      "length": 80
+    },
+    {
+      "from": "o9",
+      "to": "c17",
+      "length": 319
+    },
+    {
+      "from": "g1",
+      "to": "c20",
+      "length": 18
+    },
+    {
+      "from": "g2",
+      "to": "c4",
+      "length": 304
+    },
+    {
+      "from": "g3",
+      "to": "c13",
+      "length": 150
+    },
+    {
+      "from": "g4",
+      "to": "c19",
+      "length": 103
+    }
+  ],
+  "objectives": [
+    {
+      "type": "capture_all"
+    },
+    {
+      "type": "time_limit",
+      "ticks": 18000
+    }
+  ]
+}

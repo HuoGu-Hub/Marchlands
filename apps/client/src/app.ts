@@ -1,6 +1,9 @@
+import autumnvaleMapJson from "@marchlands/content/maps/autumnvale01.json";
 import crossroadsMapJson from "@marchlands/content/maps/crossroads01.json";
 import frontierMapJson from "@marchlands/content/maps/frontier01.json";
 import forestMapJson from "@marchlands/content/maps/forest01.json";
+import highlandMapJson from "@marchlands/content/maps/highland01.json";
+import snowpassMapJson from "@marchlands/content/maps/snowpass01.json";
 import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
 import { compileDocument, defaultVisualForMap, parseDocument } from "@marchlands/map-authoring";
@@ -59,6 +62,9 @@ const TEMPLATE = `
           <option value="forest01">Forest 01</option>
           <option value="crossroads01">Crossroads 01</option>
           <option value="frontier01">Frontier 01 · 40 据点</option>
+          <option value="highland01">Highland 01 · 31 据点</option>
+          <option value="autumnvale01">Autumn Vale 01 · 30 据点</option>
+          <option value="snowpass01">Snow Pass 01 · 30 据点</option>
         </select>
       </div>
       <ul class="brief-list">
@@ -252,6 +258,53 @@ interface StoredCustomMap {
 
 const CUSTOM_MAPS_KEY = "marchlands.customMaps.v1";
 
+interface TerrainPreset {
+  style: "frontier" | "meadow" | "autumn" | "ash" | "coast" | "snow";
+  amplitude: number;
+  seed: number;
+  roadStyle: "cobble" | "dirt";
+  foundation: { assetId: string; scale: number; rotation: number; offsetY: number };
+  description: string;
+}
+
+const TERRAIN_PRESETS: Record<string, TerrainPreset> = {
+  highland01: {
+    style: "meadow",
+    amplitude: 2.6,
+    seed: 4711,
+    roadStyle: "cobble",
+    foundation: { assetId: "builtin:foundation.terrain003", scale: 1, rotation: 24, offsetY: -5.5 },
+    description: "岩脊高地：三十一座据点散落在起伏的岩台上，碎石路顺着坡道上下，站住高处就能看清整片谷地。",
+  },
+  autumnvale01: {
+    style: "autumn",
+    amplitude: 2.4,
+    seed: 923,
+    roadStyle: "dirt",
+    foundation: { assetId: "builtin:foundation.terrain001", scale: 1, rotation: -38, offsetY: -5.5 },
+    description: "秋色谷地：落叶林里藏着三十座据点，土路沿着缓坡绕行，粮仓卡在谷口要道上。",
+  },
+  snowpass01: {
+    style: "snow",
+    amplitude: 2.2,
+    seed: 1607,
+    roadStyle: "cobble",
+    foundation: { assetId: "builtin:foundation.terrain004", scale: 1, rotation: 8, offsetY: -5.5 },
+    description: "雪岭关隘：积雪覆盖的山道层层设防，翻过垭口才算进入对方腹地。",
+  },
+};
+
+function withTerrainPreset(visual: MapVisual, id: string): MapVisual {
+  const preset = TERRAIN_PRESETS[id];
+  if (!preset) return visual;
+  return {
+    ...visual,
+    terrain: { ...visual.terrain, style: preset.style, seed: preset.seed, amplitude: preset.amplitude },
+    roads: { ...visual.roads, style: preset.roadStyle },
+    foundation: preset.foundation,
+  };
+}
+
 export class App {
   private readonly root: HTMLElement;
   private readonly mapEntries: Map<string, MapEntry>;
@@ -270,6 +323,9 @@ export class App {
     const forest = validateContent(forestMapJson, rulesJson);
     const crossroads = validateContent(crossroadsMapJson, rulesJson);
     const frontier = validateContent(frontierMapJson, rulesJson);
+    const highland = validateContent(highlandMapJson, rulesJson);
+    const autumnvale = validateContent(autumnvaleMapJson, rulesJson);
+    const snowpass = validateContent(snowpassMapJson, rulesJson);
     this.mapEntries = new Map<string, MapEntry>([
       [
         "forest01",
@@ -301,6 +357,36 @@ export class App {
           visual: defaultVisualForMap(frontier.map),
           description:
             "三十二座城镇铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
+        },
+      ],
+      [
+        "highland01",
+        {
+          id: "highland01",
+          label: "Highland 01 · 31 据点",
+          content: highland,
+          visual: withTerrainPreset(defaultVisualForMap(highland.map), "highland01"),
+          description: TERRAIN_PRESETS.highland01.description,
+        },
+      ],
+      [
+        "autumnvale01",
+        {
+          id: "autumnvale01",
+          label: "Autumn Vale 01 · 30 据点",
+          content: autumnvale,
+          visual: withTerrainPreset(defaultVisualForMap(autumnvale.map), "autumnvale01"),
+          description: TERRAIN_PRESETS.autumnvale01.description,
+        },
+      ],
+      [
+        "snowpass01",
+        {
+          id: "snowpass01",
+          label: "Snow Pass 01 · 30 据点",
+          content: snowpass,
+          visual: withTerrainPreset(defaultVisualForMap(snowpass.map), "snowpass01"),
+          description: TERRAIN_PRESETS.snowpass01.description,
         },
       ],
     ]);

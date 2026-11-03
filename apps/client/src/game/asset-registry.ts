@@ -27,6 +27,12 @@ function buildingKey(path: string): string {
   return (path.split("/").pop() ?? path).replace(/\.glb$/i, "");
 }
 
+const FOUNDATION_URLS = import.meta.glob("../assets/foundations/*.glb", {
+  query: "?url",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 const BUILDING_TEMPLATES = new Map<string, string>();
 for (const [path, url] of Object.entries(BUILDING_URLS)) {
   BUILDING_TEMPLATES.set(buildingKey(path), url);
@@ -220,6 +226,7 @@ export class AssetRegistry {
   private readonly warnings: string[] = [];
   private readonly buildingTemplates = new Map<string, THREE.Object3D>();
   private readonly buildingLoads = new Map<string, Promise<THREE.Object3D | null>>();
+  private readonly foundationTemplates = new Map<string, THREE.Object3D>();
   private registered = false;
   private loading: Promise<number> | null = null;
 
@@ -244,6 +251,22 @@ export class AssetRegistry {
         height: asset.height,
         source: "builtin",
         build: (context) => buildTerrainAsset(asset.kind as TerrainAssetKind, context.seed, context.terrainStyle),
+      });
+    }
+
+    for (const [path, url] of Object.entries(FOUNDATION_URLS)) {
+      const key = buildingKey(path);
+      this.addBuiltin({
+        id: `builtin:foundation.${key}`,
+        kind: "foundation",
+        label: `地基·${key.replace(/^terrain0*/i, "地形 ")}`,
+        tags: ["地基"],
+        scale: 1,
+        rotation: 0,
+        footprint: 0,
+        height: 0,
+        source: "builtin",
+        build: () => this.foundationTemplate(key, url),
       });
     }
 
@@ -364,6 +387,19 @@ export class AssetRegistry {
         this.buildingLoads.delete(file);
       });
     this.buildingLoads.set(file, load);
+    return load;
+  }
+
+  private foundationTemplate(key: string, url: string): Promise<THREE.Object3D> {
+    const cached = this.foundationTemplates.get(key);
+    if (cached) return Promise.resolve(cached.clone(true));
+    const load = new GLTFLoader()
+      .loadAsync(url)
+      .then((gltf) => {
+        markShared(gltf.scene);
+        this.foundationTemplates.set(key, gltf.scene);
+        return gltf.scene.clone(true);
+      });
     return load;
   }
 

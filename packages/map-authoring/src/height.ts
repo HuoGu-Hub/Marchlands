@@ -40,7 +40,7 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
 }
 
 export function createHeightField(options: HeightFieldOptions): HeightField {
-  const amplitude = Math.min(1.5, Math.max(0.2, options.terrain.amplitude));
+  const amplitude = Math.min(3.2, Math.max(0.2, options.terrain.amplitude));
   const noiseShift = (Math.round(options.terrain.seed) % 1000) * 0.017;
   const cities = options.cities;
 
