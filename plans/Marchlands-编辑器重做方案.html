@@ -58,6 +58,7 @@ p{margin:0 0 16px;color:var(--ink-soft)}
 .side-note{border-left:2px solid var(--brass);padding:2px 0 2px 14px;margin:0 0 22px}
 .side-note b{display:block;font-size:12px;letter-spacing:.04em;margin-bottom:4px}
 .side-note span{display:block;font-size:12px;line-height:1.7;color:var(--muted)}
+.side-note .mono{white-space:nowrap}
 table{width:100%;border-collapse:collapse;margin:14px 0 22px;font-size:13.5px}
 th{text-align:left;font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:500;border-bottom:1px solid var(--ink);padding:10px 12px 8px 0;vertical-align:bottom}
 td{border-bottom:1px solid var(--rule-soft);padding:10px 12px 10px 0;vertical-align:top;color:var(--ink-soft)}
@@ -143,7 +144,7 @@ figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
 <header class="topbar"><div class="topbar-inner">
   <a class="brand" href="#top"><b>MARCHLANDS</b><span>编辑器重做方案</span></a>
   <nav class="topnav">
-    <a href="#audit">现状排查</a><a href="#target">目标</a><a href="#design">新编辑器</a><a href="#tech">技术方案</a><a href="#plan">实施阶段</a><a href="#decisions">待确认</a>
+    <a href="#audit">现状排查</a><a href="#target">目标</a><a href="#design">新编辑器</a><a href="#tech">技术方案</a><a href="#oss">开源方案</a><a href="#plan">实施阶段</a><a href="#decisions">待确认</a>
   </nav>
 </div></header>
 
@@ -463,7 +464,7 @@ figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
   editor-inspector.ts 选中对象的属性面板
   editor-tools/       select / move / place / road / terrain
   editor-controller.ts 组装与生命周期</code></pre>
-<p>不再用一个 2600 行的 <span class="mono">editor.ts</span> 承载全部逻辑。</p>
+<p>不再用一个 2600 行的 <span class="mono">editor.ts</span> 承载全部逻辑。大纲与检查器的通用控件优先用 PCUI，只有地图语义相关的部分自绘。</p>
 
 <h3>4.3 数据模型</h3>
 <p>地基升级为平台对象，建议 schema 4：</p>
@@ -503,15 +504,16 @@ figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
 <li>地基盒体手柄、TransformControls 和检查器输入共用同一个变换提交函数，保证三条路径行为一致。</li>
 </ul>
 
-<h3>4.6 备选方案</h3>
+<h3>4.6 引擎与 UI 备选</h3>
 <table>
 <tr><th>方案</th><th>优点</th><th>结论</th></tr>
 <tr><td>three.js + OrbitControls + TransformControls</td><td>零新依赖，完全控制风格，复用现有地形与资产</td><td><span class="tag ok">推荐</span></td></tr>
 <tr><td>Babylon.js Inspector</td><td>自带属性面板与手柄</td><td>要重写渲染与地形，风格不可控，放弃</td></tr>
-<tr><td>three.js editor</td><td>现成编辑器</td><td>面向通用 three 场景，接游戏数据模型成本高，放弃</td></tr>
+<tr><td>PlayCanvas Editor Frontend</td><td>完整编辑器前端，MIT</td><td>依赖 PlayCanvas 引擎与后端，不整体搬；PCUI 可独立复用</td></tr>
 <tr><td>React + react-three-fiber + drei</td><td>生态成熟，手柄现成</td><td>给现有 vanilla 客户端引入第二套 UI 栈，收益不抵成本，暂不采用</td></tr>
-<tr><td>Tweakpane / Leva 做检查器</td><td>控件现成</td><td>样式与游戏 UI 不一致，先用自绘 DOM，后续可局部引入</td></tr>
+<tr><td>PCUI 做大纲与检查器</td><td>MIT，专为编辑器工具设计，树、属性行、向量输入、历史都有</td><td><span class="tag ok">推荐</span></td></tr>
 </table>
+<p>UI 组件层的完整比选见下一节，那里会给出“直接用、只借鉴、不用”的清单。</p>
 
 <h3>4.7 风险</h3>
 <ul>
@@ -523,23 +525,96 @@ figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
 
   </div><aside class="side">
     <div class="side-note"><b>并行开发</b><span>新编辑器挂在 <span class="mono">?editor=next</span>，旧编辑器保持可用，避免一次性替换导致无法出图。</span></div>
-    <div class="side-note"><b>依赖</b><span>three 0.171 已包含 examples/jsm 的 OrbitControls 与 TransformControls，不需要新增包。</span></div>
+    <div class="side-note"><b>依赖</b><span>three 0.171 自带 OrbitControls 与 TransformControls；UI 建议加 <span class="mono">@playcanvas/pcui</span>，MIT，不引入新框架。</span></div>
+  </aside></div>
+</section>
+
+<section class="section" id="oss">
+  <div class="section-head"><div class="num">05</div><h2>开源可复用方案</h2></div>
+  <div class="body-grid"><div>
+
+<p class="lead">有，而且分两类：完整的开源编辑器和编辑器 UI 组件库。结论是：<strong>完整编辑器不值得直接搬，组件库值得直接用</strong>。三轴手柄、相机、大纲、属性面板、撤销这些通用能力都有成熟实现，没必要自己设计。</p>
+
+<h3>5.1 完整编辑器</h3>
+<table>
+<tr><th>项目</th><th>许可</th><th>技术栈</th><th>可复用程度</th><th>结论</th></tr>
+<tr><td>three.js editor</td><td>MIT</td><td>three.js / 原生 JS</td><td>视口、层级、检查器、手柄、历史、工具栏</td><td>交互参考；整体 fork 需改数据模型、序列化和命令，隐性成本高</td></tr>
+<tr><td>PlayCanvas Editor Frontend</td><td>MIT</td><td>PlayCanvas 引擎 + TS + PCUI</td><td>完整编辑器前端、资产、层级、检查器</td><td>依赖 PlayCanvas 引擎与 Editor 后端，不整体搬；PCUI 可独立用</td></tr>
+<tr><td>Babylon.js Editor</td><td>Apache-2.0</td><td>Electron + React + Babylon</td><td>完整桌面编辑器、材质、脚本、资产</td><td>Babylon 耦合，只做参考</td></tr>
+<tr><td>Triplex</td><td>已开源，仓库 LICENSE 需确认</td><td>React + R3F</td><td>视觉编辑、属性面板、代码同步、撤销</td><td>只有接受 React 栈时才值得评估</td></tr>
+<tr><td>Spoke</td><td>非 MIT，仓库标注 other</td><td>React + three.js</td><td>场景层级、检查器、资产、多人</td><td>许可与 Hubs 数据模型限制，只做 IA 参考</td></tr>
+</table>
+
+<h3>5.2 UI 组件库</h3>
+<table>
+<tr><th>库</th><th>许可</th><th>适用</th><th>能省掉什么</th><th>结论</th></tr>
+<tr><td>PCUI</td><td>MIT</td><td>原生 TS 或 React</td><td>TreeView 大纲、Panel、NumericInput、VectorInput、SelectInput、Menu、Toolbar、主题</td><td><span class="tag ok">推荐</span></td></tr>
+<tr><td>@playcanvas/observer</td><td>MIT</td><td>原生 TS</td><td>数据绑定、变更通知、历史</td><td>可配合 PCUI，替换手写撤销栈</td></tr>
+<tr><td>Tweakpane</td><td>MIT</td><td>原生 TS</td><td>检查器折叠面板、数值/向量/颜色控件</td><td>备选；没有大纲与树</td></tr>
+<tr><td>lil-gui</td><td>MIT</td><td>原生 TS</td><td>调试参数面板</td><td>只适合调试，不用于正式编辑器</td></tr>
+<tr><td>drei + leva</td><td>MIT</td><td>React</td><td>TransformControls、GizmoHelper、Grid、环境、检查器</td><td>只有 React 路线才用</td></tr>
+</table>
+
+<h3>5.3 推荐组合</h3>
+<div class="split">
+<div class="card"><h4>直接用</h4><p>three.js 自带的 OrbitControls、TransformControls、GridHelper、Raycaster；PCUI 的 TreeView、Panel、NumericInput、VectorInput、SelectInput、Menu、Toolbar。相机与三轴手柄不再自己写，属性面板与大纲也不再手搓。</p></div>
+<div class="card"><h4>只借鉴</h4><p>three.js editor 的工具栏与检查器分区；PlayCanvas 的层级、资产、检查器布局；0 A.D. Atlas 的 RTS 地图编辑流程；Tiled / LDtk 的大纲、图层、笔刷、撤销。</p></div>
+</div>
+<div class="split">
+<div class="card"><h4>仍然自己写</h4><p>MapDocument 与场景对象的适配、地基盒体的面/角/Y 手柄、按平台重建地形、地图范围并集、导航与试玩。这些是地图语义，没有现成件可替。</p></div>
+<div class="card"><h4>不要整体 fork</h4><p>完整编辑器都绑定自己的场景模型、引擎或后端。搬进来后，改数据模型、删无关面板、跟上游升级的成本，通常高于用组件库搭一个薄壳。</p></div>
+</div>
+
+<h3>5.4 为什么不是直接 fork three.js editor</h3>
+<ul>
+<li>它是<strong>应用</strong>不是库：文档模型是 three 的 Object3D，序列化是场景 JSON，命令系统围绕通用对象转。我们的真相是 MapDocument，需要反向适配。</li>
+<li>它的检查器包含几何、材质、脚本、动画、播放器等大量与地图无关的面板，删减和改版都要维护一份分叉。</li>
+<li>它的 UI 风格是通用深色编辑器，和 Marchlands 的纸面/森林/黄铜体系不一致，最终仍要重做主题。</li>
+<li>值得拿的是它的<strong>交互结构</strong>：视口居中、顶部模式、左侧层级、右侧检查器、底部状态；这些在方案里已经吸收。</li>
+</ul>
+
+<h3>5.5 许可注意</h3>
+<ul>
+<li><strong>MIT</strong>：PCUI、Observer、Tweakpane、lil-gui、drei、leva、three.js 与 three.js editor，可直接商用，保留版权声明。</li>
+<li><strong>Apache-2.0</strong>：Babylon.js Editor，可用但需保留声明与变更说明；引擎不匹配，实际不采用。</li>
+<li><strong>MPL / other</strong>：Spoke，文件级 copyleft，修改文件需开源；只做参考。</li>
+<li><strong>GPL</strong>：Tiled、0 A.D.，只借鉴交互，不复制代码。</li>
+<li>Triplex 已开源到 Poimandres，但仓库 LICENSE 需在引入前确认。</li>
+</ul>
+
+<h3>5.6 对工期的影响</h3>
+<p>按推荐组合，通用 UI 与三轴交互基本不用从零设计：相机、手柄、大纲树、属性行、菜单、数据绑定与历史都有现成件。真正的工作量集中在<strong>地图语义</strong>和<strong>视口与地形的联动</strong>，这两块本来也无法靠开源项目绕开。相比全自研，预计能省掉一半以上的编辑器 UI 代码。</p>
+
+<h3>5.7 参考</h3>
+<ul class="small">
+<li><a href="https://github.com/mrdoob/three.js/tree/dev/editor">three.js editor</a> · MIT</li>
+<li><a href="https://blog.playcanvas.com/playcanvas-editor-frontend-is-now-open-source/">PlayCanvas Editor Frontend 开源公告</a> · MIT</li>
+<li><a href="https://www.npmjs.com/package/@playcanvas/pcui">PCUI</a> 与 <a href="https://www.npmjs.com/package/@playcanvas/observer">Observer</a> · MIT</li>
+<li><a href="https://github.com/BabylonJS/Editor">Babylon.js Editor</a> · Apache-2.0</li>
+<li><a href="https://triplex.dev/blog/triplex-moves-to-pmndrs">Triplex 开源公告</a></li>
+<li><a href="https://github.com/Hubs-Foundation/Spoke">Spoke</a> · 许可需按仓库确认</li>
+<li><a href="https://github.com/mapeditor/tiled">Tiled</a> 与 <a href="https://github.com/deepnight/ldtk">LDtk</a> · 交互参考</li>
+</ul>
+
+  </div><aside class="side">
+    <div class="side-note"><b>一句话</b><span>手柄和相机用 three 自带，属性面板和大纲用 PCUI，地图语义自己写。</span></div>
+    <div class="side-note"><b>新增依赖</b><span>只加 <span class="mono">@playcanvas/pcui</span> 与可选的 <span class="mono">@playcanvas/observer</span>，都是 MIT，不引入新框架。</span></div>
   </aside></div>
 </section>
 
 <section class="section" id="plan">
-  <div class="section-head"><div class="num">05</div><h2>实施阶段</h2></div>
+  <div class="section-head"><div class="num">06</div><h2>实施阶段</h2></div>
   <div class="body-grid"><div>
 
 <p class="lead">先把“看得见、找得到、点得中”做出来，再把地基三轴编辑做扎实，最后迁移其余工具。每一阶段都能独立验收，不用等到全部完成。</p>
 
-<div class="phase"><div class="p">P0</div><div><h4>编辑器壳与视口</h4><p>新布局、工具轨道、大纲、检查器、底栏；OrbitControls 自由相机、网格、坐标轴、对象注册表与射线拾取；旧数据只读渲染。挂在 <span class="mono">?editor=next</span>。</p></div><div class="time">验收：能环绕查看地图，大纲能选中据点与地基，底栏显示 XYZ</div></div>
+<div class="phase"><div class="p">P0</div><div><h4>编辑器壳与视口</h4><p>新布局、工具轨道、大纲、检查器、底栏；UI 控件用 PCUI，相机用 OrbitControls，视口加入网格、坐标轴、对象注册表与射线拾取；旧数据只读渲染。挂在 <span class="mono">?editor=next</span>。</p></div><div class="time">验收：能环绕查看地图，大纲能选中据点与地基，底栏显示 XYZ</div></div>
 <div class="phase"><div class="p">P1</div><div><h4>地基三轴编辑</h4><p>平台盒体、面/角/Y 手柄、资产库的地基标签、拖动建平台、检查器扩建按钮、地图范围并集、增量地形重建。</p></div><div class="time">验收：拖东面扩 10 米、拖 Y 抬高 8 米、Ctrl+D 复制、Delete 删除、撤销一次回退</div></div>
 <div class="phase"><div class="p">P2</div><div><h4>据点、装饰、道路</h4><p>TransformControls 接管移动/旋转/缩放；贴地开关与 Y 偏移；右键菜单；多选；大纲展开到 66 个装饰。</p></div><div class="time">验收：在林子里点中指定树，抬到二层平台，拖动道路控制点</div></div>
 <div class="phase"><div class="p">P3</div><div><h4>资产库、地形与导航</h4><p>资产搜索与分类、最近使用；网格笔刷迁入地形工具；导航预览与路径测试收进调试区；试玩与自动保存。</p></div><div class="time">验收：不读文档能找到任意资产；网格图笔刷与旧版一致</div></div>
 <div class="phase"><div class="p">P4</div><div><h4>替换与清理</h4><p>达到功能对等后把默认入口切到新编辑器，删除旧 UI，补 e2e、截图与文档。</p></div><div class="time">验收：旧地图、旧草稿、试玩、存档全部不回退</div></div>
 
-<h3>5.1 每阶段的测试</h3>
+<h3>6.1 每阶段的测试</h3>
 <ul>
 <li>单测：地基几何、并集范围、合并规则、schema 迁移。</li>
 <li>e2e：环绕相机、拖面扩建、拖 Y 抬高、撤销、从大纲选中、搜索资产、试玩往返。</li>
@@ -552,16 +627,17 @@ figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
 </section>
 
 <section class="section" id="decisions">
-  <div class="section-head"><div class="num">06</div><h2>待确认</h2></div>
+  <div class="section-head"><div class="num">07</div><h2>待确认</h2></div>
   <div class="body-grid"><div>
 
 <div class="decision"><b>1. 编辑相机默认自由环绕，还是保留现在的固定俯视？</b><p><span class="rec">建议自由环绕</span>，保留“对局视角”按钮。固定俯视无法做真正的 XYZ 编辑，但自由相机需要重做全部拾取与放置逻辑。</p></div>
 <div class="decision"><b>2. 地基是否允许任意角度旋转？</b><p><span class="rec">建议先 15° 步进</span>，轴对齐相邻自动合并；任意角度会显著增加地形采样与合并复杂度。也可以先只做 90°。</p></div>
 <div class="decision"><b>3. 是否接受“重做编辑器壳、保留底层”的路线？</b><p><span class="rec">建议接受</span>。数据、地形、资产、模拟都不动，只替换 UI 与编辑视口；旧编辑器并行保留到功能对等。</p></div>
 <div class="decision"><b>4. 网格地图是否继续只支持一块地基？</b><p><span class="rec">建议继续</span>。网格寻路假设单块矩形，改成多平台需要同时改导航、网格坐标与桥面逻辑；本轮先把据点图的多平台做顺。</p></div>
+<div class="decision"><b>5. UI 层是否直接采用 PCUI？</b><p><span class="rec">建议采用</span>。大纲、属性行、向量输入、菜单、数据绑定与历史直接用 MIT 组件，地图语义自己写；代价是需要做一套主题覆盖，并接受它的组件习惯。</p></div>
 
-<h3>6.1 我建议的下一步</h3>
-<p>确认路线后直接进入 P0+P1：新壳、自由相机、大纲、检查器、地基盒体与 XYZ 手柄。旧的编辑器不再做局部修补，只修阻断性 bug。完成 P1 后给你一版可试用的 <span class="mono">?editor=next</span>，用同一张地图对比新旧两版，再决定是否切换默认入口。</p>
+<h3>7.1 我建议的下一步</h3>
+<p>确认路线后直接进入 P0+P1：PCUI 壳、自由相机、大纲、检查器、地基盒体与 XYZ 手柄。旧的编辑器不再做局部修补，只修阻断性 bug。完成 P1 后给你一版可试用的 <span class="mono">?editor=next</span>，用同一张地图对比新旧两版，再决定是否切换默认入口。</p>
 
   </div><aside class="side">
     <div class="side-note"><b>如果只做一件事</b><span>先把地基变成带 Y 轴手柄的三维平台；这是整个编辑器从平面走向三维的分水岭。</span></div>
