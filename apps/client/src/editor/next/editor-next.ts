@@ -915,6 +915,11 @@ export class EditorNext {
       this.renderMapInspector();
       return;
     }
+    const back = document.createElement("button");
+    back.className = "mlnx-map-back";
+    back.textContent = "← 地图设置";
+    back.addEventListener("click", () => this.select(null));
+    this.inspectorEl.appendChild(back);
     if (this.selection.kind === "foundation") this.renderFoundationInspector(this.selection.id);
     else if (this.selection.kind === "site") this.renderSiteInspector(this.selection.id);
     else if (this.selection.kind === "road") this.renderRoadInspector(this.selection.id);

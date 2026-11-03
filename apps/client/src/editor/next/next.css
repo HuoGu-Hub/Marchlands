@@ -229,6 +229,17 @@
   font-size: 11px;
   padding: 0 6px;
 }
+.mlnx-map-back {
+  margin-bottom: 8px;
+  border: 1px solid #2d3d32;
+  background: transparent;
+  color: #8f9d8f;
+  font: inherit;
+  font-size: 10px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.mlnx-map-back:hover { color: #e6c987; border-color: #6b5b3a; }
 .mlnx-pack-list { margin-top: 8px; border: 1px solid #2d3d32; background: #0d150f; }
 .mlnx-pack-row {
   display: flex;
