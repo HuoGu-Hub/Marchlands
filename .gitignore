@@ -10,3 +10,5 @@ release/
 test-results/
 playwright-report/
 *.rar
+*.7z
+resource/

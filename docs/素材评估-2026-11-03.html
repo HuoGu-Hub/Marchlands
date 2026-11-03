@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>资源包可用性评估</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 48px 24px 64px;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: #1d2320; background: #f6f5f1; line-height: 1.7;
+  }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: .5px; }
+  h2 { font-size: 17px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #d9d6cc; }
+  .meta { color: #6b7069; font-size: 13px; margin: 0 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: #fff; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e6e3da; vertical-align: top; }
+  th { background: #efece3; font-weight: 600; white-space: nowrap; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ok { color: #2f6b3a; font-weight: 600; }
+  .warn { color: #8a5a12; font-weight: 600; }
+  .no { color: #8a3b32; font-weight: 600; }
+  code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.5px; background: #eceae2; padding: 1px 4px; border-radius: 3px; }
+  ul, ol { padding-left: 22px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  .note { font-size: 13px; color: #5d6360; }
+</style>
+</head>
+<body>
+<main>
+  <h1>资源包可用性评估</h1>
+  <p class="meta">2026-11-03 · 13 个资源包 · 已接入 1 个</p>
+
+  <h2>总览</h2>
+  <table>
+    <thead>
+      <tr><th>资源包</th><th>格式</th><th class="num">数量</th><th>许可</th><th>结论</th><th>建议用途</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Nature Kit (2.1)</td><td>GLB</td><td class="num">329</td><td>CC0</td>
+        <td class="ok">已接入 65</td><td>植被、岩石、灌木、花、树桩、营火、木桶</td>
+      </tr>
+      <tr>
+        <td>kenney_castle-kit</td><td>GLB</td><td class="num">76</td><td>CC0</td>
+        <td class="ok">可直接用</td><td>攻城器械、桥、更多城墙与塔身变体</td>
+      </tr>
+      <tr>
+        <td>modular_village_collection</td><td>OBJ</td><td class="num">142</td><td class="warn">未见授权文件</td>
+        <td class="warn">需转换</td><td>模块化民居，可替换城市主楼</td>
+      </tr>
+      <tr>
+        <td>3D Road pack</td><td>OBJ</td><td class="num">302</td><td>CC0</td>
+        <td class="warn">需转换</td><td>真实路面模块，替换程序化道路带</td>
+      </tr>
+      <tr>
+        <td>dungeon_collection_for_assetforge</td><td>OBJ</td><td class="num">56</td><td class="warn">未见授权文件</td>
+        <td class="warn">需转换</td><td>矿洞、地牢构件，可装饰据点</td>
+      </tr>
+      <tr>
+        <td>kenney_tower-defense-kit</td><td>GLB</td><td class="num">160</td><td>CC0</td>
+        <td class="warn">少量可用</td><td>球状岩石/树/水晶、投石机、木结构；UFO 敌人与激光塔不符合题材</td>
+      </tr>
+      <tr>
+        <td>kenney_platformerKit</td><td>GLB</td><td class="num">74</td><td>CC0</td>
+        <td class="warn">少量可用</td><td>木桶、金币、箭头；平台方块不适用</td>
+      </tr>
+      <tr>
+        <td>rocks.7z</td><td>OBJ / FBX + TGA</td><td class="num">5</td><td>CC0</td>
+        <td class="no">不建议</td><td>写实风岩石，单张法线贴图 16 MB，与低多边形风格冲突</td>
+      </tr>
+      <tr>
+        <td>Yughues HandPainted Plants 2.7z</td><td>OBJ / FBX</td><td class="num">67</td><td>CC0</td>
+        <td class="no">不建议</td><td>半写实植物卡片，与现有体素化植被不协调</td>
+      </tr>
+      <tr>
+        <td>rts_props.blend</td><td>Blender</td><td class="num">1</td><td class="warn">待确认</td>
+        <td class="no">无法导出</td><td>需 Blender</td>
+      </tr>
+      <tr>
+        <td>potions_0.blend</td><td>Blender</td><td class="num">1</td><td class="warn">待确认</td>
+        <td class="no">无法导出</td><td>需 Blender</td>
+      </tr>
+      <tr>
+        <td>kingdom_weapon_set_by_pfunked</td><td>Blender</td><td class="num">1</td><td class="warn">待确认</td>
+        <td class="no">无法导出</td><td>需 Blender</td>
+      </tr>
+      <tr>
+        <td>free_mine_assets</td><td>Blender + PNG</td><td class="num">9</td><td class="warn">待确认</td>
+        <td class="no">无法导出</td><td>需 Blender</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>已接入</h2>
+  <ul>
+    <li>从 Nature Kit 选取 65 个模型复制进 <code>apps/client/src/assets/kenney/nature</code>，与原有 16 个合并为 81 个。</li>
+    <li>新增：松树高/中/矮共 8 种、阔叶 5 种、秋色 4 种、枯色 4 种、棕榈 2 种；岩石与石堆 13 种；灌木/草/花/蘑菇 12 种；树桩、倒木、营火、木桶、路牌等道具。</li>
+    <li>按地貌切换树种：<code>autumn</code> 用秋色树，<code>ash</code> 用枯色树，<code>coast</code> 用棕榈，其余混生。</li>
+    <li>实测首屏 1.9 秒、帧率 79，控制台无报错。</li>
+  </ul>
+
+  <h2>转换路径</h2>
+  <p class="note">仓库内已有 <code>apps/client/src/game/convert-scene.ts</code>，在浏览器里用 three 的 <code>GLTFExporter</code> 把模型烘焙成 GLB。OBJ 包可沿用同一路径：<code>OBJLoader</code> + <code>MTLLoader</code> 读取 Kd 颜色后导出。三个 OBJ 包都是纯色材质、不含贴图，转换后体积很小。</p>
+
+  <h2>环境限制</h2>
+  <ul>
+    <li>Blender 未安装，4 个 <code>.blend</code> 包无法导出为 GLB。</li>
+    <li>7-Zip 未安装，但 Windows 自带的 <code>bsdtar</code> 可以解压 7z，两个压缩包已解开验证。</li>
+  </ul>
+
+  <h2>建议的下一步</h2>
+  <ol>
+    <li><strong>城堡套件补充</strong>（工作量小）：接入攻城器械、桥和更多塔身，用于边境要塞与据点外观。</li>
+    <li><strong>道路模块化</strong>（工作量中）：把 302 个路面模块转成 GLB，道路从程序化带面改为模块拼接，需要先把折线栅格化。</li>
+    <li><strong>村庄模块化</strong>（工作量中）：转换 142 件民居构件重组城市主楼，提升建筑细节；授权来源需要先确认。</li>
+    <li><strong>Blender 导出</strong>（需要你操作）：安装 Blender 后我写一个批量导出脚本，把 4 个 blend 包转成 GLB。</li>
+  </ol>
+</main>
+</body>
+</html>
