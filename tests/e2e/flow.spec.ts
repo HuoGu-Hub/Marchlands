@@ -244,6 +244,12 @@ test("next editor expands a foundation and creates a floating island", async ({ 
   await expect(page.locator("#mlnx-left-content")).toContainText("地基 (2)");
   await page.click("#mlnx-undo");
   await expect(page.locator("#mlnx-left-content")).toContainText("地基 (1)");
+  await page.keyboard.press("p");
+  await page.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.5);
+  await page.mouse.click(box.x + box.width * 0.56, box.y + box.height * 0.58);
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#mlnx-left-content")).toContainText("道路 (5)");
+  await expect(page.locator("#mlnx-inspector")).toContainText("道路 r5");
 });
 
 test("pauses and resumes without losing the match", async ({ page }) => {

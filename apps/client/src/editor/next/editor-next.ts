@@ -17,7 +17,9 @@ import type { CityId, MapDef, Ruleset, SimState, SiteKind } from "@marchlands/si
 import {
   addFoundation,
   addProp,
+  addRoad,
   addSite,
+  clampPosition,
   cloneDocument,
   compileDocument,
   createStarterDocument,
@@ -41,7 +43,7 @@ import {
   updateSite,
   updateTerrain,
 } from "@marchlands/map-authoring";
-import type { CompileResult, MapDocument, MapVisual, PropDraft, RoadDraft, SiteDraft } from "@marchlands/map-authoring";
+import type { CompileResult, MapDocument, MapVisual, PropDraft, SiteDraft } from "@marchlands/map-authoring";
 import { assetRegistry } from "../../game/asset-registry";
 import { BattleScene } from "../../game/scene";
 import { openMapText, saveMapText } from "../map-io";
@@ -163,6 +165,7 @@ export class EditorNext {
   private undoStack: MapDocument[] = [];
   private redoStack: MapDocument[] = [];
   private drag: { start: [number, number]; current: [number, number]; ghost: THREE.Mesh } | null = null;
+  private roadDraw: { points: [number, number][]; from?: CityId; to?: CityId; line: THREE.Line } | null = null;
   private pointer: { x: number; y: number; ground: [number, number] | null } = { x: 0, y: 0, ground: null };
   private resizeObserver: ResizeObserver | null = null;
   private toastTimer = 0;
@@ -258,7 +261,13 @@ export class EditorNext {
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
-    this.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+    this.canvas.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      if (this.roadDraw) this.cancelRoad();
+    });
+    this.canvas.addEventListener("dblclick", () => {
+      if (this.tool === "road" && this.roadDraw) this.finishRoad();
+    });
     window.addEventListener("keydown", this.onKeyDown);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.canvas.parentElement ?? this.canvas);
@@ -397,6 +406,7 @@ export class EditorNext {
     this.gizmo?.detach();
     this.gizmo?.dispose();
     this.gizmo = null;
+    this.roadDraw = null;
     this.orbit?.dispose();
     this.orbit = null;
     this.scene?.dispose();
@@ -444,7 +454,8 @@ export class EditorNext {
 
   private renderTabs(): void {
     if (this.tool !== "place") {
-      this.tabsEl.innerHTML = '<span class="mlnx-group-label" style="margin:0;padding:6px 2px">大纲</span>';
+      const label = this.tool === "road" ? "道路" : this.tool === "terrain" ? "地形" : "大纲";
+      this.tabsEl.innerHTML = '<span class="mlnx-group-label" style="margin:0;padding:6px 2px">' + label + "</span>";
       return;
     }
     const tabs: Array<{ id: LibraryTab; label: string }> = [
@@ -472,6 +483,8 @@ export class EditorNext {
   private renderLeftPanel(): void {
     this.renderTabs();
     if (this.tool === "place") this.renderLibrary();
+    else if (this.tool === "road") this.renderRoadPanel();
+    else if (this.tool === "terrain") this.renderTerrainPanel();
     else this.renderOutline();
   }
 
@@ -635,6 +648,32 @@ export class EditorNext {
         this.renderLibrary();
       });
     }
+  }
+
+  private renderRoadPanel(): void {
+    this.leftContent.replaceChildren();
+    const host = document.createElement("div");
+    host.innerHTML =
+      '<div class="mlnx-group-label">绘制道路</div>' +
+      '<p class="mlnx-note">在地图上点击加点，点据点会自动吸附。Enter 完成，Esc 取消。</p>' +
+      '<div class="mlnx-actions-row">' +
+      '<button class="mlnx-btn" id="mlnx-road-finish">完成</button>' +
+      '<button class="mlnx-btn" id="mlnx-road-cancel">取消</button>' +
+      "</div>" +
+      '<div class="mlnx-group-label">当前宽度</div>' +
+      '<div class="mlnx-sub">' + this.doc.visual.roads.width.toFixed(1) + " 米 · 在右侧地图设置调整</div>";
+    this.leftContent.appendChild(host);
+    host.querySelector("#mlnx-road-finish")?.addEventListener("click", () => this.finishRoad());
+    host.querySelector("#mlnx-road-cancel")?.addEventListener("click", () => this.cancelRoad());
+  }
+
+  private renderTerrainPanel(): void {
+    this.leftContent.replaceChildren();
+    const host = document.createElement("div");
+    host.innerHTML =
+      '<div class="mlnx-group-label">地形</div>' +
+      '<p class="mlnx-note">网格地形笔刷还在迁移。据点图的地貌在右侧地图设置里调整；网格图请先用旧版编辑器刷地形。</p>';
+    this.leftContent.appendChild(host);
   }
 
   private renderInspector(): void {
@@ -1033,7 +1072,7 @@ export class EditorNext {
     this.inspectorEl.appendChild(deleteButton);
     const note = document.createElement("p");
     note.className = "mlnx-note";
-    note.textContent = "道路绘制工具还在迁移，先用旧版编辑器画路；这里可以改宽度、反向和删除。";
+    note.textContent = "用道路工具点击加点绘制；这里可以改宽度、反向和删除。";
     this.inspectorEl.appendChild(note);
   }
 
@@ -1063,17 +1102,23 @@ export class EditorNext {
   }
 
   private setTool(tool: NextTool): void {
-    if (tool === "road" || tool === "terrain") {
-      this.notice("道路和地形工具还在迁移，先用旧版编辑器处理");
+    if (tool === "terrain") {
+      this.notice("网格地形笔刷还在迁移，先用旧版编辑器处理");
       return;
     }
+    if (this.roadDraw && tool !== "road") this.cancelRoad();
     this.tool = tool;
     for (const button of document.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.classList.toggle("active", button.dataset.tool === tool);
     }
     this.renderLeftPanel();
-    this.attachGizmo();
-    this.canvas.style.cursor = tool === "place" ? "crosshair" : "default";
+    if (tool === "road") {
+      this.gizmo?.detach();
+      this.selectedProxy = null;
+    } else {
+      this.attachGizmo();
+    }
+    this.canvas.style.cursor = tool === "place" || tool === "road" ? "crosshair" : "default";
     if (this.selection?.kind === "foundation" && (tool === "rotate" || tool === "scale")) {
       this.notice("地基的尺寸和朝向用右侧检查器修改");
     }
@@ -1270,6 +1315,112 @@ export class EditorNext {
     return [point.x * 10, point.z * 10];
   }
 
+  private nearestSite(ground: [number, number], radius: number): SiteDraft | null {
+    let best: SiteDraft | null = null;
+    let bestDistance = radius;
+    for (const site of this.doc.sites) {
+      const distance = Math.hypot(site.pos[0] - ground[0], site.pos[1] - ground[1]);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = site;
+      }
+    }
+    return best;
+  }
+
+  private handleRoadClick(ground: [number, number]): void {
+    const point = clampPosition(this.doc, ground);
+    if (!this.roadDraw) {
+      const site = this.nearestSite(point, 60);
+      const start: [number, number] = site ? [site.pos[0], site.pos[1]] : point;
+      const line = this.createRoadLine();
+      this.roadDraw = { points: [start], ...(site ? { from: site.id } : {}), line };
+      this.editorRoot?.add(line);
+      this.updateRoadPreview(point);
+      this.notice("点击继续加点，Enter 完成，Esc 取消");
+      return;
+    }
+    const site = this.nearestSite(point, 45);
+    const next: [number, number] = site ? [site.pos[0], site.pos[1]] : point;
+    this.roadDraw.points.push(next);
+    if (site && site.id !== this.roadDraw.from) this.roadDraw.to = site.id;
+    this.updateRoadPreview(next);
+  }
+
+  private createRoadLine(): THREE.Line {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * 512), 3));
+    geometry.setDrawRange(0, 0);
+    const material = new THREE.LineBasicMaterial({ color: 0xe6c987, transparent: true, opacity: 0.95, depthWrite: false });
+    const line = new THREE.Line(geometry, material);
+    line.frustumCulled = false;
+    line.renderOrder = 5;
+    return line;
+  }
+
+  private updateRoadPreview(cursor: [number, number] | null): void {
+    const draw = this.roadDraw;
+    if (!draw) return;
+    const points = draw.points.slice();
+    if (cursor) points.push(cursor);
+    const attribute = draw.line.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const array = attribute.array as Float32Array;
+    const count = Math.min(points.length, 512);
+    for (let index = 0; index < count; index += 1) {
+      const point = points[index];
+      array[index * 3] = point[0] / 10;
+      array[index * 3 + 1] = (this.scene?.groundHeight(point[0], point[1]) ?? 0) + 0.15;
+      array[index * 3 + 2] = point[1] / 10;
+    }
+    draw.line.geometry.setDrawRange(0, count);
+    attribute.needsUpdate = true;
+  }
+
+  private finishRoad(): void {
+    const draw = this.roadDraw;
+    if (!draw) {
+      this.notice("先在地图上点几个点再完成");
+      return;
+    }
+    this.roadDraw = null;
+    this.editorRoot?.remove(draw.line);
+    draw.line.geometry.dispose();
+    (draw.line.material as THREE.Material).dispose();
+    const points: [number, number][] = [];
+    for (const point of draw.points) {
+      const last = points[points.length - 1];
+      if (last && Math.hypot(last[0] - point[0], last[1] - point[1]) < 1) continue;
+      points.push(point);
+    }
+    if (points.length < 2) {
+      this.notice("道路至少需要两个点");
+      return;
+    }
+    const lastPoint = points[points.length - 1];
+    const endSite = this.nearestSite(lastPoint, 45);
+    if (endSite) points[points.length - 1] = [endSite.pos[0], endSite.pos[1]];
+    const result = addRoad(this.doc, points, {
+      ...(draw.from ? { from: draw.from } : {}),
+      ...(endSite && endSite.id !== draw.from ? { to: endSite.id } : {}),
+      widthDm: Math.round(this.doc.visual.roads.width * 10),
+    });
+    this.selection = { kind: "road", id: result.road.id };
+    this.commit(result.document, "已绘制道路", { roads: true });
+    this.setTool("select");
+  }
+
+  private cancelRoad(): void {
+    const draw = this.roadDraw;
+    this.roadDraw = null;
+    if (draw) {
+      this.editorRoot?.remove(draw.line);
+      draw.line.geometry.dispose();
+      (draw.line.material as THREE.Material).dispose();
+    }
+    this.notice("已取消道路");
+    this.setTool("select");
+  }
+
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0 || !this.scene) return;
     if (this.gizmo?.axis) return;
@@ -1288,6 +1439,11 @@ export class EditorNext {
       event.preventDefault();
       return;
     }
+    if (this.tool === "road") {
+      const ground = this.scene.screenToGround(event.clientX, event.clientY);
+      if (ground) this.handleRoadClick(ground);
+      return;
+    }
     if (this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale") {
       const hit = this.pick(event.clientX, event.clientY);
       this.select(hit);
@@ -1303,6 +1459,11 @@ export class EditorNext {
         this.drag.current = [snapDm(point[0]), snapDm(point[1])];
         this.updateGhost();
       }
+      this.updateStatus();
+      return;
+    }
+    if (this.roadDraw) {
+      this.updateRoadPreview(ground);
       this.updateStatus();
       return;
     }
@@ -1488,7 +1649,16 @@ export class EditorNext {
       ? "X " + (ground[0] / 10).toFixed(1) + "  Y " + (this.scene?.groundHeight(ground[0], ground[1]) ?? 0).toFixed(1) + "  Z " + (ground[1] / 10).toFixed(1)
       : "X -  Y -  Z -";
     const selection = this.selection
-      ? "选择: " + (this.selection.kind === "foundation" ? "地基" : this.selection.kind === "site" ? "据点" : "装饰") + " " + this.selection.id
+      ? "选择: " +
+        (this.selection.kind === "foundation"
+          ? "地基"
+          : this.selection.kind === "site"
+            ? "据点"
+            : this.selection.kind === "road"
+              ? "道路"
+              : "装饰") +
+        " " +
+        this.selection.id
       : "未选择";
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const warnings = this.compiled.diagnostics.filter((entry) => entry.severity === "warning").length;
@@ -1513,9 +1683,20 @@ export class EditorNext {
     if (!this.viewInfoEl) return;
     const tool = TOOL_LABELS[this.tool];
     const selection = this.selection
-      ? (this.selection.kind === "foundation" ? "地基 " : this.selection.kind === "site" ? "据点 " : "装饰 ") + this.selection.id
+      ? (this.selection.kind === "foundation"
+          ? "地基 "
+          : this.selection.kind === "site"
+            ? "据点 "
+            : this.selection.kind === "road"
+              ? "道路 "
+              : "装饰 ") + this.selection.id
       : "未选择";
-    const hint = this.tool === "place" ? "左键拖拽/点击放置" : "右键环绕 · 中键平移 · 滚轮缩放";
+    const hint =
+      this.tool === "place"
+        ? "左键拖拽/点击放置"
+        : this.tool === "road"
+          ? "点击加点 · Enter 完成 · Esc 取消"
+          : "右键环绕 · 中键平移 · 滚轮缩放";
     this.viewInfoEl.innerHTML =
       '<span class="mlnx-chip">' + escapeHtml(tool) + '</span><span class="mlnx-chip">' + escapeHtml(selection) + '</span><span class="mlnx-chip">' + escapeHtml(hint) + "</span>";
   }
@@ -1602,6 +1783,16 @@ export class EditorNext {
         this.selection = null;
         this.commit(next, "已删除装饰", { props: true });
       }
+      return;
+    }
+    if (event.key === "Enter" && this.roadDraw) {
+      event.preventDefault();
+      this.finishRoad();
+      return;
+    }
+    if (event.key === "Escape" && this.roadDraw) {
+      event.preventDefault();
+      this.cancelRoad();
       return;
     }
     if (event.key === "Escape") {
