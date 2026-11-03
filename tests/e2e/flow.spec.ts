@@ -371,7 +371,7 @@ test("next editor rotates a selected site with the gizmo", async ({ page }) => {
   await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
   await page.locator(".pcui-treeview-item-text", { hasText: "c1 ·" }).click();
-  await page.keyboard.press("e");
+  await page.keyboard.press("r");
   const start = await page.evaluate(() => {
     const hooks = window as unknown as {
       __mlnxDoc: () => { sites: Array<{ id: string; pos: [number, number] }> };

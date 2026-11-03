@@ -207,8 +207,8 @@ const TEMPLATE = [
   '    <nav class="mlnx-rail" id="mlnx-rail">',
   '      <button class="mlnx-tool active" data-tool="select"><b>V</b><span>选择</span></button>',
   '      <button class="mlnx-tool" data-tool="move"><b>W</b><span>移动</span></button>',
-  '      <button class="mlnx-tool" data-tool="rotate"><b>E</b><span>旋转</span></button>',
-  '      <button class="mlnx-tool" data-tool="scale"><b>R</b><span>缩放</span></button>',
+  '      <button class="mlnx-tool" data-tool="rotate"><b>R</b><span>旋转</span></button>',
+  '      <button class="mlnx-tool" data-tool="scale"><b>T</b><span>缩放</span></button>',
   '      <button class="mlnx-tool" data-tool="place"><b>B</b><span>放置</span></button>',
   '      <button class="mlnx-tool" data-tool="road"><b>P</b><span>道路</span></button>',
   '      <button class="mlnx-tool" data-tool="terrain"><b>G</b><span>地形</span></button>',
@@ -3205,7 +3205,8 @@ export class EditorNext {
       this.focusSelection();
       return;
     }
-    const shortcuts: Record<string, NextTool> = { v: "select", w: "move", e: "rotate", r: "scale", b: "place", p: "road", g: "terrain" };
+    // R 旋转与经典编辑器一致；E 保留为旋转别名，T 为缩放。
+    const shortcuts: Record<string, NextTool> = { v: "select", w: "move", e: "rotate", r: "rotate", t: "scale", b: "place", p: "road", g: "terrain" };
     const tool = shortcuts[event.key.toLowerCase()];
     if (tool) {
       event.preventDefault();
