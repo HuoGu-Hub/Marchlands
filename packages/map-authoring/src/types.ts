@@ -130,6 +130,8 @@ export interface SiteDraft {
   pos: [number, number];
   stance?: Stance;
   watch?: [CityId, CityId];
+  /** 未占领时的通行规则；被占领后固定为友方通行。 */
+  transit?: "open" | "closed";
   /** 据点外观资产 ID；缺省时按类型使用默认外观。 */
   visualAssetId?: string;
   /** 外观自带朝向，单位为度。 */

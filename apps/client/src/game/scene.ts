@@ -1524,52 +1524,6 @@ export class BattleScene {
     const rimRocks: Scatter[] = [];
     const cliffRocks: Scatter[] = [];
     const rimTrees: Scatter[] = [];
-    const island = this.terrain.island;
-    const rimCenter = this.terrain.primaryCenter;
-    const primary = this.terrain.platforms.reduce((best, entry) => {
-      const area = (entry.platform.maxX - entry.platform.minX) * (entry.platform.maxZ - entry.platform.minZ);
-      const bestArea = (best.platform.maxX - best.platform.minX) * (best.platform.maxZ - best.platform.minZ);
-      return area > bestArea ? entry : best;
-    }, this.terrain.platforms[0]);
-    if (primary.platform.scatter !== false) this.terrain.primaryRim.forEach((point, index) => {
-      const theta = Math.atan2(point.z - rimCenter.z, point.x - rimCenter.x);
-      const radius = Math.hypot(point.x - rimCenter.x, point.z - rimCenter.z);
-      const cos = Math.cos(theta);
-      const sin = Math.sin(theta);
-
-      if (index % 5 === 0 && random() > 0.45) {
-        const count = 1 + Math.floor(random() * 2);
-        for (let cluster = 0; cluster < count; cluster += 1) {
-          const t = 0.05 + random() * 0.2;
-          const spread = (random() - 0.5) * 2.6;
-          const x = point.x + (point.innerX - point.x) * t - sin * spread;
-          const z = point.z + (point.innerZ - point.z) * t + cos * spread;
-          const scale = 1.9 + random() * 3.1;
-          const y = point.y - scale * (0.3 + random() * 0.25);
-          rimRocks.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });
-        }
-      }
-
-      if (index % 7 === 1) {
-        const t = 0.16 + random() * 0.34;
-        const shrink = 0.8 * Math.pow(t, 0.9);
-        const cliffRadius = radius * (1 - shrink) * (0.84 + random() * 0.06);
-        const x = rimCenter.x + cos * cliffRadius;
-        const z = rimCenter.z + sin * cliffRadius;
-        const scale = 2.8 + random() * 2.4;
-        const y = point.y - t * island.depth * 0.95 - scale * 0.2;
-        cliffRocks.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });
-      }
-
-      if (index % 9 === 2) {
-        const t = 0.3 + random() * 0.32;
-        const x = point.x + (point.innerX - point.x) * t;
-        const z = point.z + (point.innerZ - point.z) * t;
-        const scale = 2.3 + random() * 1.2;
-        const y = point.innerY + (point.y - point.innerY) * (1 - t);
-        rimTrees.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });
-      }
-    });
 
     const style = this.visual?.terrain?.style ?? "frontier";
     const trees =

@@ -170,6 +170,15 @@ describe("map authoring", () => {
     expect(after.edges.map((edge) => edge.grade)).not.toEqual(before.edges.map((edge) => edge.grade));
   });
 
+  it("preserves a site's neutral transit rule and compiles it", () => {
+    const starter = createStarterDocument();
+    const next = updateSite(starter, "c2", { transit: "open" });
+    const parsed = parseDocument(JSON.parse(serializeDocument(next))).document;
+    expect(parsed.sites.find((site) => site.id === "c2")?.transit).toBe("open");
+    const city = compileDocument(next).map.cities.find((entry) => entry.id === "c2");
+    expect(city?.transit).toBe("open");
+  });
+
   it("creates new foundations without automatic scenery", () => {
     const starter = createStarterDocument();
     const added = addFoundation(starter, { pos: [500, 0], size: [200, 200], shape: "round" });

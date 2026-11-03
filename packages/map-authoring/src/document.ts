@@ -245,6 +245,10 @@ function siteFromUnknown(value: unknown): SiteDraft | null {
     if (capture === null || capture <= 0) throw new Error(`据点 ${site.id} 的占领半径无效`);
     site.captureRadiusDm = capture;
   }
+  if (value.transit !== undefined) {
+    if (value.transit !== "open" && value.transit !== "closed") throw new Error(`据点 ${site.id} 的通行规则无效`);
+    site.transit = value.transit;
+  }
   return site;
 }
 
@@ -551,6 +555,7 @@ export function fromMapDef(map: MapDef): MapDocument {
             ...(city.watch ? { watch: [city.watch[0], city.watch[1]] as [string, string] } : {}),
           }
         : {}),
+      ...(city.transit ? { transit: city.transit } : {}),
       ...(city.footprintCm !== undefined ? { footprintDm: city.footprintCm / 10 } : {}),
       ...(city.captureRadiusCm !== undefined ? { captureRadiusDm: city.captureRadiusCm / 10 } : {}),
     })),
@@ -971,6 +976,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
               ...(site.watch ? { watch: [site.watch[0], site.watch[1]] as [string, string] } : {}),
             }
           : {}),
+        ...(site.transit ? { transit: site.transit } : {}),
         ...(footprintCm !== undefined ? { footprintCm } : {}),
         ...(captureRadiusCm !== undefined ? { captureRadiusCm } : {}),
       };

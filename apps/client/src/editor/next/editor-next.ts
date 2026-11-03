@@ -44,7 +44,6 @@ import {
   updateProp,
   updateRoad,
   updateRoadVisual,
-  updateScatter,
   updateSite,
   updateTerrain,
   updateUnitVisual,
@@ -245,6 +244,7 @@ export class EditorNext {
   private proxyRoot: THREE.Group | null = null;
   private handleRoot: THREE.Group | null = null;
   private roadHandleRoot: THREE.Group | null = null;
+  private roadSelectionRoot: THREE.Group | null = null;
   private roadPointDrag: { id: string; index: number; mesh: THREE.Mesh } | null = null;
   private faceDrag: {
     id: string;
@@ -482,6 +482,9 @@ export class EditorNext {
     this.roadHandleRoot = new THREE.Group();
     this.roadHandleRoot.name = "editor-road-handles";
     scene3.add(this.roadHandleRoot);
+    this.roadSelectionRoot = new THREE.Group();
+    this.roadSelectionRoot.name = "editor-road-selection";
+    scene3.add(this.roadSelectionRoot);
 
     const gizmo = new TransformControls(camera, this.canvas);
     gizmo.setSize(1.05);
@@ -546,6 +549,7 @@ export class EditorNext {
         const atmosphere = this.scene?.getEditorScene().getObjectByName("atmosphere");
         return atmosphere ? atmosphere.uuid : null;
       };
+      (window as unknown as Record<string, unknown>).__mlnxRoadMarker = () => this.roadSelectionRoot?.children.length ?? 0;
     }
   }
 
@@ -577,6 +581,7 @@ export class EditorNext {
     this.proxyRoot = null;
     this.handleRoot = null;
     this.roadHandleRoot = null;
+    this.roadSelectionRoot = null;
     this.roadPointDrag = null;
     this.faceDrag = null;
     this.proxies.length = 0;
@@ -1057,8 +1062,8 @@ export class EditorNext {
       '<button class="mlnx-btn" id="mlnx-road-finish">完成</button>' +
       '<button class="mlnx-btn" id="mlnx-road-cancel">取消</button>' +
       "</div>" +
-      '<div class="mlnx-group-label">当前宽度</div>' +
-      '<div class="mlnx-sub">' + this.doc.visual.roads.width.toFixed(1) + " 米 · 在右侧地图设置调整</div>";
+      '<div class="mlnx-group-label">当前默认宽度</div>' +
+      '<div class="mlnx-sub">' + this.doc.visual.roads.width.toFixed(1) + " 米 · 选中道路后在检查器里调整</div>";
     this.leftContent.appendChild(host);
     host.querySelector("#mlnx-road-finish")?.addEventListener("click", () => this.finishRoad());
     host.querySelector("#mlnx-road-cancel")?.addEventListener("click", () => this.cancelRoad());
@@ -1337,39 +1342,6 @@ export class EditorNext {
       removeMaterial.addEventListener("click", () => void this.removeGroundMaterial(currentMaterial));
       this.inspectorEl.appendChild(removeMaterial);
     }
-    this.addSection("道路");
-    this.addSelect(
-      "风格",
-      this.doc.visual.roads.style,
-      [
-        { t: "石板", v: "cobble" },
-        { t: "土路", v: "dirt" },
-      ],
-      (value) => this.commit(updateRoadVisual(this.doc, { style: value as never }), "已修改道路风格", { roads: true }),
-    );
-    this.addNumber(
-      "宽度",
-      this.doc.visual.roads.width,
-      (value) => this.commit(updateRoadVisual(this.doc, { width: Math.max(0.6, Math.min(6, value)) }), "已修改道路宽度", { roads: true }),
-      { min: 0.6, max: 6, step: 0.1 },
-    );
-    this.addSection("规则");
-    this.addSelect(
-      "通行",
-      this.doc.transit,
-      [
-        { t: "友方通行", v: "friendly" },
-        { t: "开放通行", v: "open" },
-      ],
-      (value) => this.commit(updateDocument(this.doc, { transit: value as "open" | "friendly" }), "已修改通行规则"),
-    );
-    const scatter = new BooleanInput({ value: this.doc.visual.scatter });
-    scatter.on("change", () => {
-      this.commit(updateScatter(this.doc, scatter.value), scatter.value ? "已开启自动补景" : "已关闭自动补景", { rebuild: true });
-    });
-    const scatterGroup = new LabelGroup({ text: "自动补景", field: scatter });
-    this.inspectorEl.appendChild(scatterGroup.dom);
-    this.addTop(scatterGroup);
     this.addSection("单位外观");
     const unitAssets = assetRegistry.list("unit");
     const unitOptions: Array<{ t: string; v: string }> = [{ t: "默认程序化单位", v: "__none__" }];
@@ -1703,6 +1675,25 @@ export class EditorNext {
         }
       });
     }
+    this.addSection("通行");
+    this.addSelect(
+      "未占领时",
+      site.transit ?? (this.doc.transit === "open" ? "open" : "closed"),
+      [
+        { t: "开放通行", v: "open" },
+        { t: "禁止通行", v: "closed" },
+      ],
+      (value) =>
+        this.commit(
+          updateSite(this.doc, id, { transit: value as "open" | "closed" }),
+          "已修改通行规则",
+          { sites: true },
+        ),
+    );
+    const transitNote = document.createElement("p");
+    transitNote.className = "mlnx-note";
+    transitNote.textContent = "该规则只在建筑中立时生效；被任意一方占领后自动变为友方通行。";
+    this.inspectorEl.appendChild(transitNote);
     const deleteButton = document.createElement("button");
     deleteButton.className = "mlnx-delete";
     deleteButton.textContent = "删除这个据点";
@@ -1724,10 +1715,25 @@ export class EditorNext {
     const ends = road.from && road.to ? road.from + " ↔ " + road.to : road.from ? road.from + " → 自由端点" : road.to ? "自由端点 → " + road.to : "自由道路";
     this.addHeading("道路 " + road.id, ends + " · " + points.length + " 个控制点");
     this.addSection("道路");
+    this.addSelect(
+      "全图风格",
+      this.doc.visual.roads.style,
+      [
+        { t: "石板", v: "cobble" },
+        { t: "土路", v: "dirt" },
+      ],
+      (value) => this.commit(updateRoadVisual(this.doc, { style: value as never }), "已修改道路风格", { roads: true }),
+    );
     this.addNumber(
-      "宽度",
+      "本路宽度",
       (road.widthDm ?? this.doc.visual.roads.width * 10) / 10,
       (value) => this.commit(updateRoad(this.doc, id, { widthDm: Math.round(Math.max(0.6, Math.min(6, value)) * 10) }), "已修改道路宽度", { roads: true }),
+      { min: 0.6, max: 6, step: 0.1 },
+    );
+    this.addNumber(
+      "其他路默认宽度",
+      this.doc.visual.roads.width,
+      (value) => this.commit(updateRoadVisual(this.doc, { width: Math.max(0.6, Math.min(6, value)) }), "已修改默认道路宽度", { roads: true }),
       { min: 0.6, max: 6, step: 0.1 },
     );
     this.addButton("反向", () => {
@@ -1757,7 +1763,7 @@ export class EditorNext {
     this.inspectorEl.appendChild(deleteButton);
     const note = document.createElement("p");
     note.className = "mlnx-note";
-    note.textContent = "选中后拖动控制点改线；检查器可末尾加点/删除末点；双击道路加点，Alt+点击控制点删除。";
+    note.textContent = "选中后拖动控制点改线；这里可以改本路宽度、全图风格和其他路默认宽度；末尾加点/删除末点也在检查器里。";
     this.inspectorEl.appendChild(note);
   }
 
@@ -1814,6 +1820,7 @@ export class EditorNext {
     }
     this.syncFoundationHandles();
     this.syncRoadHandles();
+    this.syncRoadSelection();
     this.canvas.style.cursor = tool === "place" || tool === "road" || tool === "terrain" ? "crosshair" : "default";
     if (this.selection?.kind === "foundation" && (tool === "rotate" || tool === "scale")) {
       this.notice("地基的尺寸和朝向用右侧检查器修改");
@@ -1830,6 +1837,7 @@ export class EditorNext {
     this.attachGizmo();
     this.syncFoundationHandles();
     this.syncRoadHandles();
+    this.syncRoadSelection();
     this.syncTreeSelection();
     this.renderInspector();
     this.updateStatus();
@@ -1962,6 +1970,7 @@ export class EditorNext {
     this.attachGizmo();
     this.syncFoundationHandles();
     this.syncRoadHandles();
+    this.syncRoadSelection();
   }
 
   private syncProxyHighlight(): void {
@@ -2054,6 +2063,61 @@ export class EditorNext {
       sphere.renderOrder = 20;
       sphere.userData = { roadId: road.id, index };
       root.add(sphere);
+    }
+  }
+
+  private syncRoadSelection(): void {
+    const root = this.roadSelectionRoot;
+    if (!root) return;
+    for (const child of [...root.children]) {
+      root.remove(child);
+      child.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+        else material?.dispose();
+      });
+    }
+    if (this.selection?.kind !== "road") return;
+    if (this.tool === "road" || this.tool === "terrain" || this.tool === "place") return;
+    const road = this.doc.roads.find((entry) => entry.id === this.selection?.id);
+    if (!road) return;
+    let path: Array<[number, number]> | null = road.path && road.path.length >= 2
+      ? road.path.map((point) => [point[0], point[1]] as [number, number])
+      : null;
+    if (!path && road.from && road.to) {
+      const from = this.doc.sites.find((entry) => entry.id === road.from);
+      const to = this.doc.sites.find((entry) => entry.id === road.to);
+      if (from && to) path = [[from.pos[0], from.pos[1]], [to.pos[0], to.pos[1]]];
+    }
+    if (!path || path.length < 2 || !this.scene) return;
+    const points = path.map((point) => new THREE.Vector3(
+      point[0] / 10,
+      this.scene?.groundHeight(point[0], point[1]) ?? 0,
+      point[1] / 10,
+    ));
+    for (const point of points) point.y += 0.28;
+    const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.1);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffd36b,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const tube = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, Math.max(24, points.length * 16), 0.32, 8, false),
+      material,
+    );
+    tube.renderOrder = 25;
+    root.add(tube);
+    for (const point of points) {
+      const marker = new THREE.Mesh(new THREE.SphereGeometry(0.52, 10, 8), material);
+      marker.position.copy(point);
+      marker.position.y += 0.18;
+      marker.renderOrder = 26;
+      root.add(marker);
     }
   }
 

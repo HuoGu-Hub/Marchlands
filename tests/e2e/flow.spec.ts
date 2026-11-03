@@ -263,6 +263,27 @@ test("next editor drags a foundation face handle", async ({ page }) => {
   await expect(page.locator("#mlnx-toast")).toContainText("已扩展地基");
 });
 
+test("next editor marks selected roads and keeps settings scoped", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "r1 ·" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __mlnxRoadMarker: () => number }).__mlnxRoadMarker()),
+    )
+    .toBeGreaterThan(0);
+  await expect(page.locator("#mlnx-inspector")).toContainText("全图风格");
+  await page.locator(".pcui-treeview-item-text", { hasText: "c2 ·" }).click();
+  await expect(page.locator("#mlnx-inspector")).toContainText("未占领时");
+  await page.getByText("← 地图设置", { exact: true }).click();
+  const mapSettings = await page.locator("#mlnx-inspector").innerText();
+  expect(mapSettings).toContain("地貌");
+  expect(mapSettings).not.toContain("全图风格");
+  expect(mapSettings).not.toContain("未占领时");
+});
+
 test("next editor pans the view with a left drag", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });

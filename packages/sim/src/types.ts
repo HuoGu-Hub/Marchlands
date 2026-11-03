@@ -31,6 +31,8 @@ export interface MapCity {
   stance?: Stance;
   /** 仅临时驻兵点使用；它监视的公路边，用于迎战拦截。 */
   watch?: [CityId, CityId];
+  /** 未占领时的通行规则；被占领后固定为友方通行。 */
+  transit?: "open" | "closed";
   /** 网格模式下城镇占地直径，厘米。 */
   footprintCm?: number;
   /** 网格模式下占领判定半径，厘米。 */
@@ -160,6 +162,8 @@ export interface CityState {
   stance: Stance;
   decayAtTick: number;
   watch: [CityId, CityId] | null;
+  /** 中立时的通行规则；被占领后由 blockedTransit 强制友方通行。 */
+  transit?: "open" | "closed";
   /** 网格模式下的占领半径，厘米。 */
   captureRadiusCm?: number;
   /** 网格模式下的占地直径，厘米。 */

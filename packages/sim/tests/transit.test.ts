@@ -28,4 +28,25 @@ describe("friendly transit", () => {
     expect(result.rejected).toEqual([]);
     expect(result.state.squads[0]?.path).toEqual(["a", "b", "c"]);
   });
+
+  it("uses a neutral building's own open rule", () => {
+    const map = mapWith({
+      cities: THREE_CITY_MAP.cities.map((city) => (city.id === "b" ? { ...city, transit: "open" } : city)),
+    });
+    const state = createGame(map, 1);
+    const result = step(state, [{ type: "send", from: "a", to: "c" }]);
+    expect(result.rejected).toEqual([]);
+    expect(result.state.squads[0]?.path).toEqual(["a", "b", "c"]);
+  });
+
+  it("forces friendly transit once a building is captured", () => {
+    const map = mapWith({
+      cities: THREE_CITY_MAP.cities.map((city) =>
+        city.id === "b" ? { ...city, owner: 2, transit: "open" } : city,
+      ),
+    });
+    const state = createGame(map, 1);
+    const result = step(state, [{ type: "send", from: "a", to: "c" }]);
+    expect(result.rejected[0]?.reason).toBe("no_route");
+  });
 });

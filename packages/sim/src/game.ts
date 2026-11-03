@@ -204,6 +204,7 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
         stance,
         decayAtTick,
         watch,
+        ...(city.transit ? { transit: city.transit } : {}),
         ...(city.captureRadiusCm !== undefined ? { captureRadiusCm: city.captureRadiusCm } : {}),
         ...(city.footprintCm !== undefined ? { footprintCm: city.footprintCm } : {}),
       };

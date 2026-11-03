@@ -639,7 +639,7 @@ export function buildTerrain(
       ground,
       platform.depth,
       platform.shape ?? "plateau",
-      platform.scatter !== false,
+      false,
     );
     built.group.name = `island-${platform.id}`;
     islandGroup.add(built.group);
