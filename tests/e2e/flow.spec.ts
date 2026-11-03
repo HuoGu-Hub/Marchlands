@@ -26,7 +26,13 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   await expect(page.locator("#city-panel")).toHaveClass(/on/);
 
   await page.waitForTimeout(400);
-  await page.mouse.click(514, 308);
+  const target = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c4") : null;
+  });
+  if (!target) throw new Error("c4 has no screen position");
+  await page.mouse.click(target.x, target.y);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 20_000 });
   await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
 });

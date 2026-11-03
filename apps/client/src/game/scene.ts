@@ -243,6 +243,11 @@ export class BattleScene {
     this.resize();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas.parentElement ?? canvas);
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__mlDebug = {
+        projectCity: (id: string) => this.projectCity(id as CityId),
+      };
+    }
   }
 
   setSelected(cityId: CityId | null): void {
