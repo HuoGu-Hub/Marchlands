@@ -33,7 +33,6 @@ import {
   updateProp,
   updateRoad,
   updateRoadVisual,
-  updateScatter,
   updateSite,
   updateTerrain,
   watchCandidates,
@@ -2252,7 +2251,6 @@ export class EditorController {
         <button class="ml-ed-btn" data-action="add-island">添加浮空岛</button>
       </div>
       <p class="ml-ed-note">地基是地图的实体：向外扩展会扩大地图，抬高地基会得到浮空岛。选中地基后可移动、改尺寸和高度。</p>
-      <label class="ml-ed-check"><input data-field="scatter" type="checkbox" ${this.doc.visual.scatter ? "checked" : ""}><span>自动补树、石头与草丛</span></label>
       <div class="ml-ed-section-label">网格笔刷</div>
       <div class="ml-ed-kind">${this.doc.navigation === "grid" && this.doc.grid ? `${this.doc.grid.width} × ${this.doc.grid.height} 格 · ${this.doc.grid.cellSizeDm / 10} 米` : "据点图模式，未启用网格"}</div>
       <div class="ml-ed-row">
@@ -2475,10 +2473,6 @@ export class EditorController {
     }
     if (field === "roadWidth") {
       this.commit(updateRoadVisual(this.doc, { width: Number(value) || 1.6 }), "已修改道路宽度", { roadOnly: true });
-      return;
-    }
-    if (field === "scatter") {
-      this.commit(updateScatter(this.doc, value === "true"), value === "true" ? "已开启自动补景" : "已关闭自动补景");
       return;
     }
     if (field === "brushRadius") {

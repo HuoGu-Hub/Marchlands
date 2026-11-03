@@ -498,6 +498,88 @@ test("next editor retextures a procedural foundation without changing its shape"
   expect(material).toBe("snow014");
 });
 
+test("next editor fills a foundation with selectable props", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
+  const before = await page.evaluate(
+    () =>
+      (window as unknown as { __mlnxDoc: () => { visual: { props: unknown[] } } }).__mlnxDoc().visual.props.length,
+  );
+  await page.getByRole("button", { name: /补景/ }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { visual: { props: unknown[] } } }).__mlnxDoc().visual.props.length,
+      ),
+    )
+    .toBeGreaterThan(before);
+  const added = await page.evaluate(() => {
+    const hooks = window as unknown as {
+      __mlnxDoc: () => { visual: { props: Array<{ id: string; pos: [number, number] }> } };
+      __mlnxProject: (x: number, y: number, z: number) => { x: number; y: number };
+    };
+    const props = hooks.__mlnxDoc().visual.props;
+    const prop = props[props.length - 1];
+    return { id: prop.id, count: props.length, ...hooks.__mlnxProject(prop.pos[0] / 10, 1.5, prop.pos[1] / 10) };
+  });
+  expect(added.count - before).toBeLessThanOrEqual(6);
+  await page.mouse.click(added.x, added.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __mlnxSelection: () => { kind: string; id: string } | null }).__mlnxSelection()),
+    )
+    .toEqual({ kind: "prop", id: added.id });
+});
+
+test("next editor moves a foundation together with its contents", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
+  const before = await page.evaluate(() => {
+    const doc = (
+      window as unknown as {
+        __mlnxDoc: () => {
+          visual: { foundations: Array<{ pos: [number, number] }>; props: Array<{ pos: [number, number] }> };
+          sites: Array<{ pos: [number, number] }>;
+        };
+      }
+    ).__mlnxDoc();
+    return {
+      foundation: doc.visual.foundations[0].pos[0],
+      site: doc.sites[0].pos[0],
+      prop: doc.visual.props[0].pos[0],
+    };
+  });
+  const xInput = page.locator("#mlnx-inspector .pcui-numeric-input input").nth(0);
+  await xInput.fill(String(before.foundation / 10 + 5));
+  await xInput.dispatchEvent("change");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const doc = (
+          window as unknown as {
+            __mlnxDoc: () => {
+              visual: { foundations: Array<{ pos: [number, number] }>; props: Array<{ pos: [number, number] }> };
+              sites: Array<{ pos: [number, number] }>;
+            };
+          }
+        ).__mlnxDoc();
+        return {
+          foundation: doc.visual.foundations[0].pos[0],
+          site: doc.sites[0].pos[0],
+          prop: doc.visual.props[0].pos[0],
+        };
+      }),
+    )
+    .toEqual({ foundation: before.foundation + 50, site: before.site + 50, prop: before.prop + 50 });
+});
+
 test("next editor switches foundation material and keeps atmosphere on foundation add", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });

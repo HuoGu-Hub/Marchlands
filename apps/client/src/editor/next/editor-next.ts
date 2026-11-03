@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import {
-  BooleanInput,
   Button,
   LabelGroup,
   NumericInput,
@@ -275,6 +274,7 @@ export class EditorNext {
   private roadDraw: { points: [number, number][]; from?: CityId; to?: CityId; line: THREE.Line } | null = null;
   private terrainBrush: GridBrushMode = "raise";
   private brushRadius = 2;
+  private scatterCount = 6;
   private brushStrength = 20;
   private surfaceBrush = 0;
   private gridStroke: {
@@ -1023,6 +1023,56 @@ export class EditorNext {
     }
   }
 
+  private scatterFoundation(id: string): void {
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === id);
+    if (!foundation) return;
+    const all = assetRegistry.list("prop");
+    const trees = all.filter((asset) => asset.tags.includes("树木"));
+    const plants = all.filter((asset) => asset.tags.includes("草木"));
+    const rocks = all.filter((asset) => asset.tags.includes("岩石"));
+    const pickAsset = () => {
+      const roll = Math.random();
+      const pool = roll < 0.58 ? trees : roll < 0.78 ? plants : rocks;
+      const fallback = pool.length > 0 ? pool : all;
+      return fallback[Math.floor(Math.random() * fallback.length)] ?? null;
+    };
+    const rect = foundationRect(foundation);
+    let next = this.doc;
+    let added = 0;
+    for (let index = 0; index < this.scatterCount; index += 1) {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const x = rect.minX + 15 + Math.random() * Math.max(1, rect.maxX - rect.minX - 30);
+        const z = rect.minZ + 15 + Math.random() * Math.max(1, rect.maxZ - rect.minZ - 30);
+        if (!foundationContains(foundation, x, z)) continue;
+        if (this.roadAtGround(x, z, 4)) continue;
+        if (next.sites.some((site) => Math.hypot(site.pos[0] - x, site.pos[1] - z) < 50)) continue;
+        const blocked = next.visual.props.some((prop) => {
+          const info = assetRegistry.info(prop.assetId);
+          const radius = Math.max(12, (info?.footprint ?? 1.5) * prop.scale * 5);
+          return Math.hypot(prop.pos[0] - x, prop.pos[1] - z) < radius + 14;
+        });
+        if (blocked) continue;
+        const asset = pickAsset();
+        if (!asset) break;
+        const result = addProp(
+          next,
+          asset.id,
+          [Math.round(x), Math.round(z)],
+          Math.round(Math.random() * 360),
+          0.88 + Math.random() * 0.24,
+        );
+        next = result.document;
+        added += 1;
+        break;
+      }
+    }
+    if (added === 0) {
+      this.notice("这块地基没有足够的空闲位置补景");
+      return;
+    }
+    this.commit(next, "已补景 " + added + " 个装饰", { props: true });
+  }
+
   private async importFoundationMaterial(foundationId: string, directory: boolean): Promise<void> {
     const files = await openTextureFiles(directory);
     if (files.length === 0) return;
@@ -1342,7 +1392,12 @@ export class EditorNext {
     this.addNumber(
       "X",
       foundation.pos[0] / 10,
-      (value) => this.commit(updateFoundation(this.doc, id, { pos: [Math.round(value * 10), foundation.pos[1]] }), "已移动地基", { terrain: true, sites: true }),
+      (value) =>
+        this.commit(
+          this.moveFoundationContents(id, [Math.round(value * 10), foundation.pos[1]]),
+          "已移动地基",
+          { terrain: true, sites: true, roads: true, props: true },
+        ),
       { step: 0.5 },
     );
     this.addNumber(
@@ -1354,7 +1409,12 @@ export class EditorNext {
     this.addNumber(
       "Z",
       foundation.pos[1] / 10,
-      (value) => this.commit(updateFoundation(this.doc, id, { pos: [foundation.pos[0], Math.round(value * 10)] }), "已移动地基", { terrain: true, sites: true }),
+      (value) =>
+        this.commit(
+          this.moveFoundationContents(id, [foundation.pos[0], Math.round(value * 10)]),
+          "已移动地基",
+          { terrain: true, sites: true, roads: true, props: true },
+        ),
       { step: 0.5 },
     );
     this.addSection("尺寸");
@@ -1518,21 +1578,20 @@ export class EditorNext {
       shellOptions,
       (value) => this.commit(updateFoundation(this.doc, id, { assetId: value === "__none__" ? null : String(value) }), value === "__none__" ? "已恢复程序化浮岛" : "已设置外壳", { terrain: true, sites: true }),
     );
-    const scatter = new BooleanInput({ value: foundation.scatter !== false });
-    scatter.on("change", () => {
-      this.commit(
-        updateFoundation(this.doc, id, { scatter: scatter.value }),
-        scatter.value ? "已开启自动补景" : "已关闭自动补景",
-        { terrain: true, sites: true },
-      );
-      this.scene?.refreshScenery();
-    });
-    const scatterGroup = new LabelGroup({ text: "自动补景", field: scatter });
-    this.inspectorEl.appendChild(scatterGroup.dom);
-    this.addTop(scatterGroup);
+    this.addSection("补景");
+    this.addNumber(
+      "每次数量",
+      this.scatterCount,
+      (value) => {
+        this.scatterCount = Math.max(1, Math.min(30, Math.round(value)));
+        this.scheduleInspectorRender();
+      },
+      { min: 1, max: 30, step: 1, precision: 0 },
+    );
+    this.addButton("补景（" + this.scatterCount + " 个）", () => this.scatterFoundation(id));
     const scatterNote = document.createElement("p");
     scatterNote.className = "mlnx-note";
-    scatterNote.textContent = "新建地基默认不带树石；开启后该地基会生成程序化树木、岩石和草丛。";
+    scatterNote.textContent = "每次点击都会在这块地基的空闲位置放置真实装饰，可选中、移动和删除；点一次补一批，不会固定生成。";
     this.inspectorEl.appendChild(scatterNote);
     if (foundation.assetId) {
       this.addNumber(
@@ -1854,6 +1913,43 @@ export class EditorNext {
     return found ?? null;
   }
 
+  private moveFoundationContents(
+    id: string,
+    nextPos: [number, number],
+  ): MapDocument {
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === id);
+    if (!foundation) return this.doc;
+    const dx = Math.round(nextPos[0]) - foundation.pos[0];
+    const dz = Math.round(nextPos[1]) - foundation.pos[1];
+    const next = cloneDocument(this.doc);
+    if (dx !== 0 || dz !== 0) {
+      const contains = (x: number, z: number): boolean => foundationContains(foundation, x, z);
+      next.sites = next.sites.map((site) =>
+        contains(site.pos[0], site.pos[1])
+          ? { ...site, pos: [site.pos[0] + dx, site.pos[1] + dz] as [number, number] }
+          : site,
+      );
+      next.visual.props = next.visual.props.map((prop) =>
+        contains(prop.pos[0], prop.pos[1])
+          ? { ...prop, pos: [prop.pos[0] + dx, prop.pos[1] + dz] as [number, number] }
+          : prop,
+      );
+      next.roads = next.roads.map((road) =>
+        road.path
+          ? {
+              ...road,
+              path: road.path.map((point) =>
+                contains(point[0], point[1])
+                  ? ([point[0] + dx, point[1] + dz] as [number, number])
+                  : point,
+              ),
+            }
+          : road,
+      );
+    }
+    return updateFoundation(next, id, { pos: [Math.round(nextPos[0]), Math.round(nextPos[1])] });
+  }
+
   private attachGizmo(): void {
     const gizmo = this.gizmo;
     if (!gizmo) return;
@@ -1886,7 +1982,13 @@ export class EditorNext {
       const thickness = foundationDepth(foundation);
       const pos: [number, number] = [snapDm(proxy.position.x * 10), snapDm(proxy.position.z * 10)];
       const elevation = Math.round((proxy.position.y + thickness / 2) * 10) / 10;
-      this.commit(updateFoundation(this.doc, selection.id, { pos, elevation }), "已移动地基", { terrain: true, sites: true });
+      const moved = this.moveFoundationContents(selection.id, pos);
+      this.commit(updateFoundation(moved, selection.id, { elevation }), "已移动地基", {
+        terrain: true,
+        sites: true,
+        roads: true,
+        props: true,
+      });
       return;
     }
     if (selection.kind === "site") {
@@ -2099,13 +2201,19 @@ export class EditorNext {
       if (from && to) path = [[from.pos[0], from.pos[1]], [to.pos[0], to.pos[1]]];
     }
     if (!path || path.length < 2 || !this.scene) return;
+    path = this.trimRoadPath(path, road.from ? 19.5 : 0, road.to ? 19.5 : 0);
+    if (path.length < 2) return;
     const points = path.map((point) => new THREE.Vector3(
       point[0] / 10,
       this.scene?.groundHeight(point[0], point[1]) ?? 0,
       point[1] / 10,
     ));
     for (const point of points) point.y += 0.28;
-    const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.1);
+    // 用折线而不是 CatmullRom，保证标记、道路模型和模拟寻路是同一条线。
+    const curve = new THREE.CurvePath<THREE.Vector3>();
+    for (let index = 1; index < points.length; index += 1) {
+      curve.add(new THREE.LineCurve3(points[index - 1], points[index]));
+    }
     const material = new THREE.MeshBasicMaterial({
       color: 0xffd36b,
       transparent: true,
@@ -2114,7 +2222,7 @@ export class EditorNext {
       depthWrite: false,
     });
     const tube = new THREE.Mesh(
-      new THREE.TubeGeometry(curve, Math.max(24, points.length * 16), 0.32, 8, false),
+      new THREE.TubeGeometry(curve, Math.max(24, points.length * 12), 0.32, 8, false),
       material,
     );
     tube.renderOrder = 25;
@@ -2126,6 +2234,47 @@ export class EditorNext {
       marker.renderOrder = 26;
       root.add(marker);
     }
+  }
+
+  private trimRoadPath(
+    path: Array<[number, number]>,
+    startDm: number,
+    endDm: number,
+  ): Array<[number, number]> {
+    if (path.length < 2) return path;
+    const lengths: number[] = [0];
+    let total = 0;
+    for (let index = 1; index < path.length; index += 1) {
+      total += Math.hypot(path[index][0] - path[index - 1][0], path[index][1] - path[index - 1][1]);
+      lengths.push(total);
+    }
+    if (total <= startDm + endDm) return [];
+    const start = Math.max(0, startDm);
+    const end = total - Math.max(0, endDm);
+    const result: Array<[number, number]> = [];
+    for (let index = 1; index < path.length; index += 1) {
+      const segmentStart = lengths[index - 1];
+      const segmentEnd = lengths[index];
+      const from = Math.max(segmentStart, start);
+      const to = Math.min(segmentEnd, end);
+      if (to <= from) continue;
+      const segmentLength = segmentEnd - segmentStart;
+      if (segmentLength <= 0.0001) continue;
+      const first = (from - segmentStart) / segmentLength;
+      const last = (to - segmentStart) / segmentLength;
+      const a: [number, number] = [
+        path[index - 1][0] + (path[index][0] - path[index - 1][0]) * first,
+        path[index - 1][1] + (path[index][1] - path[index - 1][1]) * first,
+      ];
+      const b: [number, number] = [
+        path[index - 1][0] + (path[index][0] - path[index - 1][0]) * last,
+        path[index - 1][1] + (path[index][1] - path[index - 1][1]) * last,
+      ];
+      const previous = result[result.length - 1];
+      if (!previous || Math.hypot(previous[0] - a[0], previous[1] - a[1]) > 0.01) result.push(a);
+      result.push(b);
+    }
+    return result;
   }
 
   private pickRoadHandle(clientX: number, clientY: number): { id: string; index: number } | null {

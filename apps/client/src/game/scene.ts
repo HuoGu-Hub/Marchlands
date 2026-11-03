@@ -1186,7 +1186,13 @@ export class BattleScene {
         controls[controls.length - 1].x,
         controls[controls.length - 1].z,
       );
-      this.addRoadPath(controls, road.widthDm / 10, roadMaterial);
+      this.addRoadPath(
+        controls,
+        road.widthDm / 10,
+        roadMaterial,
+        road.from ? cityRadius() : 0,
+        road.to ? cityRadius() : 0,
+      );
       if (road.from && road.to) {
         covered.add(road.from < road.to ? `${road.from}|${road.to}` : `${road.to}|${road.from}`);
       }
@@ -1207,7 +1213,7 @@ export class BattleScene {
           controls[controls.length - 1].x,
           controls[controls.length - 1].z,
         );
-        this.addRoadPath(controls, edgeWidth, roadMaterial);
+        this.addRoadPath(controls, edgeWidth, roadMaterial, cityRadius(), cityRadius());
         continue;
       }
       const direction = new THREE.Vector3(to.x - from.x, 0, to.z - from.z).normalize();
@@ -1253,30 +1259,59 @@ export class BattleScene {
     return this.terrain.heightAt(x, z);
   }
 
-  private addRoad(start: THREE.Vector3, end: THREE.Vector3, length: number, width: number, material: THREE.Material): void {
-    const dx = end.x - start.x;
-    const dz = end.z - start.z;
-    const direction = new THREE.Vector3(dx, 0, dz).normalize();
-    const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x);
-    const bend = Math.sin(start.x * 0.73 + start.z * 0.41 + end.x * 0.29 + end.z * 0.17) * Math.min(2.8, length * 0.2);
-    const curve = new THREE.CatmullRomCurve3([
-      start.clone(),
-      start.clone().addScaledVector(direction, length / 3).addScaledVector(perpendicular, bend),
-      start.clone().addScaledVector(direction, (length * 2) / 3).addScaledVector(perpendicular, bend),
-      end.clone(),
-    ], false, "catmullrom", 0.18);
-    const points = curve.getSpacedPoints(72);
-    for (const point of points) point.y = this.roadGroundAt(point.x, point.z);
-    this.addRoadRibbon(points, width, material);
+  /** 按折线采样，和模拟里的道路折线保持完全一致。 */
+  private samplePolyline(
+    points: THREE.Vector3[],
+    trimStart = 0,
+    trimEnd = 0,
+    step = 0.35,
+  ): THREE.Vector3[] {
+    if (points.length < 2) return [];
+    const lengths = new Map<number, number>();
+    let total = 0;
+    for (let index = 1; index < points.length; index += 1) {
+      total += points[index].distanceTo(points[index - 1]);
+      lengths.set(index, total);
+    }
+    if (total <= trimStart + trimEnd) return [];
+    const startDistance = Math.max(0, trimStart);
+    const endDistance = total - Math.max(0, trimEnd);
+    const result: THREE.Vector3[] = [];
+    for (let index = 1; index < points.length; index += 1) {
+      const segmentStart = lengths.get(index - 1) ?? 0;
+      const segmentEnd = lengths.get(index) ?? total;
+      const from = Math.max(segmentStart, startDistance);
+      const to = Math.min(segmentEnd, endDistance);
+      if (to <= from) continue;
+      const segmentLength = segmentEnd - segmentStart;
+      if (segmentLength <= 0.0001) continue;
+      const count = Math.max(1, Math.ceil((to - from) / step));
+      for (let stepIndex = 0; stepIndex <= count; stepIndex += 1) {
+        const distance = from + ((to - from) * stepIndex) / count;
+        const t = (distance - segmentStart) / segmentLength;
+        const point = points[index - 1].clone().lerp(points[index], t);
+        const previous = result[result.length - 1];
+        if (!previous || previous.distanceToSquared(point) > 0.000001) result.push(point);
+      }
+    }
+    return result;
   }
 
-  private addRoadPath(points: THREE.Vector3[], width: number, material: THREE.Material): void {
-    const first = points[0];
-    const last = points[points.length - 1];
-    const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.18);
-    const samples = curve
-      .getSpacedPoints(Math.max(64, points.length * 26))
-      .filter((point) => point.distanceTo(first) > 1.95 && point.distanceTo(last) > 1.95);
+  private addRoad(start: THREE.Vector3, end: THREE.Vector3, _length: number, width: number, material: THREE.Material): void {
+    const samples = this.samplePolyline([start, end]);
+    if (samples.length < 2) return;
+    for (const point of samples) point.y = this.roadGroundAt(point.x, point.z);
+    this.addRoadRibbon(samples, width, material);
+  }
+
+  private addRoadPath(
+    points: THREE.Vector3[],
+    width: number,
+    material: THREE.Material,
+    trimStart = 0,
+    trimEnd = 0,
+  ): void {
+    const samples = this.samplePolyline(points, trimStart, trimEnd);
     if (samples.length < 2) return;
     for (const point of samples) point.y = this.roadGroundAt(point.x, point.z);
     this.addBridgeDetails(samples, width);
@@ -1466,6 +1501,8 @@ export class BattleScene {
   private buildScenery(): void {
     this.clearGroup(this.sceneryGroup);
     this.sceneryInstances.length = 0;
+    // 自动补景已迁移为编辑器里的显式 props，保证每一株都能选中、移动和删除。
+    return;
     if (this.visual?.scatter === false) return;
     this.propPoints = (this.visual?.props ?? []).map((prop) => {
       const info = assetRegistry.info(prop.assetId);
@@ -1542,6 +1579,7 @@ export class BattleScene {
   }
 
   private updateSceneryHeights(): void {
+    return;
     if (this.visual?.scatter === false) return;
     if (this.sceneryInstances.length === 0) {
       this.buildScenery();
