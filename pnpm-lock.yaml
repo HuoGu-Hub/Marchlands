@@ -38,6 +38,9 @@ importers:
       '@marchlands/sim':
         specifier: workspace:*
         version: link:../../packages/sim
+      '@playcanvas/pcui':
+        specifier: ^6.1.5
+        version: 6.1.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       three:
         specifier: ^0.171.0
         version: 0.171.0
@@ -678,6 +681,17 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@playcanvas/observer@1.7.1':
+    resolution: {integrity: sha512-oKwFmQaajiYMCfWMFr+oDvNhxwcxwqaJt3W7CUT/PyMZNKILiD7zSggtZKq0Fti6b6glmv/ZpbiWfUCUQPcXXQ==}
+    engines: {node: '>=18.0.0'}
+
+  '@playcanvas/pcui@6.1.5':
+    resolution: {integrity: sha512-b8YQwC3xXV6ELccTfUwIwse3wWEtQSZOoIMdULc+WsPqw6YWGKrjiVYxsFQzAvQWd/3/MSMMFAJCJ2rVEex/Jg==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
 
   '@playwright/test@1.64.1':
     resolution: {integrity: sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==}
@@ -1489,6 +1503,15 @@ packages:
     resolution: {integrity: sha512-WuyALRjWPDGtt/wzJiadO5AXY+8hZ80hVpe6MyivgraREW751X3SbhRvG3eLKOYN+8VEvqLcf3wdnt44Z4S4SA==}
     engines: {node: '>=10'}
 
+  react-dom@19.3.1:
+    resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
+    peerDependencies:
+      react: ^19.3.1
+
+  react@19.3.1:
+    resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
+    engines: {node: '>=0.10.0'}
+
   read-pkg-up@2.0.0:
     resolution: {integrity: sha512-1orxQfbWGUiTn9XsPlChs6rLie/AV9jwZTGmu2NZw/CUDJQchXJFYE0Fq5j7+n558T1JhDWLdhyd1Zj+wLY//w==}
     engines: {node: '>=4'}
@@ -1524,6 +1547,9 @@ packages:
     resolution: {integrity: sha512-sFZk5BeRUQzkjmuClrJI41BowIP4yv/40d5gM9vtjxVLEt+8JG9FGlBps6cliTP2KhFiw22oqNGo0G9pVpPZlw==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
+
+  scheduler@0.28.0:
+    resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
 
   semver-compare@1.0.0:
     resolution: {integrity: sha512-YM3/ITh2MJ5MtzaM429anh+x2jiLVjqILF4m4oyQB18W7Ggea7BfqdH/wGMK7dDiMghv/6WG7znWMwUDzJiXow==}
@@ -2120,6 +2146,14 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
+
+  '@playcanvas/observer@1.7.1': {}
+
+  '@playcanvas/pcui@6.1.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@playcanvas/observer': 1.7.1
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   '@playwright/test@1.64.1':
     dependencies:
@@ -2935,6 +2969,13 @@ snapshots:
 
   quick-lru@5.1.1: {}
 
+  react-dom@19.3.1(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+      scheduler: 0.28.0
+
+  react@19.3.1: {}
+
   read-pkg-up@2.0.0:
     dependencies:
       find-up: 2.1.0
@@ -3007,6 +3048,8 @@ snapshots:
       '@rollup/rollup-win32-x64-gnu': 4.67.2
       '@rollup/rollup-win32-x64-msvc': 4.67.2
       fsevents: 2.3.3
+
+  scheduler@0.28.0: {}
 
   semver-compare@1.0.0:
     optional: true

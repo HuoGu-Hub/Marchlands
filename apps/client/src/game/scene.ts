@@ -222,6 +222,7 @@ export class BattleScene {
   private readonly foundationGroups: THREE.Group[] = [];
   private foundationToken = 0;
   private foundationSignature = "";
+  private editorMode = false;
   private atmosphere: Atmosphere | null = null;
   private sun: THREE.DirectionalLight | null = null;
   /** 开场前选定的兵团皮肤：兵种 → 资产 id。 */
@@ -491,7 +492,45 @@ export class BattleScene {
     this.renderer.dispose();
   }
 
+  /** 编辑器模式：相机交给外部 OrbitControls，游戏镜头更新暂停。 */
+  setEditorMode(enabled: boolean): void {
+    if (this.editorMode === enabled) return;
+    this.editorMode = enabled;
+    this.camera.fov = enabled ? 45 : FIELD_OF_VIEW;
+    this.camera.near = enabled ? 0.1 : 0.6;
+    this.camera.far = enabled ? 4000 : 2400;
+    this.camera.updateProjectionMatrix();
+  }
+
+  getEditorCamera(): THREE.PerspectiveCamera {
+    return this.camera;
+  }
+
+  getEditorScene(): THREE.Scene {
+    return this.scene;
+  }
+
+  getCanvasElement(): HTMLCanvasElement {
+    return this.canvas;
+  }
+
+  /** 编辑器模式下只渲染，不推进模拟。 */
+  renderEditor(): void {
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  /** 编辑器容器尺寸变化。 */
+  resizeEditor(): void {
+    this.resize();
+  }
+
+  /** 分米坐标处的地形高度，米。 */
+  groundHeight(xDm: number, zDm: number): number {
+    return this.terrain.heightAt(xDm / 10, zDm / 10);
+  }
+
   private updateCamera(deltaMs: number): void {
+    if (this.editorMode) return;
     let delta = this.targetYaw - this.yaw;
     while (delta > Math.PI) delta -= Math.PI * 2;
     while (delta < -Math.PI) delta += Math.PI * 2;
@@ -958,6 +997,7 @@ export class BattleScene {
 
   private buildGround(previous?: Terrain, reuseIsland = false): void {
     const terrain = this.visual?.terrain;
+    const previousSignature = previous?.islandSignature;
     this.terrain = buildTerrain(this.map, this.positions, {
       ...terrain,
       visual: this.visual,
@@ -969,7 +1009,9 @@ export class BattleScene {
     }
     this.scene.add(this.terrain.group);
     this.refreshBounds();
-    if (!(previous && reuseIsland)) this.rebuildAtmosphere(terrain?.style);
+    if (!(previous && reuseIsland) || previousSignature !== this.terrain.islandSignature) {
+      this.rebuildAtmosphere(terrain?.style);
+    }
   }
 
   /** 按地基逐块套用外壳模型；没有外壳的地基保留程序化浮岛。 */
@@ -1725,7 +1767,7 @@ export class BattleScene {
     const height = Math.max(1, parent?.clientHeight ?? window.innerHeight);
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
-    this.camera.fov = FIELD_OF_VIEW;
+    this.camera.fov = this.editorMode ? 45 : FIELD_OF_VIEW;
     this.camera.updateProjectionMatrix();
   }
 }

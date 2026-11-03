@@ -221,6 +221,31 @@ test("adds a floating foundation and deletes it", async ({ page }) => {
   await expect(page.locator(".ml-ed-foundation-row")).toHaveCount(2);
 });
 
+test("next editor expands a foundation and creates a floating island", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor-next");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await expect(page.locator("#mlnx-status")).toContainText("地图有效");
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
+  await expect(page.locator("#mlnx-inspector")).toContainText("地基 f1");
+  await page.getByText("东 +10m", { exact: true }).click();
+  await expect(page.locator("#mlnx-left-content")).toContainText("f1 · 80×70");
+  const box = await page.locator("#mlnx-canvas").boundingBox();
+  if (!box) throw new Error("next editor canvas has no box");
+  await page.keyboard.press("b");
+  await page.click('[data-tab="foundation"]');
+  await page.locator("#mlnx-foundation-y").fill("12");
+  await page.locator("#mlnx-foundation-y").dispatchEvent("change");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.4);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("#mlnx-left-content")).toContainText("地基 (2)");
+  await page.click("#mlnx-undo");
+  await expect(page.locator("#mlnx-left-content")).toContainText("地基 (1)");
+});
+
 test("pauses and resumes without losing the match", async ({ page }) => {
   await openGame(page);
   const timer = page.locator("#hud-timer");

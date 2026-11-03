@@ -18,14 +18,15 @@
     "@marchlands/map-authoring": "workspace:*",
     "@marchlands/nav": "workspace:*",
     "@marchlands/sim": "workspace:*",
+    "@playcanvas/pcui": "^6.1.5",
     "three": "^0.171.0"
   },
   "devDependencies": {
-    "@types/three": "^0.171.0",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.7",
     "@electron/packager": "^18.3.6",
-    "electron": "^33.2.1"
+    "@types/three": "^0.171.0",
+    "electron": "^33.2.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
   },
   "main": "electron/main.cjs"
 }

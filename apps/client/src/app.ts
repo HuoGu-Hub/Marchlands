@@ -12,6 +12,7 @@ import { defenseMilliFor } from "@marchlands/sim";
 import type { MapDef, SimState } from "@marchlands/sim";
 import { audio } from "./audio";
 import { EditorController } from "./editor/editor";
+import { EditorNext } from "./editor/next/editor-next";
 import { openMapText } from "./editor/map-io";
 import { assetRegistry } from "./game/asset-registry";
 import { art } from "./game/assets";
@@ -44,6 +45,7 @@ const TEMPLATE = `
     <div class="menu-actions">
       <button class="btn primary" id="btn-start">开始游戏</button>
       <button class="btn" id="btn-editor">地图编辑器</button>
+      <button class="btn ghost" id="btn-editor-next">新版编辑器 · 试验</button>
       <button class="btn" id="btn-settings">设置</button>
       <button class="btn ghost" id="btn-exit">退出</button>
       <div class="menu-foot" id="menu-version">M1 灰盒 · v0.1.0</div>
@@ -326,7 +328,8 @@ export class App {
   private currentMapId: string;
   private settings: Settings = loadSettings();
   private session: GameSession | null = null;
-  private editor: EditorController | null = null;
+  private editor: EditorController | EditorNext | null = null;
+  private editorKind: "classic" | "next" | null = null;
   private playtestMap: { map: MapDef; visual: MapVisual } | null = null;
   private page: PageId = "boot";
   private toastTimer = 0;
@@ -442,6 +445,15 @@ export class App {
   private bind(): void {
     this.on("btn-start", "click", () => this.openBriefing());
     this.on("btn-editor", "click", () => this.openEditor());
+    this.on("btn-editor-next", "click", () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("editor", "next");
+      window.history.replaceState({}, "", url.toString());
+      this.openEditor();
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("editor");
+      window.history.replaceState({}, "", clean.toString());
+    });
     this.on("btn-settings", "click", () => this.openSettings());
     this.on("btn-exit", "click", () => this.showOverlay("exit-overlay"));
     this.on("btn-brief-start", "click", () => this.startGame());
@@ -526,12 +538,18 @@ export class App {
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
     this.updateCityPanel(null);
-    this.editor ??= new EditorController({
-      root: this.el("editor-root"),
-      rules: this.content.rules,
-      onPlaytest: (map, visual) => this.startEditorPlaytest(map, visual),
-      onExit: () => this.closeEditor(),
-    });
+    const kind = new URLSearchParams(window.location.search).get("editor") === "next" ? "next" : "classic";
+    if (!this.editor || this.editorKind !== kind) {
+      this.editor?.dispose();
+      const options = {
+        root: this.el("editor-root"),
+        rules: this.content.rules,
+        onPlaytest: (map: MapDef, visual: MapVisual) => this.startEditorPlaytest(map, visual),
+        onExit: () => this.closeEditor(),
+      };
+      this.editor = kind === "next" ? new EditorNext(options) : new EditorController(options);
+      this.editorKind = kind;
+    }
     this.show("editor");
     this.editor.open();
   }
