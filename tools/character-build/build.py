@@ -23,6 +23,7 @@ WEAPON = CONFIG.get("weapon", "")
 WEAPON_PACK = CONFIG.get("weaponPack", "")
 WEAPON_LENGTH = float(CONFIG.get("weaponLength", "0.45"))
 WEAPON_GRIP = float(CONFIG.get("weaponGrip", "0.0"))
+WEAPON_TILT = float(CONFIG.get("weaponTilt", "0.0"))
 SUBDIV = int(CONFIG.get("subdiv", "1"))
 TORSO = float(CONFIG.get("torso", "1.0"))
 ARMS = float(CONFIG.get("arms", "1.0"))
@@ -100,58 +101,58 @@ for obj in meshes():
     obj.select_set(True)
     bpy.ops.object.shade_auto_smooth(angle=math.radians(SMOOTH_ANGLE))
 
-# 记录原武器的世界矩阵，换武器时沿用它的握把位置和刀身方向
-old_weapon = next((obj for obj in meshes() if obj.name.endswith("_Sword") or "Weapon" in obj.name), None)
-old_matrix = old_weapon.matrix_world.copy() if old_weapon else None
-old_axis = None
-if old_weapon is not None:
-    dims = old_weapon.dimensions
-    index = max(range(3), key=lambda i: dims[i])
-    local_axis = Vector((0.0, 0.0, 0.0))
-    local_axis[index] = 1.0
-    old_axis = (old_matrix.to_3x3() @ local_axis).normalized()
-    bpy.data.objects.remove(old_weapon, do_unlink=True)
+# 换武器：保持原武器的骨骼父子关系，只把新武器网格变换到它的局部空间再替换 mesh。
+WEAPON_HINTS = ("Sword", "Staff", "Dagger", "Bow", "Axe", "Hammer", "Weapon")
+old_weapon = next((obj for obj in meshes() if any(hint in obj.name for hint in WEAPON_HINTS)), None)
 
-if WEAPON:
+if WEAPON and old_weapon is not None:
+    old_vertices = [v.co.copy() for v in old_weapon.data.vertices]
+    old_min = Vector((min(v.x for v in old_vertices), min(v.y for v in old_vertices), min(v.z for v in old_vertices)))
+    old_max = Vector((max(v.x for v in old_vertices), max(v.y for v in old_vertices), max(v.z for v in old_vertices)))
+    old_center = (old_min + old_max) * 0.5
+
     pack_dir = os.path.join(os.path.dirname(WEAPON_PACK), os.path.basename(WEAPON_PACK), "Object") + os.sep
     bpy.ops.wm.append(filepath=os.path.join(pack_dir, WEAPON), directory=pack_dir, filename=WEAPON)
-    weapon = bpy.data.objects[WEAPON]
-    bpy.ops.object.select_all(action="DESELECT")
-    bpy.context.view_layer.objects.active = weapon
-    weapon.select_set(True)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    source = bpy.data.objects[WEAPON]
+    mesh = source.data.copy()
 
-    body_height = max(obj.dimensions.z for obj in meshes() if not obj.name.startswith(SKIP_SUBDIV)) if meshes() else 1.0
-    target = body_height * WEAPON_LENGTH
-    dims = weapon.dimensions
-    index = max(range(3), key=lambda i: dims[i])
-    current = dims[index]
-    factor = target / current if current > 0 else 1.0
+    coords = [v.co.copy() for v in mesh.vertices]
+    new_min = Vector((min(v.x for v in coords), min(v.y for v in coords), min(v.z for v in coords)))
+    new_max = Vector((max(v.x for v in coords), max(v.y for v in coords), max(v.z for v in coords)))
+    new_center = (new_min + new_max) * 0.5
 
-    local_axis = Vector((0.0, 0.0, 0.0))
-    local_axis[index] = 1.0
-    target_axis = old_axis if old_axis is not None else Vector((0.0, 0.0, 1.0))
-    rotation = local_axis.rotation_difference(target_axis)
-
-    grip = old_matrix.translation.copy() if old_matrix is not None else armature.matrix_world @ armature.data.bones["Weapon.R"].head_local
-    # 让握把落在手心里：沿刀身轴把模型往回推
-    grip = grip - target_axis * (target * WEAPON_GRIP)
-
-    weapon.matrix_world = (
-        Matrix.Translation(grip)
-        @ rotation.to_matrix().to_4x4()
-        @ Matrix.Diagonal((factor, factor, factor, 1.0))
+    body_height = max(
+        obj.dimensions.z for obj in meshes() if not obj.name.startswith(SKIP_SUBDIV) and obj is not old_weapon
     )
-    bpy.context.view_layer.update()
+    # 原武器对象带骨骼继承缩放，目标长度要先换算回它的局部空间
+    inherited = max(old_weapon.matrix_world.to_scale()) or 1.0
+    target_length = (body_height * WEAPON_LENGTH) / inherited
+    scale = target_length / max(1e-6, new_max.z - new_min.z)
 
-    bone_name = next((name for name in ("Weapon.R", "Fist.R", "Hand.R") if name in armature.data.bones), None)
-    bpy.ops.object.select_all(action="DESELECT")
-    weapon.select_set(True)
-    armature.select_set(True)
-    bpy.context.view_layer.objects.active = armature
-    if bone_name:
-        armature.data.bones.active = armature.data.bones[bone_name]
-    bpy.ops.object.parent_set(type="BONE", keep_transform=True)
+    # 刀柄都在 -Z 端：把新武器的柄端对齐到原武器的柄端，横向居中；tilt 用来贴合手部朝向
+    tilt = math.radians(WEAPON_TILT)
+    cos_t, sin_t = math.cos(tilt), math.sin(tilt)
+    for vertex in mesh.vertices:
+        x = vertex.co.x - new_center.x
+        y = vertex.co.y - new_center.y
+        z = vertex.co.z - new_min.z
+        vertex.co.x = old_center.x + x * scale
+        vertex.co.y = old_center.y + (y * cos_t - z * sin_t) * scale
+        vertex.co.z = old_min.z + (y * sin_t + z * cos_t) * scale
+
+    mesh.name = old_weapon.data.name
+    old_weapon.data = mesh
+    bpy.data.objects.remove(source, do_unlink=True)
+    bpy.context.view_layer.update()
+    print(
+        "WEAPON_SWAP",
+        WEAPON,
+        "scale", round(scale, 3),
+        "target_local", round(target_length, 3),
+        "world_dims", [round(v, 3) for v in old_weapon.dimensions],
+        "world_scale", [round(v, 3) for v in old_weapon.matrix_world.to_scale()],
+    )
+
 
 # 身高不在这里归一：glTF 蒙皮会把骨架缩放烘进骨骼，客户端按包围盒自动适配更稳。
 bpy.context.view_layer.update()
