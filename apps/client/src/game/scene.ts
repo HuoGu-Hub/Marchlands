@@ -1218,7 +1218,7 @@ export class BattleScene {
       this.addRoad(start, end, length, edgeWidth, roadMaterial);
     }
 
-    if (this.map.slug === "crossroads01") this.addRoundabout(centerId, width, plazaMaterial, curbMaterial);
+    // 环岛、路灯这类程序化场景件不属于可编辑对象，已移除；交叉路口由普通道路组成。
   }
 
   private prepareRoadGrid(): void {
