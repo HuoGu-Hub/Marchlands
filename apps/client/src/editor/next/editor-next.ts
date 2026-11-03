@@ -153,6 +153,8 @@ export class EditorNext {
   private editorRoot: THREE.Group | null = null;
   private proxyRoot: THREE.Group | null = null;
   private handleRoot: THREE.Group | null = null;
+  private roadHandleRoot: THREE.Group | null = null;
+  private roadPointDrag: { id: string; index: number; mesh: THREE.Mesh } | null = null;
   private faceDrag: {
     id: string;
     face: "east" | "west" | "north" | "south";
@@ -372,6 +374,9 @@ export class EditorNext {
     this.handleRoot = new THREE.Group();
     this.handleRoot.name = "editor-handles";
     scene3.add(this.handleRoot);
+    this.roadHandleRoot = new THREE.Group();
+    this.roadHandleRoot.name = "editor-road-handles";
+    scene3.add(this.roadHandleRoot);
 
     const gizmo = new TransformControls(camera, this.canvas);
     gizmo.setSize(1.05);
@@ -444,6 +449,8 @@ export class EditorNext {
     this.editorRoot = null;
     this.proxyRoot = null;
     this.handleRoot = null;
+    this.roadHandleRoot = null;
+    this.roadPointDrag = null;
     this.faceDrag = null;
     this.proxies.length = 0;
     this.selectedProxy = null;
@@ -1399,6 +1406,7 @@ export class EditorNext {
       this.attachGizmo();
     }
     this.syncFoundationHandles();
+    this.syncRoadHandles();
     this.canvas.style.cursor = tool === "place" || tool === "road" || tool === "terrain" ? "crosshair" : "default";
     if (this.selection?.kind === "foundation" && (tool === "rotate" || tool === "scale")) {
       this.notice("地基的尺寸和朝向用右侧检查器修改");
@@ -1414,6 +1422,7 @@ export class EditorNext {
     this.scene?.setSelected(selection?.kind === "site" ? (selection.id as CityId) : null);
     this.attachGizmo();
     this.syncFoundationHandles();
+    this.syncRoadHandles();
     this.syncTreeSelection();
     this.renderInspector();
     this.updateStatus();
@@ -1545,6 +1554,7 @@ export class EditorNext {
     this.syncProxyHighlight();
     this.attachGizmo();
     this.syncFoundationHandles();
+    this.syncRoadHandles();
   }
 
   private syncProxyHighlight(): void {
@@ -1608,6 +1618,84 @@ export class EditorNext {
       group.add(hit);
       root.add(group);
     }
+  }
+
+  private syncRoadHandles(): void {
+    const root = this.roadHandleRoot;
+    if (!root || this.roadPointDrag) return;
+    for (const child of [...root.children]) {
+      root.remove(child);
+      child.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+        else material?.dispose();
+      });
+    }
+    if (this.selection?.kind !== "road") return;
+    if (this.tool === "road" || this.tool === "terrain" || this.tool === "place") return;
+    const road = this.doc.roads.find((entry) => entry.id === this.selection?.id);
+    if (!road?.path || road.path.length === 0) return;
+    for (let index = 0; index < road.path.length; index += 1) {
+      const point = road.path[index];
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.9, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0x9fd6b0, transparent: true, opacity: 0.9, depthTest: false }),
+      );
+      sphere.position.set(point[0] / 10, (this.scene?.groundHeight(point[0], point[1]) ?? 0) + 0.9, point[1] / 10);
+      sphere.renderOrder = 20;
+      sphere.userData = { roadId: road.id, index };
+      root.add(sphere);
+    }
+  }
+
+  private pickRoadHandle(clientX: number, clientY: number): { id: string; index: number } | null {
+    if (!this.scene || !this.roadHandleRoot) return null;
+    const camera = this.scene.getEditorCamera();
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObjects(this.roadHandleRoot.children, true);
+    for (const hit of hits) {
+      const data = hit.object.userData as { roadId?: string; index?: number };
+      if (data.roadId !== undefined && data.index !== undefined) return { id: data.roadId, index: data.index };
+    }
+    return null;
+  }
+
+  private startRoadPointDrag(handle: { id: string; index: number }, pointerId: number): void {
+    const mesh = this.roadHandleRoot?.children.find((child) => {
+      const data = child.userData as { roadId?: string; index?: number };
+      return data.roadId === handle.id && data.index === handle.index;
+    }) as THREE.Mesh | undefined;
+    if (!mesh) return;
+    this.roadPointDrag = { id: handle.id, index: handle.index, mesh };
+    this.canvas.setPointerCapture(pointerId);
+  }
+
+  private finishRoadPointDrag(): void {
+    const drag = this.roadPointDrag;
+    this.roadPointDrag = null;
+    if (!drag || !this.pointer.ground) {
+      this.syncRoadHandles();
+      return;
+    }
+    const road = this.doc.roads.find((entry) => entry.id === drag.id);
+    if (!road?.path) return;
+    const path = road.path.map((point) => [point[0], point[1]] as [number, number]);
+    if (drag.index < 0 || drag.index >= path.length) return;
+    path[drag.index] = [snapDm(this.pointer.ground[0]), snapDm(this.pointer.ground[1])];
+    this.commit(updateRoad(this.doc, road.id, { path }), "已调整道路", { roads: true });
+  }
+
+  private cancelRoadPointDrag(): void {
+    this.roadPointDrag = null;
+    this.syncRoadHandles();
   }
 
   private pickFaceHandle(clientX: number, clientY: number): { id: string; face: "east" | "west" | "north" | "south" } | null {
@@ -1943,6 +2031,14 @@ export class EditorNext {
         return;
       }
     }
+    if (this.selection?.kind === "road") {
+      const handle = this.pickRoadHandle(event.clientX, event.clientY);
+      if (handle) {
+        this.startRoadPointDrag(handle, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+    }
     if (this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale") {
       const hit = this.pick(event.clientX, event.clientY);
       this.select(hit);
@@ -1954,6 +2050,13 @@ export class EditorNext {
     this.pointer = { x: event.clientX, y: event.clientY, ground };
     if (this.faceDrag) {
       this.updateFaceDrag(event.clientX, event.clientY);
+      return;
+    }
+    if (this.roadPointDrag) {
+      if (ground) {
+        this.roadPointDrag.mesh.position.set(ground[0] / 10, (this.scene?.groundHeight(ground[0], ground[1]) ?? 0) + 0.9, ground[1] / 10);
+      }
+      this.updateStatus();
       return;
     }
     if (this.drag) {
@@ -1983,6 +2086,10 @@ export class EditorNext {
   };
 
   private readonly onPointerUp = (): void => {
+    if (this.roadPointDrag) {
+      this.finishRoadPointDrag();
+      return;
+    }
     if (this.faceDrag) {
       this.finishFaceDrag();
       return;
@@ -2310,6 +2417,11 @@ export class EditorNext {
     if (event.key === "Enter" && this.roadDraw) {
       event.preventDefault();
       this.finishRoad();
+      return;
+    }
+    if (event.key === "Escape" && this.roadPointDrag) {
+      event.preventDefault();
+      this.cancelRoadPointDrag();
       return;
     }
     if (event.key === "Escape" && this.faceDrag) {
