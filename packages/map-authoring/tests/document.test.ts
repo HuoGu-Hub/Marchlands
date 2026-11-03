@@ -3,10 +3,16 @@ import { validateMap } from "@marchlands/content";
 import { createGame } from "@marchlands/sim";
 import { decodeBitmapBase64, encodeBitmapBase64, Surface } from "@marchlands/nav";
 import {
+  addFoundation,
   addProp,
   addRoad,
   addSite,
   compileDocument,
+  documentBounds,
+  duplicateFoundation,
+  foundationBounds,
+  growFoundationTo,
+  removeFoundation,
   connect,
   convertToGrid,
   createGridDocument,
@@ -270,22 +276,78 @@ describe("map authoring", () => {
     expect(Number.isFinite(packed.heightCm[35 * packed.width + 35])).toBe(true);
   });
 
-  it("round-trips a foundation model visual", () => {
-    const document = updateFoundation(createGridDocument(), {
+  it("round-trips multiple foundations", () => {
+    const starter = createStarterDocument();
+    expect(starter.visual.foundations).toHaveLength(1);
+    const added = addFoundation(starter, {
+      pos: [700, 0],
+      size: [300, 300],
+      elevation: 12,
       assetId: "com.example:island-base",
       scale: 1.5,
       rotation: 30,
-      offsetY: -1.2,
     });
+    const document = updateFoundation(added.document, added.foundation.id, { elevation: 12 });
     const compiled = compileDocument(document);
-    expect(compiled.visual.foundation).toEqual({
+    expect(compiled.visual.foundations).toHaveLength(2);
+    expect(compiled.visual.foundations[1].elevation).toBe(12);
+    expect(compiled.visual.foundations[1].assetId).toBe("com.example:island-base");
+    const parsed = parseDocument(JSON.parse(serializeDocument(document)));
+    expect(parsed.document.visual.foundations).toEqual(document.visual.foundations);
+  });
+
+  it("merges same-height touching foundations into one platform", () => {
+    const starter = createStarterDocument();
+    const added = addFoundation(starter, { pos: [700, 0], size: [700, 700] });
+    expect(added.document.visual.foundations).toHaveLength(1);
+    const bounds = foundationBounds(added.document.visual.foundations)!;
+    expect(bounds.minX).toBe(-350);
+    expect(bounds.maxX).toBe(1050);
+    expect(added.document.size[0]).toBe(1400);
+    expect(documentBounds(added.document).maxX).toBe(1050);
+  });
+
+  it("grows a foundation outward while keeping the opposite edge", () => {
+    const starter = createStarterDocument();
+    const id = starter.visual.foundations[0].id;
+    const grown = growFoundationTo(starter, id, "east", 500);
+    expect(grown.visual.foundations[0].size[0]).toBe(850);
+    expect(grown.visual.foundations[0].pos[0]).toBe(75);
+    expect(foundationBounds(grown.visual.foundations)!.minX).toBe(-350);
+  });
+
+  it("duplicates a foundation as a separate platform", () => {
+    const starter = createStarterDocument();
+    const id = starter.visual.foundations[0].id;
+    const duplicated = duplicateFoundation(starter, id)!;
+    expect(duplicated.document.visual.foundations).toHaveLength(2);
+    expect(duplicated.document.visual.foundations[1].pos[0]).toBe(710);
+  });
+
+  it("removes a foundation but keeps the last one", () => {
+    const starter = createStarterDocument();
+    const added = addFoundation(starter, { pos: [900, 0], size: [300, 300], elevation: 10 });
+    const removed = removeFoundation(added.document, added.foundation.id);
+    expect(removed.visual.foundations).toHaveLength(1);
+    const last = removeFoundation(removed, removed.visual.foundations[0].id);
+    expect(last.visual.foundations).toHaveLength(1);
+  });
+
+  it("migrates the legacy single foundation visual", () => {
+    const document = createStarterDocument();
+    const legacy = JSON.parse(serializeDocument(document));
+    delete legacy.visual.foundations;
+    legacy.visual.foundation = {
       assetId: "com.example:island-base",
       scale: 1.5,
       rotation: 30,
       offsetY: -1.2,
-    });
-    const parsed = parseDocument(JSON.parse(serializeDocument(document)));
-    expect(parsed.document.visual.foundation).toEqual(compiled.visual.foundation);
+    };
+    const parsed = parseDocument(legacy);
+    expect(parsed.document.visual.foundations).toHaveLength(1);
+    expect(parsed.document.visual.foundations[0].assetId).toBe("com.example:island-base");
+    expect(parsed.document.visual.foundations[0].elevation).toBe(-1.2);
+    expect(parsed.document.visual.foundations[0].size).toEqual([680, 580]);
   });
 
   it("compiles a grid document with packed heights, footprints and a map hash", () => {

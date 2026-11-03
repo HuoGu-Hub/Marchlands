@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
 import type { CityId, MapDef } from "@marchlands/sim";
-import { createHeightField } from "@marchlands/map-authoring";
+import { createHeightField, foundationDepth, foundationRect } from "@marchlands/map-authoring";
+import type { MapVisual } from "@marchlands/map-authoring";
 import {
   NavGrid,
   Surface,
@@ -191,16 +192,46 @@ export interface TerrainBounds {
   maxZ: number;
 }
 
+/** 一块地基在渲染层的投影，单位米。 */
+export interface FoundationPlatform {
+  id: string;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  elevation: number;
+  depth: number;
+  assetId?: string;
+  scale: number;
+  rotation: number;
+}
+
+export interface TerrainPlatform {
+  platform: FoundationPlatform;
+  mesh: THREE.Mesh;
+  shell: THREE.Group;
+  metrics: IslandMetrics;
+}
+
 export interface Terrain {
   group: THREE.Group;
+  /** 主平台顶面，兼容旧调用。 */
   mesh: THREE.Mesh;
+  /** 所有平台顶面，拾取时需要全部参与。 */
+  meshes: THREE.Mesh[];
   navOverlay: THREE.Group | null;
   heightAt(x: number, z: number): number;
+  /** 该点是否落在任一块地基上。 */
+  hasGround(x: number, z: number): boolean;
   setNavPreview(visible: boolean): void;
   bounds: TerrainBounds;
   island: IslandMetrics;
   islandGroup: THREE.Group;
   islandSignature: string;
+  platforms: TerrainPlatform[];
+  /** 主岛轮廓，用于边缘植被。 */
+  primaryRim: IslandMetrics["rim"];
+  primaryCenter: { x: number; z: number };
 }
 
 function isSteepCell(grid: NavGrid, x: number, z: number): boolean {
@@ -319,70 +350,111 @@ function surfaceColor(surface: number, palette: TerrainStylePalette): number {
   }
 }
 
-export function buildTerrain(
-  map: MapDef,
-  positions: Map<CityId, THREE.Vector3>,
-  options: { style?: string; seed?: number; amplitude?: number; material?: string; previous?: Terrain } = {},
-): Terrain {
-  const style = options.style ?? "frontier";
-  const palette = TERRAIN_PALETTES[style] ?? TERRAIN_PALETTES.frontier;
-  const seed = Math.round(options.seed ?? 20261123);
-  const amplitude = Math.min(3.2, Math.max(0.2, options.amplitude ?? 1));
-  const noiseShift = (seed % 1000) * 0.017;
-  const cities = [...positions.values()];
-  const edges = map.edges
-    .map((edge) => {
-      const from = positions.get(edge.from);
-      const to = positions.get(edge.to);
-      return from && to ? { from, to } : null;
-    })
-    .filter((edge): edge is { from: THREE.Vector3; to: THREE.Vector3 } => edge !== null);
+function hashText(text: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
 
-  const navGrid = navGridOf(map);
+function platformDepth(halfX: number, halfZ: number): number {
+  return THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 0.24, 14, 38);
+}
+
+/** 把文档里的地基换算成渲染用的米制平台。 */
+function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlatform[] {
+  if (map.navigation === "grid") {
+    const halfX = map.size[0] / 20;
+    const halfZ = map.size[1] / 20;
+    const source = visual?.foundations?.[0];
+    return [
+      {
+        id: source?.id ?? "grid",
+        minX: -halfX,
+        maxX: halfX,
+        minZ: -halfZ,
+        maxZ: halfZ,
+        elevation: 0,
+        depth: source ? foundationDepth(source) : platformDepth(halfX, halfZ),
+        scale: 1,
+        rotation: 0,
+      },
+    ];
+  }
+  const list = visual?.foundations ?? [];
+  if (list.length > 0) {
+    return list.map((foundation) => {
+      const rect = foundationRect(foundation);
+      return {
+        id: foundation.id,
+        minX: rect.minX / 10,
+        maxX: rect.maxX / 10,
+        minZ: rect.minZ / 10,
+        maxZ: rect.maxZ / 10,
+        elevation: foundation.elevation,
+        depth: foundationDepth(foundation),
+        ...(foundation.assetId ? { assetId: foundation.assetId } : {}),
+        scale: foundation.scale,
+        rotation: foundation.rotation,
+      };
+    });
+  }
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minZ = Number.POSITIVE_INFINITY;
   let maxZ = Number.NEGATIVE_INFINITY;
-  if (navGrid) {
+  for (const city of map.cities) {
+    minX = Math.min(minX, city.pos[0] / 10);
+    maxX = Math.max(maxX, city.pos[0] / 10);
+    minZ = Math.min(minZ, city.pos[1] / 10);
+    maxZ = Math.max(maxZ, city.pos[1] / 10);
+  }
+  if (!Number.isFinite(minX)) {
     minX = -map.size[0] / 20;
     maxX = map.size[0] / 20;
     minZ = -map.size[1] / 20;
     maxZ = map.size[1] / 20;
-  } else {
-    for (const city of cities) {
-      minX = Math.min(minX, city.x);
-      maxX = Math.max(maxX, city.x);
-      minZ = Math.min(minZ, city.z);
-      maxZ = Math.max(maxZ, city.z);
-    }
-    minX -= 14;
-    maxX += 14;
-    minZ -= 14;
-    maxZ += 14;
   }
+  minX -= 14;
+  maxX += 14;
+  minZ -= 14;
+  maxZ += 14;
+  return [
+    {
+      id: "legacy",
+      minX,
+      maxX,
+      minZ,
+      maxZ,
+      elevation: 0,
+      depth: platformDepth((maxX - minX) / 2, (maxZ - minZ) / 2),
+      scale: 1,
+      rotation: 0,
+    },
+  ];
+}
 
-  const width = maxX - minX;
-  const depth = maxZ - minZ;
+function buildPlatformSurface(
+  platform: FoundationPlatform,
+  heightAt: (x: number, z: number) => number,
+  palette: TerrainStylePalette,
+  navGrid: NavGrid | null,
+  map: MapDef,
+  ground: THREE.Material | null,
+  seed: number,
+  noiseShift: number,
+): THREE.Mesh {
+  const width = Math.max(0.5, platform.maxX - platform.minX);
+  const depth = Math.max(0.5, platform.maxZ - platform.minZ);
   const cell = navGrid ? 0.8 : 0.9;
-  const segmentsX = Math.max(24, Math.round(width / cell));
-  const segmentsZ = Math.max(18, Math.round(depth / cell));
-
-  const heightField = createHeightField({
-    cities: [...positions.values()].map((city) => [city.x, city.z] as [number, number]),
-    terrain: { seed, amplitude },
-  });
-  const offsetX = map.size[0] * 5;
-  const offsetZ = map.size[1] * 5;
-  const heightAt = (x: number, z: number): number => {
-    if (navGrid) return navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100;
-    return heightField.heightAt(x, z);
-  };
-
-  const ground = groundMaterial(options.material);
-  const tile = 9;
+  const segmentsX = Math.max(6, Math.round(width / cell));
+  const segmentsZ = Math.max(6, Math.round(depth / cell));
   const geometry = new THREE.PlaneGeometry(width, depth, segmentsX, segmentsZ);
   geometry.rotateX(-Math.PI / 2);
-  geometry.translate((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+  geometry.translate((platform.minX + platform.maxX) / 2, 0, (platform.minZ + platform.maxZ) / 2);
+  const tile = 9;
   if (ground) {
     const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
     for (let index = 0; index < uv.count; index += 1) {
@@ -390,6 +462,8 @@ export function buildTerrain(
     }
     uv.needsUpdate = true;
   }
+  const offsetX = map.size[0] * 5;
+  const offsetZ = map.size[1] * 5;
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
   for (let index = 0; index < position.count; index += 1) {
     position.setY(index, heightAt(position.getX(index), position.getZ(index)));
@@ -406,9 +480,9 @@ export function buildTerrain(
     const dirt = valueNoise(x / 9 + noiseShift, z / 9, 103) > 0.76;
     if (navGrid) {
       color.setHex(surfaceColor(navGrid.surfaceAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)), palette));
-    } else if (slope > 0.24 || y > 1.05) {
+    } else if (slope > 0.24 || y > 1.05 + platform.elevation) {
       color.setHex(dirt ? palette.dirtLight : palette.rock);
-    } else if (y > 0.45) {
+    } else if (y > 0.45 + platform.elevation) {
       color.setHex(dirt ? palette.dirt : palette.grassLight);
     } else if (dirt) {
       color.setHex(palette.dirt);
@@ -419,45 +493,196 @@ export function buildTerrain(
     colors.push(color.r, color.g, color.b);
   }
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-
-  const material =
-    ground ?? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+  const material = ground ?? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
   if (ground) geometry.deleteAttribute("color");
-  const terrainMesh = new THREE.Mesh(geometry, material);
-  terrainMesh.receiveShadow = true;
-  terrainMesh.castShadow = false;
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.name = `ground-${platform.id}`;
+  // 同高度地基重叠时给一点毫米级抬升，避免顶面 z-fighting。
+  mesh.position.y = ((hashText(platform.id) % 7) - 3) * 0.0006;
+  return mesh;
+}
 
-  const group = new THREE.Group();
-  group.add(terrainMesh);
-  const bounds = { minX, maxX, minZ, maxZ };
-  const islandSignature = boundarySignature(bounds, heightAt);
-  let islandGroup: THREE.Group;
-  let island: IslandMetrics;
-  if (navGrid && options.previous && options.previous.islandSignature === islandSignature) {
-    islandGroup = options.previous.islandGroup;
-    island = options.previous.island;
-    options.previous.group.remove(islandGroup);
-  } else {
-    const built = buildIsland(minX, maxX, minZ, maxZ, heightAt, palette, seed, ground);
-    islandGroup = built.group;
-    island = built.metrics;
-  }
-  group.add(islandGroup);
-  islandGroup.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    mesh.receiveShadow = true;
-    mesh.castShadow = false;
+export function buildTerrain(
+  map: MapDef,
+  positions: Map<CityId, THREE.Vector3>,
+  options: {
+    style?: string;
+    seed?: number;
+    amplitude?: number;
+    material?: string;
+    previous?: Terrain;
+    visual?: MapVisual | null;
+  } = {},
+): Terrain {
+  const style = options.style ?? "frontier";
+  const palette = TERRAIN_PALETTES[style] ?? TERRAIN_PALETTES.frontier;
+  const seed = Math.round(options.seed ?? 20261123);
+  const amplitude = Math.min(3.2, Math.max(0.2, options.amplitude ?? 1));
+  const noiseShift = (seed % 1000) * 0.017;
+  const cities = [...positions.values()];
+  const edges = map.edges
+    .map((edge) => {
+      const from = positions.get(edge.from);
+      const to = positions.get(edge.to);
+      return from && to ? { from, to } : null;
+    })
+    .filter((edge): edge is { from: THREE.Vector3; to: THREE.Vector3 } => edge !== null);
+
+  const navGrid = navGridOf(map);
+  const platforms = resolvePlatforms(map, options.visual ?? null);
+  const heightField = createHeightField({
+    cities: [...positions.values()].map((city) => [city.x, city.z] as [number, number]),
+    terrain: { seed, amplitude },
   });
+  const offsetX = map.size[0] * 5;
+  const offsetZ = map.size[1] * 5;
+  const baseHeightAt = (x: number, z: number): number => {
+    if (navGrid) return navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100;
+    return heightField.heightAt(x, z);
+  };
+  const inside = (platform: FoundationPlatform, x: number, z: number): boolean =>
+    x >= platform.minX && x <= platform.maxX && z >= platform.minZ && z <= platform.maxZ;
+  const heightAt = (x: number, z: number): number => {
+    let best: number | null = null;
+    for (const platform of platforms) {
+      if (!inside(platform, x, z)) continue;
+      const y = platform.elevation + baseHeightAt(x, z);
+      if (best === null || y > best) best = y;
+    }
+    return best ?? baseHeightAt(x, z);
+  };
+  const hasGround = (x: number, z: number): boolean => platforms.some((platform) => inside(platform, x, z));
+
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  for (const platform of platforms) {
+    minX = Math.min(minX, platform.minX);
+    maxX = Math.max(maxX, platform.maxX);
+    minZ = Math.min(minZ, platform.minZ);
+    maxZ = Math.max(maxZ, platform.maxZ);
+  }
+  const bounds = { minX, maxX, minZ, maxZ };
+
+  const signature =
+    platforms
+      .map((platform) =>
+        [
+          platform.id,
+          Math.round(platform.minX * 100),
+          Math.round(platform.maxX * 100),
+          Math.round(platform.minZ * 100),
+          Math.round(platform.maxZ * 100),
+          Math.round(platform.elevation * 100),
+          Math.round(platform.depth * 100),
+        ].join(":"),
+      )
+      .join("|") + "|" + boundarySignature(bounds, heightAt);
+  const reused = options.previous && options.previous.islandSignature === signature ? options.previous : null;
+
+  const ground = groundMaterial(options.material);
+  const group = new THREE.Group();
+  const islandGroup = reused ? reused.islandGroup : new THREE.Group();
+  islandGroup.name = "islands";
+  if (reused) {
+    reused.group.remove(reused.islandGroup);
+    group.add(reused.islandGroup);
+  } else {
+    group.add(islandGroup);
+  }
+  const meshes: THREE.Mesh[] = [];
+  const builtPlatforms: TerrainPlatform[] = [];
+  for (let index = 0; index < platforms.length; index += 1) {
+    const platform = platforms[index];
+    const mesh = buildPlatformSurface(platform, heightAt, palette, navGrid, map, ground, seed, noiseShift);
+    group.add(mesh);
+    meshes.push(mesh);
+    if (reused) {
+      const entry = reused.platforms[index];
+      builtPlatforms.push({ platform, mesh, shell: entry.shell, metrics: entry.metrics });
+      continue;
+    }
+    const built = buildIsland(
+      platform.minX,
+      platform.maxX,
+      platform.minZ,
+      platform.maxZ,
+      heightAt,
+      palette,
+      seed + (hashText(platform.id) % 997),
+      ground,
+      platform.depth,
+    );
+    built.group.name = `island-${platform.id}`;
+    islandGroup.add(built.group);
+    builtPlatforms.push({ platform, mesh, shell: built.group, metrics: built.metrics });
+  }
+  if (!reused) {
+    islandGroup.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.receiveShadow = true;
+      mesh.castShadow = false;
+    });
+  }
+
+  const primaryIndex = platforms.reduce(
+    (best, platform, index) =>
+      (platform.maxX - platform.minX) * (platform.maxZ - platform.minZ) >
+      (platforms[best].maxX - platforms[best].minX) * (platforms[best].maxZ - platforms[best].minZ)
+        ? index
+        : best,
+    0,
+  );
+  const primaryMetrics = builtPlatforms[primaryIndex].metrics;
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  // 与旧版一致：用所有浮岛外沿点到并集中心的距离，保证单平台时镜头完全不变。
+  let radiusX = 0;
+  let radiusZ = 0;
+  for (const entry of builtPlatforms) {
+    for (const point of entry.metrics.rim) {
+      radiusX = Math.max(radiusX, Math.abs(point.x - centerX));
+      radiusZ = Math.max(radiusZ, Math.abs(point.z - centerZ));
+    }
+  }
+  const island: IslandMetrics = {
+    centerX,
+    centerZ,
+    radiusX: Math.max(1, radiusX),
+    radiusZ: Math.max(1, radiusZ),
+    depth: Math.max(...platforms.map((platform) => platform.depth)),
+    topY: Math.max(...builtPlatforms.map((entry) => entry.metrics.topY)),
+    rim: primaryMetrics.rim,
+  };
+
   const navOverlay = navGrid ? buildNavOverlay(navGrid, map) : null;
   if (navOverlay) group.add(navOverlay);
   const setNavPreview = (visible: boolean): void => {
     if (navOverlay) navOverlay.visible = visible;
   };
 
-  if (navGrid) {
-    return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview, bounds, island, islandGroup, islandSignature };
-  }
+  const result: Terrain = {
+    group,
+    mesh: meshes[0],
+    meshes,
+    navOverlay,
+    heightAt,
+    hasGround,
+    setNavPreview,
+    bounds,
+    island,
+    islandGroup,
+    islandSignature: signature,
+    platforms: builtPlatforms,
+    primaryRim: primaryMetrics.rim,
+    primaryCenter: { x: primaryMetrics.centerX, z: primaryMetrics.centerZ },
+  };
+
+  if (navGrid) return result;
 
   const random = seeded(20261123);
   const townPositions = map.cities
@@ -477,6 +702,7 @@ export function buildTerrain(
   const candidates: Array<{ x: number; z: number }> = [];
   for (let x = cityMinX + 6; x <= cityMaxX - 2; x += 12) {
     for (let z = cityMinZ + 6.5; z <= cityMaxZ - 2; z += 13) {
+      if (!hasGround(x, z)) continue;
       if (isClear(x, z, cities, edges, 5.2)) candidates.push({ x, z });
     }
   }
@@ -491,7 +717,7 @@ export function buildTerrain(
     group.add(buildMesa(site.x, site.z, 1.1 + random() * 0.2, heightAt, random, palette));
   }
 
-  return { group, mesh: terrainMesh, navOverlay, heightAt, setNavPreview, bounds, island, islandGroup, islandSignature };
+  return result;
 }
 
 function isClear(
@@ -816,13 +1042,14 @@ function buildIsland(
   palette: TerrainStylePalette,
   seed: number,
   ground: THREE.Material | null,
+  depthOverride?: number,
 ): { group: THREE.Group; metrics: IslandMetrics } {
   const centerX = (minX + maxX) / 2;
   const centerZ = (minZ + maxZ) / 2;
   const halfX = Math.max(1, (maxX - minX) / 2);
   const halfZ = Math.max(1, (maxZ - minZ) / 2);
   const span = Math.max(halfX, halfZ) * 2;
-  const depth = THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 0.24, 14, 38);
+  const depth = depthOverride ?? THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 0.24, 14, 38);
   const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt);
   const group = new THREE.Group();
   group.name = "island";

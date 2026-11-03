@@ -196,6 +196,31 @@ test("places and rotates a terrain prop in the editor", async ({ page }) => {
   await expect(label).toContainText(`${count} 装饰`);
 });
 
+test("adds a floating foundation and deletes it", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
+  await page.click('[data-mode="foundation"]');
+  await expect(page.locator(".ml-ed-foundation-row")).toHaveCount(1);
+  await page.click('[data-tool="island"]');
+  const box = await page.locator("#ml-ed-canvas").boundingBox();
+  if (!box) throw new Error("editor canvas has no box");
+  await page.mouse.click(box.x + box.width * 0.78, box.y + box.height * 0.3);
+  await expect(page.locator(".ml-ed-foundation-row")).toHaveCount(2);
+  await expect(page.locator("#ml-ed-inspector")).toContainText("地基 f2");
+  await expect(page.locator("#ml-ed-inspector")).toContainText("顶面高度");
+  const elevation = page.locator('[data-foundation="f2"][data-field="elevation"]');
+  await elevation.fill("20");
+  await elevation.press("Enter");
+  await expect(page.locator("#ml-ed-toast")).toContainText("已调整地基高度");
+  await page.screenshot({ path: "test-results/foundation.png" });
+  await page.keyboard.press("Delete");
+  await expect(page.locator(".ml-ed-foundation-row")).toHaveCount(1);
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".ml-ed-foundation-row")).toHaveCount(2);
+});
+
 test("pauses and resumes without losing the match", async ({ page }) => {
   await openGame(page);
   const timer = page.locator("#hud-timer");

@@ -37,13 +37,26 @@ export interface RoadVisualDraft {
   width: number;
 }
 
+/**
+ * 一块地基：地图上可独立增删、移动、缩放的浮空平台。
+ * 同一高度且并集仍是矩形的相邻地基会在提交时合并。
+ */
 export interface FoundationDraft {
-  assetId: string;
+  id: string;
+  /** 平台中心，分米。 */
+  pos: [number, number];
+  /** 平台顶面尺寸，分米。 */
+  size: [number, number];
+  /** 顶面基准高度，米；0 为地图基准面。 */
+  elevation: number;
+  /** 地基厚度，米；缺省按尺寸推算。 */
+  depth?: number;
+  /** 外壳模型资产 ID；缺省使用程序化浮岛。 */
+  assetId?: string;
+  /** 外壳缩放。 */
   scale: number;
-  /** 朝向，单位为度。 */
+  /** 外壳朝向，单位为度。 */
   rotation: number;
-  /** 垂直偏移，单位为米。 */
-  offsetY: number;
 }
 
 export interface PropDraft {
@@ -86,7 +99,8 @@ export interface UnitVisualDraft {
 export interface VisualDraft {
   terrain: TerrainDraft;
   roads: RoadVisualDraft;
-  foundation?: FoundationDraft;
+  /** 地图由若干地基平台拼成；至少保留一块。 */
+  foundations: FoundationDraft[];
   props: PropDraft[];
   units: UnitVisualDraft;
   /** 是否在空白处自动补树、石头与草丛。 */
@@ -151,7 +165,7 @@ export interface SiteVisual {
 export interface MapVisual {
   terrain: TerrainDraft;
   roads: RoadVisualDraft;
-  foundation?: FoundationDraft;
+  foundations: FoundationDraft[];
   props: PropDraft[];
   units: UnitVisualDraft;
   scatter: boolean;

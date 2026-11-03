@@ -2,6 +2,7 @@ import { createGame } from "@marchlands/sim";
 import type { CityId, MapDef, Owner, Ruleset, SimState, SiteKind, Stance } from "@marchlands/sim";
 import {
   TERRAIN_STYLES,
+  addFoundation,
   addProp,
   addRoad,
   addSite,
@@ -13,12 +14,16 @@ import {
   createGridDocument,
   createStarterDocument,
   disconnect,
+  documentBounds,
   documentLabel,
+  duplicateFoundation,
+  foundationRect,
   gridCellCenter,
   gridCellFromGround,
   moveProp,
   moveSite,
   parseDocument,
+  removeFoundation,
   removeProp,
   removeRoad,
   removeSite,
@@ -36,6 +41,7 @@ import {
 } from "@marchlands/map-authoring";
 import type {
   CompileResult,
+  FoundationBoundsDm,
   MapDocument,
   FoundationDraft,
   MapVisual,
@@ -61,7 +67,7 @@ import "./editor.css";
 
 type GridTool = "raise" | "lower" | "smooth" | "ramp" | "cliff" | "water" | "surface" | "blocker" | "passable";
 
-type Tool = "select" | SiteKind | "road" | "erase" | "asset" | GridTool;
+type Tool = "select" | SiteKind | "road" | "erase" | "asset" | "foundation" | "island" | GridTool;
 
 const GRID_TOOL_SET: ReadonlySet<string> = new Set<GridTool>([
   "raise",
@@ -83,6 +89,7 @@ type Selection =
   | { kind: "site"; id: CityId }
   | { kind: "prop"; id: string }
   | { kind: "road"; id: string }
+  | { kind: "foundation"; id: string }
   | null;
 
 interface RoadDrawState {
@@ -133,6 +140,27 @@ interface GridStrokeState {
   changed: boolean;
 }
 
+interface FoundationDragState {
+  id: string;
+  startX: number;
+  startY: number;
+  originPos: [number, number];
+  startGround: [number, number];
+  previewPos: [number, number];
+  moved: boolean;
+}
+
+interface FoundationResizeState {
+  id: string;
+  kind: "corner" | "edge";
+  index: number;
+  startRect: FoundationBoundsDm;
+  rect: FoundationBoundsDm;
+  startX: number;
+  startY: number;
+  moved: boolean;
+}
+
 const TOOL_LABEL: Record<Tool, string> = {
   select: "选择 / 移动",
   town: "城镇",
@@ -150,6 +178,8 @@ const TOOL_LABEL: Record<Tool, string> = {
   surface: "地表",
   blocker: "阻挡",
   passable: "可通行覆盖",
+  foundation: "添加地基",
+  island: "添加浮空岛",
 };
 
 const AUTOSAVE_KEY = "marchlands.editor.autosave.v1";
@@ -178,6 +208,7 @@ const TEMPLATE = `
       <button class="ml-ed-piece tool" data-tool="erase" draggable="false"><i></i><b>删除</b><span>点据点、道路或装饰</span></button>
       <div class="ml-ed-modes">
         <button class="ml-ed-mode active" data-mode="site">据点</button>
+        <button class="ml-ed-mode" data-mode="foundation">地基</button>
         <button class="ml-ed-mode" data-mode="terrain">地形</button>
         <button class="ml-ed-mode" data-mode="decor">装饰</button>
       </div>
@@ -209,6 +240,12 @@ const TEMPLATE = `
       <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>增幅 · 叶子据点</span></button>
       <button class="ml-ed-piece" data-tool="outpost" draggable="true"><i class="outpost"></i><b>驻兵点</b><span>监视一条路</span></button>
       </details>
+      <details class="ml-ed-fold" open data-panel="foundation">
+      <summary>地基</summary>
+      <button class="ml-ed-piece tool" data-tool="foundation" draggable="false"><i></i><b>添加地基</b><span>点边缘扩展地图</span></button>
+      <button class="ml-ed-piece tool" data-tool="island" draggable="false"><i></i><b>添加浮空岛</b><span>独立悬浮平台</span></button>
+      <div class="ml-ed-foundation-list" id="ml-ed-foundation-list"></div>
+      </details>
       <details class="ml-ed-fold" open data-panel="terrain">
       <summary>地形</summary>
       <div class="ml-ed-asset-grid" id="ml-ed-terrain-grid"></div>
@@ -230,7 +267,7 @@ const TEMPLATE = `
       <canvas id="ml-ed-canvas"></canvas>
       <canvas id="ml-ed-overlay"></canvas>
       <div class="ml-ed-stage-badge" id="ml-ed-badge">选择工具开始</div>
-      <div class="ml-ed-stage-hint">拖拽地形或装饰到地图 · 网格工具拖动刷地形 · R 旋转 · [ ] 缩放 · 右键拖动 · 滚轮缩放 · Q/E 旋转</div>
+      <div class="ml-ed-stage-hint">左键放置/选择 · 右键拖动平移 · 滚轮缩放 · Q/E 旋转 · 地基模式可扩展地图与加浮空岛 · Delete 删除 · Ctrl+Z 撤销</div>
       <div class="ml-ed-toast" id="ml-ed-toast"></div>
     </main>
     <aside class="ml-ed-inspector" id="ml-ed-inspector"></aside>
@@ -273,15 +310,16 @@ function toolColor(tool: Tool): string {
   if (tool === "surface") return "#c6a36a";
   if (tool === "blocker") return "#b95332";
   if (tool === "passable") return "#53c7bd";
+  if (tool === "foundation") return "#c9a86a";
+  if (tool === "island") return "#8fb6d8";
   return "#d8ccb8";
 }
 
 function clampRoadPoint(document: MapDocument, point: [number, number]): [number, number] {
-  const halfW = document.size[0] / 2;
-  const halfH = document.size[1] / 2;
+  const bounds = documentBounds(document);
   return [
-    Math.max(-halfW, Math.min(halfW, Math.round(point[0]))),
-    Math.max(-halfH, Math.min(halfH, Math.round(point[1]))),
+    Math.max(bounds.minX, Math.min(bounds.maxX, Math.round(point[0]))),
+    Math.max(bounds.minZ, Math.min(bounds.maxZ, Math.round(point[1]))),
   ];
 }
 
@@ -306,6 +344,20 @@ function simplifyRoad(points: Array<[number, number]>, tolerance = 8): Array<[nu
   const left = simplifyRoad(points.slice(0, index + 1), tolerance);
   const right = simplifyRoad(points.slice(index), tolerance);
   return [...left.slice(0, -1), ...right];
+}
+
+function pointInQuad(point: { x: number; y: number }, quad: Array<{ x: number; y: number }>): boolean {
+  let sign = 0;
+  for (let index = 0; index < quad.length; index += 1) {
+    const a = quad[index];
+    const b = quad[(index + 1) % quad.length];
+    const cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+    if (Math.abs(cross) < 0.0001) continue;
+    const current = cross > 0 ? 1 : -1;
+    if (sign === 0) sign = current;
+    else if (sign !== current) return false;
+  }
+  return true;
 }
 
 export class EditorController {
@@ -344,8 +396,11 @@ export class EditorController {
   private navCache: { hash: string; grid: NavGrid } | null = null;
   private roadDraw: RoadDrawState | null = null;
   private roadPointDrag: RoadPointDragState | null = null;
+  private foundationDrag: FoundationDragState | null = null;
+  private foundationResize: FoundationResizeState | null = null;
+  private foundationFloatElevation = 12;
   private validationTimer = 0;
-  private paletteMode: "site" | "terrain" | "decor" = "site";
+  private paletteMode: "site" | "foundation" | "terrain" | "decor" = "site";
 
   private canvas!: HTMLCanvasElement;
   private overlay!: HTMLCanvasElement;
@@ -356,6 +411,7 @@ export class EditorController {
   private toastEl!: HTMLElement;
   private badgeEl!: HTMLElement;
   private terrainGrid!: HTMLElement;
+  private foundationList!: HTMLElement;
   private propGroups!: HTMLElement;
   private packStatus!: HTMLElement;
   private playButton!: HTMLButtonElement;
@@ -411,6 +467,7 @@ export class EditorController {
     this.toastEl = this.options.root.querySelector("#ml-ed-toast") as HTMLElement;
     this.badgeEl = this.options.root.querySelector("#ml-ed-badge") as HTMLElement;
     this.terrainGrid = this.options.root.querySelector("#ml-ed-terrain-grid") as HTMLElement;
+    this.foundationList = this.options.root.querySelector("#ml-ed-foundation-list") as HTMLElement;
     this.propGroups = this.options.root.querySelector("#ml-ed-prop-groups") as HTMLElement;
     this.packStatus = this.options.root.querySelector("#ml-ed-pack-status") as HTMLElement;
     this.playButton = this.options.root.querySelector("#ml-ed-play") as HTMLButtonElement;
@@ -454,7 +511,7 @@ export class EditorController {
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-mode]")) {
       button.addEventListener("click", () => {
         const mode = button.dataset.mode;
-        if (mode === "site" || mode === "terrain" || mode === "decor") this.setPaletteMode(mode);
+        if (mode === "site" || mode === "foundation" || mode === "terrain" || mode === "decor") this.setPaletteMode(mode);
       });
     }
     this.setPaletteMode("site");
@@ -494,6 +551,16 @@ export class EditorController {
     this.badgeEl.textContent = TOOL_LABEL[this.tool];
     this.renderAssetPalette();
     this.updateGridControls();
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__mlEditor = {
+        foundations: () => this.doc.visual.foundations.map((foundation) => ({ ...foundation })),
+        quad: (id: string) => {
+          const foundation = this.doc.visual.foundations.find((entry) => entry.id === id);
+          return foundation ? this.foundationQuad(foundation) : null;
+        },
+        select: (id: string) => this.selectFoundation(id),
+      };
+    }
   }
 
   private restoreAutosave(): void {
@@ -521,6 +588,12 @@ export class EditorController {
       this.selection = null;
     }
     if (this.selection?.kind === "road" && !this.doc.roads.some((road) => road.id === this.selection?.id)) {
+      this.selection = null;
+    }
+    if (
+      this.selection?.kind === "foundation" &&
+      !this.doc.visual.foundations.some((foundation) => foundation.id === this.selection?.id)
+    ) {
       this.selection = null;
     }
 
@@ -552,6 +625,7 @@ export class EditorController {
 
     this.autosave();
     this.renderInspector();
+    this.renderFoundationList();
     this.renderStatus();
     this.syncTop();
     this.updateGridControls();
@@ -657,6 +731,8 @@ export class EditorController {
     this.roadFrom = null;
     this.roadDraw = null;
     this.roadPointDrag = null;
+    this.foundationDrag = null;
+    this.foundationResize = null;
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-tool]")) {
       button.classList.toggle("active", button.dataset.tool === tool);
     }
@@ -671,7 +747,7 @@ export class EditorController {
     this.drawOverlay();
   }
 
-  private setPaletteMode(mode: "site" | "terrain" | "decor"): void {
+  private setPaletteMode(mode: "site" | "foundation" | "terrain" | "decor"): void {
     this.paletteMode = mode;
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-mode]")) {
       button.classList.toggle("active", button.dataset.mode === mode);
@@ -891,6 +967,10 @@ export class EditorController {
 
   private addAssetAt(assetId: string, ground: [number, number]): void {
     const pos = this.snapGround(ground);
+    if (this.scene && !this.scene.hasGround(pos[0], pos[1])) {
+      this.notice("这里不在地基上，先添加一块地基");
+      return;
+    }
     const result = addProp(this.doc, assetId, pos, 0, 1);
     this.selection = { kind: "prop", id: result.prop.id };
     this.commit(result.document, `已放置 ${assetRegistry.info(assetId)?.label ?? "装饰"}`, { propsOnly: true });
@@ -947,6 +1027,10 @@ export class EditorController {
 
   private addAt(kind: SiteKind, ground: [number, number]): void {
     const pos = this.snapGround(ground);
+    if (this.scene && !this.scene.hasGround(pos[0], pos[1])) {
+      this.notice("这里不在地基上，先添加一块地基");
+      return;
+    }
     const tooClose = this.doc.sites.some((site) => Math.hypot(site.pos[0] - pos[0], site.pos[1] - pos[1]) < 80);
     if (tooClose) {
       this.notice("两个据点至少间隔 8 米");
@@ -1107,6 +1191,285 @@ export class EditorController {
   private selectedRoad(): RoadDraft | null {
     if (this.selection?.kind !== "road") return null;
     return this.doc.roads.find((road) => road.id === this.selection?.id) ?? null;
+  }
+
+  private selectedFoundation(): FoundationDraft | null {
+    if (this.selection?.kind !== "foundation") return null;
+    return this.doc.visual.foundations.find((foundation) => foundation.id === this.selection?.id) ?? null;
+  }
+
+  private selectFoundation(id: string | null): void {
+    this.selection = id ? { kind: "foundation", id } : null;
+    this.scene?.setSelected(null);
+    this.renderInspector();
+    this.renderFoundationList();
+    this.drawOverlay();
+  }
+
+  /** 地基四角投影到覆盖层坐标；顺序为左上、右上、右下、左下。 */
+  private foundationQuad(foundation: FoundationDraft): Array<{ x: number; y: number }> | null {
+    if (!this.scene) return null;
+    const rect = foundationRect(foundation);
+    const corners: Array<[number, number]> = [
+      [rect.minX, rect.minZ],
+      [rect.maxX, rect.minZ],
+      [rect.maxX, rect.maxZ],
+      [rect.minX, rect.maxZ],
+    ];
+    const screen = corners.map(([x, z]) => this.scene?.projectGround(x, z, 0.25));
+    if (screen.some((point) => !point)) return null;
+    const rectClient = this.canvas.getBoundingClientRect();
+    return (screen as Array<{ x: number; y: number }>).map((point) => ({
+      x: point.x - rectClient.left,
+      y: point.y - rectClient.top,
+    }));
+  }
+
+  private pickFoundation(clientX: number, clientY: number): string | null {
+    if (!this.scene) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const point = { x: clientX - rect.left, y: clientY - rect.top };
+    let best: FoundationDraft | null = null;
+    for (const foundation of this.doc.visual.foundations) {
+      const quad = this.foundationQuad(foundation);
+      if (!quad || !pointInQuad(point, quad)) continue;
+      if (!best || foundation.elevation > best.elevation) best = foundation;
+    }
+    return best?.id ?? null;
+  }
+
+  private foundationHandleAt(
+    clientX: number,
+    clientY: number,
+  ): { id: string; kind: "corner" | "edge"; index: number } | null {
+    const selected = this.selectedFoundation();
+    if (!selected) return null;
+    const quad = this.foundationQuad(selected);
+    if (!quad) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const point = { x: clientX - rect.left, y: clientY - rect.top };
+    for (let corner = 0; corner < 4; corner += 1) {
+      if (Math.hypot(quad[corner].x - point.x, quad[corner].y - point.y) <= 13) {
+        return { id: selected.id, kind: "corner", index: corner };
+      }
+    }
+    for (let edge = 0; edge < 4; edge += 1) {
+      const a = quad[edge];
+      const b = quad[(edge + 1) % 4];
+      const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (Math.hypot(middle.x - point.x, middle.y - point.y) <= 12) {
+        return { id: selected.id, kind: "edge", index: edge };
+      }
+    }
+    return null;
+  }
+
+  private nearestFoundation(ground: [number, number]): { foundation: FoundationDraft; distance: number } | null {
+    let best: { foundation: FoundationDraft; distance: number } | null = null;
+    for (const foundation of this.doc.visual.foundations) {
+      const rect = foundationRect(foundation);
+      const dx = Math.max(rect.minX - ground[0], 0, ground[0] - rect.maxX);
+      const dz = Math.max(rect.minZ - ground[1], 0, ground[1] - rect.maxZ);
+      const distance = Math.hypot(dx, dz);
+      if (!best || distance < best.distance) best = { foundation, distance };
+    }
+    return best;
+  }
+
+  private addFoundationAt(ground: [number, number], floating: boolean): void {
+    if (this.doc.navigation === "grid") {
+      this.notice("网格地图只支持一块地基，请改用地图宽高调整范围");
+      return;
+    }
+    const dm: [number, number] = [Math.round(ground[0] / 5) * 5, Math.round(ground[1] / 5) * 5];
+    if (floating) {
+      const result = addFoundation(this.doc, {
+        pos: dm,
+        size: [200, 200],
+        elevation: this.foundationFloatElevation,
+      });
+      this.selection = { kind: "foundation", id: result.foundation.id };
+      this.commit(result.document, "已添加浮空岛");
+      return;
+    }
+    const nearest = this.nearestFoundation(ground);
+    if (!nearest) {
+      const result = addFoundation(this.doc, { pos: dm, size: [200, 200] });
+      this.selection = { kind: "foundation", id: result.foundation.id };
+      this.commit(result.document, "已添加地基");
+      return;
+    }
+    const rect = foundationRect(nearest.foundation);
+    const inside = dm[0] >= rect.minX && dm[0] <= rect.maxX && dm[1] >= rect.minZ && dm[1] <= rect.maxZ;
+    if (inside) {
+      this.selectFoundation(nearest.foundation.id);
+      this.notice("点在地基内部；点到地基外侧即可扩展地图");
+      return;
+    }
+    // 把点击点并进最近的地基：两条轴各自按需要外扩，至少扩 5 米。
+    const nextRect = { ...rect };
+    if (dm[0] < rect.minX) nextRect.minX = Math.min(rect.minX - 50, dm[0]);
+    if (dm[0] > rect.maxX) nextRect.maxX = Math.max(rect.maxX + 50, dm[0]);
+    if (dm[1] < rect.minZ) nextRect.minZ = Math.min(rect.minZ - 50, dm[1]);
+    if (dm[1] > rect.maxZ) nextRect.maxZ = Math.max(rect.maxZ + 50, dm[1]);
+    const next = updateFoundation(this.doc, nearest.foundation.id, {
+      pos: [(nextRect.minX + nextRect.maxX) / 2, (nextRect.minZ + nextRect.maxZ) / 2],
+      size: [nextRect.maxX - nextRect.minX, nextRect.maxZ - nextRect.minZ],
+    });
+    if (next === this.doc) {
+      this.notice("地基没有变化");
+      return;
+    }
+    this.selection = { kind: "foundation", id: nearest.foundation.id };
+    this.commit(next, "已扩展地基");
+  }
+
+  private removeFoundationById(id: string): void {
+    if (this.doc.visual.foundations.length <= 1) {
+      this.notice("至少保留一块地基");
+      return;
+    }
+    const next = removeFoundation(this.doc, id);
+    if (next === this.doc) {
+      this.notice("没有移除地基");
+      return;
+    }
+    if (this.selection?.kind === "foundation" && this.selection.id === id) this.selection = null;
+    this.commit(next, "已删除地基");
+  }
+
+  private duplicateSelectedFoundation(): void {
+    const foundation = this.selectedFoundation();
+    if (!foundation) return;
+    const result = duplicateFoundation(this.doc, foundation.id);
+    if (!result) return;
+    this.selection = { kind: "foundation", id: result.foundation.id };
+    this.commit(result.document, "已复制地基");
+  }
+
+  private nudgeFoundationElevation(delta: number): void {
+    const foundation = this.selectedFoundation();
+    if (!foundation) return;
+    const next = updateFoundation(this.doc, foundation.id, { elevation: foundation.elevation + delta });
+    this.commit(next, delta > 0 ? "已抬高地基" : "已降低地基");
+  }
+
+  private changeFoundationField(id: string, field: string, value: string): void {
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === id);
+    if (!foundation) return;
+    const number = Number(value);
+    if (field === "posX" || field === "posZ") {
+      if (!Number.isFinite(number)) return;
+      const pos: [number, number] = [
+        field === "posX" ? Math.round(number * 10) : foundation.pos[0],
+        field === "posZ" ? Math.round(number * 10) : foundation.pos[1],
+      ];
+      this.commit(updateFoundation(this.doc, id, { pos }), "已移动地基");
+      return;
+    }
+    if (field === "sizeW" || field === "sizeD") {
+      if (!Number.isFinite(number)) return;
+      const size: [number, number] = [
+        field === "sizeW" ? Math.round(number * 10) : foundation.size[0],
+        field === "sizeD" ? Math.round(number * 10) : foundation.size[1],
+      ];
+      this.commit(updateFoundation(this.doc, id, { size }), "已调整地基尺寸");
+      return;
+    }
+    if (field === "elevation" && Number.isFinite(number)) {
+      this.foundationFloatElevation = Math.max(0, number);
+      this.commit(updateFoundation(this.doc, id, { elevation: number }), "已调整地基高度");
+      return;
+    }
+    if (field === "depth" && Number.isFinite(number)) {
+      this.commit(updateFoundation(this.doc, id, { depth: number }), "已调整地基厚度");
+      return;
+    }
+    if (field === "scale" && Number.isFinite(number)) {
+      this.commit(updateFoundation(this.doc, id, { scale: number }), "已调整外壳缩放");
+      return;
+    }
+    if (field === "rotation" && Number.isFinite(number)) {
+      this.commit(updateFoundation(this.doc, id, { rotation: number }), "已调整外壳朝向");
+      return;
+    }
+    if (field === "assetId") {
+      this.commit(updateFoundation(this.doc, id, { assetId: value || null }), value ? "已设置地基外壳" : "已恢复程序化浮岛");
+    }
+  }
+
+  private renderFoundationList(): void {
+    if (!this.foundationList) return;
+    const rows = this.doc.visual.foundations
+      .map((foundation) => {
+        const selected = this.selection?.kind === "foundation" && this.selection.id === foundation.id;
+        const size = `${(foundation.size[0] / 10).toFixed(0)}×${(foundation.size[1] / 10).toFixed(0)}`;
+        const height = foundation.elevation === 0 ? "地面" : `${foundation.elevation.toFixed(1)} 米`;
+        return `<button class="ml-ed-foundation-row${selected ? " active" : ""}" data-foundation-id="${escapeHtml(foundation.id)}"><b>${escapeHtml(foundation.id)}</b><span>${size} 米 · ${height}</span></button>`;
+      })
+      .join("");
+    this.foundationList.innerHTML = rows || '<p class="ml-ed-note">还没有地基。</p>';
+    for (const button of this.foundationList.querySelectorAll<HTMLElement>("[data-foundation-id]")) {
+      button.addEventListener("click", () => {
+        const id = button.dataset.foundationId;
+        if (id) this.selectFoundation(id);
+      });
+    }
+  }
+
+  private foundationInspectorHtml(foundation: FoundationDraft): string {
+    const rect = foundationRect(foundation);
+    const assets = assetRegistry.list("foundation");
+    const grid = this.doc.navigation === "grid";
+    const lock = grid ? " disabled" : "";
+    const info = foundation.assetId ? assetRegistry.info(foundation.assetId) : null;
+    const missing = foundation.assetId && !info ? '<div class="ml-ed-kind warn">外壳资产未载入</div>' : "";
+    const shell = foundation.assetId
+      ? `<div class="ml-ed-row">
+          <label class="ml-ed-field"><span>外壳缩放</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="scale" type="number" min="0.01" max="50" step="0.05" value="${foundation.scale}"></label>
+          <label class="ml-ed-field"><span>外壳朝向</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="rotation" type="number" min="-360" max="360" step="5" value="${foundation.rotation}"></label>
+        </div>`
+      : "";
+    return `
+      <h3>地基 ${escapeHtml(foundation.id)}</h3>
+      <div class="ml-ed-kind">${foundation.assetId ? escapeHtml(info?.label ?? foundation.assetId) : "程序化浮岛"} · ${((rect.maxX - rect.minX) / 10).toFixed(1)} × ${((rect.maxZ - rect.minZ) / 10).toFixed(1)} 米</div>
+      ${missing}
+      ${grid ? '<p class="ml-ed-note">网格地图的地基与网格范围绑定，尺寸随地图宽高变化。</p>' : ""}
+      <div class="ml-ed-section-label">位置</div>
+      <div class="ml-ed-row">
+        <label class="ml-ed-field"><span>X（米）</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="posX" type="number" step="0.5" value="${(foundation.pos[0] / 10).toFixed(1)}"${lock}></label>
+        <label class="ml-ed-field"><span>Z（米）</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="posZ" type="number" step="0.5" value="${(foundation.pos[1] / 10).toFixed(1)}"${lock}></label>
+      </div>
+      <div class="ml-ed-section-label">尺寸</div>
+      <div class="ml-ed-row">
+        <label class="ml-ed-field"><span>宽（米）</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="sizeW" type="number" min="10" max="400" step="1" value="${(foundation.size[0] / 10).toFixed(1)}"${lock}></label>
+        <label class="ml-ed-field"><span>深（米）</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="sizeD" type="number" min="10" max="400" step="1" value="${(foundation.size[1] / 10).toFixed(1)}"${lock}></label>
+      </div>
+      <div class="ml-ed-section-label">高度</div>
+      <div class="ml-ed-row">
+        <label class="ml-ed-field"><span>顶面高度（米）</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="elevation" type="number" step="0.5" value="${foundation.elevation.toFixed(1)}"${lock}></label>
+        <label class="ml-ed-field"><span>厚度（米）</span><input data-foundation="${escapeHtml(foundation.id)}" data-field="depth" type="number" min="2" max="200" step="1" value="${(foundation.depth ?? 20).toFixed(1)}"></label>
+      </div>
+      <div class="ml-ed-row">
+        <button class="ml-ed-btn" data-action="foundation-up"${lock}>抬高 1 米</button>
+        <button class="ml-ed-btn" data-action="foundation-down"${lock}>降低 1 米</button>
+      </div>
+      <div class="ml-ed-section-label">外壳</div>
+      <label class="ml-ed-field"><span>模型</span>
+        <select data-foundation="${escapeHtml(foundation.id)}" data-field="assetId">
+          ${option("", foundation.assetId ?? "", "程序化浮岛")}
+          ${assets.map((asset) => option(asset.id, foundation.assetId ?? "", asset.label + (asset.source === "pack" ? " · 资产包" : ""))).join("")}
+        </select>
+      </label>
+      ${shell}
+      <div class="ml-ed-meta">范围 ${(rect.minX / 10).toFixed(1)}, ${(rect.minZ / 10).toFixed(1)} → ${(rect.maxX / 10).toFixed(1)}, ${(rect.maxZ / 10).toFixed(1)} 米</div>
+      <p class="ml-ed-note">拖动地基内部移动；拖四角改尺寸；点空白处用“添加地基”向外扩展。Delete 删除，Ctrl+D 复制。</p>
+      <div class="ml-ed-row">
+        <button class="ml-ed-btn" data-action="foundation-duplicate">复制</button>
+        <button class="ml-ed-btn" data-action="foundation-focus">镜头对准</button>
+      </div>
+      <button class="ml-ed-delete" data-action="delete-foundation">删除这块地基</button>
+    `;
   }
 
   private extendRoadDraw(ground: [number, number] | null): void {
@@ -1302,6 +1665,45 @@ export class EditorController {
         this.canvas.setPointerCapture(event.pointerId);
         return;
       }
+      const foundationHandle = this.foundationHandleAt(event.clientX, event.clientY);
+      if (foundationHandle) {
+        const foundation = this.doc.visual.foundations.find((entry) => entry.id === foundationHandle.id);
+        if (foundation) {
+          const rect = foundationRect(foundation);
+          this.foundationResize = {
+            id: foundation.id,
+            kind: foundationHandle.kind,
+            index: foundationHandle.index,
+            startRect: rect,
+            rect: { ...rect },
+            startX: event.clientX,
+            startY: event.clientY,
+            moved: false,
+          };
+          this.pointerId = event.pointerId;
+          this.canvas.setPointerCapture(event.pointerId);
+          return;
+        }
+      }
+      const foundationHit = this.pickFoundation(event.clientX, event.clientY);
+      if (foundationHit) {
+        const foundation = this.doc.visual.foundations.find((entry) => entry.id === foundationHit);
+        if (foundation) {
+          this.selectFoundation(foundationHit);
+          this.foundationDrag = {
+            id: foundation.id,
+            startX: event.clientX,
+            startY: event.clientY,
+            originPos: [foundation.pos[0], foundation.pos[1]],
+            startGround: this.pointer.ground ?? [foundation.pos[0], foundation.pos[1]],
+            previewPos: [foundation.pos[0], foundation.pos[1]],
+            moved: false,
+          };
+          this.pointerId = event.pointerId;
+          this.canvas.setPointerCapture(event.pointerId);
+          return;
+        }
+      }
     }
     this.pan = { x: event.clientX, y: event.clientY, moved: false };
     this.pointerId = event.pointerId;
@@ -1347,6 +1749,50 @@ export class EditorController {
       if (!this.propDrag.moved && Math.hypot(dx, dy) < 5) return;
       this.propDrag.moved = true;
       this.propDrag.ground = this.pointer.ground;
+      this.drawOverlay();
+      return;
+    }
+
+    if (this.foundationResize) {
+      const dx = event.clientX - this.foundationResize.startX;
+      const dy = event.clientY - this.foundationResize.startY;
+      if (!this.foundationResize.moved && Math.hypot(dx, dy) < 3) return;
+      this.foundationResize.moved = true;
+      if (this.pointer.ground) {
+        const rect = { ...this.foundationResize.startRect };
+        const snap = (value: number): number => Math.round(value / 5) * 5;
+        const [gx, gz] = this.pointer.ground;
+        if (this.foundationResize.kind === "corner") {
+          const corner = this.foundationResize.index;
+          if (corner === 0 || corner === 3) rect.minX = Math.min(snap(gx), rect.maxX - 100);
+          if (corner === 1 || corner === 2) rect.maxX = Math.max(snap(gx), rect.minX + 100);
+          if (corner === 0 || corner === 1) rect.minZ = Math.min(snap(gz), rect.maxZ - 100);
+          if (corner === 2 || corner === 3) rect.maxZ = Math.max(snap(gz), rect.minZ + 100);
+        } else {
+          const edge = this.foundationResize.index;
+          if (edge === 0) rect.minZ = Math.min(snap(gz), rect.maxZ - 100);
+          if (edge === 1) rect.maxX = Math.max(snap(gx), rect.minX + 100);
+          if (edge === 2) rect.maxZ = Math.max(snap(gz), rect.minZ + 100);
+          if (edge === 3) rect.minX = Math.min(snap(gx), rect.maxX - 100);
+        }
+        this.foundationResize.rect = rect;
+      }
+      this.drawOverlay();
+      return;
+    }
+
+    if (this.foundationDrag) {
+      const dx = event.clientX - this.foundationDrag.startX;
+      const dy = event.clientY - this.foundationDrag.startY;
+      if (!this.foundationDrag.moved && Math.hypot(dx, dy) < 5) return;
+      this.foundationDrag.moved = true;
+      if (this.pointer.ground) {
+        const snap = (value: number): number => Math.round(value / 5) * 5;
+        this.foundationDrag.previewPos = [
+          snap(this.foundationDrag.originPos[0] + this.pointer.ground[0] - this.foundationDrag.startGround[0]),
+          snap(this.foundationDrag.originPos[1] + this.pointer.ground[1] - this.foundationDrag.startGround[1]),
+        ];
+      }
       this.drawOverlay();
       return;
     }
@@ -1409,6 +1855,31 @@ export class EditorController {
       }
       this.propDrag = null;
     }
+    if (this.foundationResize) {
+      const state = this.foundationResize;
+      this.foundationResize = null;
+      if (state.moved) {
+        const rect = state.rect;
+        this.commit(
+          updateFoundation(this.doc, state.id, {
+            pos: [(rect.minX + rect.maxX) / 2, (rect.minZ + rect.maxZ) / 2],
+            size: [rect.maxX - rect.minX, rect.maxZ - rect.minZ],
+          }),
+          "已调整地基尺寸",
+        );
+        this.suppressClick = true;
+      }
+      return;
+    }
+    if (this.foundationDrag) {
+      const state = this.foundationDrag;
+      this.foundationDrag = null;
+      if (state.moved) {
+        this.commit(updateFoundation(this.doc, state.id, { pos: state.previewPos }), "已移动地基");
+        this.suppressClick = true;
+      }
+      return;
+    }
     if (this.pan?.moved) this.suppressClick = true;
     this.pan = null;
   };
@@ -1441,6 +1912,11 @@ export class EditorController {
       return;
     }
 
+    if (this.tool === "foundation" || this.tool === "island") {
+      this.addFoundationAt(ground, this.tool === "island");
+      return;
+    }
+
     if (this.tool === "road") return;
 
     if (this.tool === "erase") {
@@ -1455,7 +1931,12 @@ export class EditorController {
         return;
       }
       const road = this.pickRoad(event.clientX, event.clientY);
-      if (road) this.removeRoadById(road);
+      if (road) {
+        this.removeRoadById(road);
+        return;
+      }
+      const foundation = this.pickFoundation(event.clientX, event.clientY);
+      if (foundation) this.removeFoundationById(foundation);
       else this.notice("这里没有可删除的对象");
       return;
     }
@@ -1473,6 +1954,11 @@ export class EditorController {
     const road = this.pickRoad(event.clientX, event.clientY);
     if (road) {
       this.selectRoad(road);
+      return;
+    }
+    const foundation = this.pickFoundation(event.clientX, event.clientY);
+    if (foundation) {
+      this.selectFoundation(foundation);
       return;
     }
     this.selectSite(null);
@@ -1501,6 +1987,18 @@ export class EditorController {
       this.redo();
       return;
     }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      if (this.selection?.kind === "foundation") this.duplicateSelectedFoundation();
+      return;
+    }
+    if (event.key === "PageUp" || event.key === "PageDown") {
+      if (this.selection?.kind === "foundation") {
+        event.preventDefault();
+        this.nudgeFoundationElevation(event.key === "PageUp" ? 1 : -1);
+      }
+      return;
+    }
     if (event.key === "Delete" || event.key === "Backspace") {
       if (this.selection?.kind === "site") {
         event.preventDefault();
@@ -1511,6 +2009,9 @@ export class EditorController {
       } else if (this.selection?.kind === "road") {
         event.preventDefault();
         this.removeRoadById(this.selection.id);
+      } else if (this.selection?.kind === "foundation") {
+        event.preventDefault();
+        this.removeFoundationById(this.selection.id);
       }
       return;
     }
@@ -1535,6 +2036,8 @@ export class EditorController {
       this.roadFrom = null;
       this.roadDraw = null;
       this.roadPointDrag = null;
+      this.foundationDrag = null;
+      this.foundationResize = null;
       this.pathFrom = null;
       this.pathPoints = null;
       if (this.pathTest) {
@@ -1552,6 +2055,15 @@ export class EditorController {
   };
 
   private renderInspector(): void {
+    if (this.selection?.kind === "foundation") {
+      const foundation = this.selectedFoundation();
+      if (foundation) {
+        this.inspector.innerHTML = this.foundationInspectorHtml(foundation);
+        this.bindInspector();
+        return;
+      }
+      this.selection = null;
+    }
     if (this.selection?.kind === "road") {
       const road = this.selectedRoad();
       this.inspector.innerHTML = road ? this.roadInspectorHtml(road) : this.mapSettingsHtml();
@@ -1691,35 +2203,24 @@ export class EditorController {
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
     const unitAssets = assetRegistry.list("unit");
-    const foundationAssets = assetRegistry.list("foundation");
-    const foundation = this.doc.visual.foundation;
-    const foundationMissing = foundation && !assetRegistry.has(foundation.assetId);
+    const bounds = documentBounds(this.doc);
+    const foundationCount = this.doc.visual.foundations.length;
     const packRows = assetRegistry.packList
       .map(
         (pack) => `<div class="ml-ed-pack-row"><span>${escapeHtml(pack.name)}</span><button data-pack-remove="${escapeHtml(pack.id)}">移除</button></div>`,
       )
       .join("");
-    const foundationOptions = foundationAssets
-      .map((asset) => option(asset.id, foundation?.assetId ?? "", asset.label + (asset.source === "pack" ? " · 资产包" : "")))
-      .join("");
-    const foundationMissingOption = foundation && foundationMissing
-      ? option(foundation.assetId, foundation.assetId, foundation.assetId + " · 缺失")
-      : "";
-    const foundationControls = foundation
-      ? '<div class="ml-ed-row">'
-        + '<label class="ml-ed-field"><span>缩放</span><input data-field="foundationScale" type="number" min="0.01" max="100" step="0.05" value="' + foundation.scale + '"></label>'
-        + '<label class="ml-ed-field"><span>旋转</span><input data-field="foundationRotation" type="number" min="-360" max="360" step="5" value="' + foundation.rotation + '"></label>'
-        + '</div>'
-        + '<label class="ml-ed-field"><span>高度偏移</span><input data-field="foundationOffsetY" type="number" min="-100" max="100" step="0.1" value="' + foundation.offsetY + '"></label>'
-      : "";
+    const sizeControls = this.doc.navigation === "grid"
+      ? `<div class="ml-ed-row">
+        <label class="ml-ed-field"><span>宽</span><input data-field="width" type="number" min="100" max="2000" step="10" value="${this.doc.size[0]}"></label>
+        <label class="ml-ed-field"><span>高</span><input data-field="height" type="number" min="100" max="2000" step="10" value="${this.doc.size[1]}"></label>
+      </div>`
+      : `<div class="ml-ed-meta">地图范围 ${((bounds.maxX - bounds.minX) / 10).toFixed(1)} × ${((bounds.maxZ - bounds.minZ) / 10).toFixed(1)} 米，由地基决定</div>`;
     return `
       <h3>地图设置</h3>
       <div class="ml-ed-kind">${this.doc.sites.length} 个据点 · ${this.doc.visual.props.length} 个装饰 · ${errors} 个错误</div>
       <label class="ml-ed-field"><span>地图名称</span><input data-field="name" value="${escapeHtml(this.doc.name)}"></label>
-      <div class="ml-ed-row">
-        <label class="ml-ed-field"><span>宽</span><input data-field="width" type="number" min="100" max="2000" step="10" value="${this.doc.size[0]}"></label>
-        <label class="ml-ed-field"><span>高</span><input data-field="height" type="number" min="100" max="2000" step="10" value="${this.doc.size[1]}"></label>
-      </div>
+      ${sizeControls}
       <label class="ml-ed-field"><span>通行规则</span>
         <select data-field="transit">
           ${option("friendly", this.doc.transit, "友方通行")}
@@ -1747,15 +2248,12 @@ export class EditorController {
         <label class="ml-ed-field"><span>宽度</span><input data-field="roadWidth" type="number" min="0.6" max="6" step="0.1" value="${this.doc.visual.roads.width}"></label>
       </div>
       <div class="ml-ed-section-label">地基</div>
-      <label class="ml-ed-field"><span>模型</span>
-        <select data-field="foundationAsset">
-          ${option("", foundation?.assetId ?? "", "程序化浮岛")}
-          ${foundationOptions}
-          ${foundationMissingOption}
-        </select>
-      </label>
-      ${foundationControls}
-      ${foundationAssets.length === 0 ? '<p class="ml-ed-note">导入含 foundation 资产的 .mlpack 后，可在这里替换浮岛外壳。</p>' : ""}
+      <div class="ml-ed-kind">${foundationCount} 块地基 · 地图范围 ${((bounds.maxX - bounds.minX) / 10).toFixed(1)} × ${((bounds.maxZ - bounds.minZ) / 10).toFixed(1)} 米</div>
+      <div class="ml-ed-row">
+        <button class="ml-ed-btn" data-action="add-foundation">添加地基</button>
+        <button class="ml-ed-btn" data-action="add-island">添加浮空岛</button>
+      </div>
+      <p class="ml-ed-note">地基是地图的实体：向外扩展会扩大地图，抬高地基会得到浮空岛。选中地基后可移动、改尺寸和高度。</p>
       <label class="ml-ed-check"><input data-field="scatter" type="checkbox" ${this.doc.visual.scatter ? "checked" : ""}><span>自动补树、石头与草丛</span></label>
       <div class="ml-ed-section-label">网格笔刷</div>
       <div class="ml-ed-kind">${this.doc.navigation === "grid" && this.doc.grid ? `${this.doc.grid.width} × ${this.doc.grid.height} 格 · ${this.doc.grid.cellSizeDm / 10} 米` : "据点图模式，未启用网格"}</div>
@@ -1807,12 +2305,41 @@ export class EditorController {
         const siteId = field.dataset.site;
         const propId = field.dataset.prop;
         const roadId = field.dataset.road;
+        const foundationId = field.dataset.foundation;
         if (siteId) this.changeSiteField(siteId, name, value);
         else if (propId) this.changePropField(propId, name, value);
         else if (roadId) this.changeRoadField(roadId, name, value);
+        else if (foundationId) this.changeFoundationField(foundationId, name, value);
         else this.changeMapField(name, value);
       });
     }
+    this.inspector.querySelector<HTMLElement>("[data-action=delete-foundation]")?.addEventListener("click", () => {
+      if (this.selection?.kind === "foundation") this.removeFoundationById(this.selection.id);
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=foundation-duplicate]")?.addEventListener("click", () => {
+      this.duplicateSelectedFoundation();
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=foundation-up]")?.addEventListener("click", () => {
+      this.nudgeFoundationElevation(1);
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=foundation-down]")?.addEventListener("click", () => {
+      this.nudgeFoundationElevation(-1);
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=foundation-focus]")?.addEventListener("click", () => {
+      const foundation = this.selectedFoundation();
+      if (!foundation) return;
+      this.scene?.focusOn(foundation.pos[0] / 10, foundation.pos[1] / 10);
+      this.view = this.scene?.getViewState() ?? this.view;
+      this.drawOverlay();
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=add-foundation]")?.addEventListener("click", () => {
+      this.setTool("foundation");
+      this.setPaletteMode("foundation");
+    });
+    this.inspector.querySelector<HTMLElement>("[data-action=add-island]")?.addEventListener("click", () => {
+      this.setTool("island");
+      this.setPaletteMode("foundation");
+    });
     this.inspector.querySelector<HTMLElement>("[data-action=delete]")?.addEventListener("click", () => {
       if (this.selection?.kind === "site") this.removeSiteById(this.selection.id);
     });
@@ -1970,30 +2497,6 @@ export class EditorController {
       this.commit(updateScatter(this.doc, value === "true"), value === "true" ? "已开启自动补景" : "已关闭自动补景");
       return;
     }
-    if (field === "foundationAsset") {
-      if (!value) {
-        this.commit(updateFoundation(this.doc, null), "已恢复程序化浮岛");
-      } else {
-        const current = this.doc.visual.foundation;
-        this.commit(updateFoundation(this.doc, {
-          assetId: value,
-          scale: current?.scale ?? 1,
-          rotation: current?.rotation ?? 0,
-          offsetY: current?.offsetY ?? 0,
-        }), "已设置地基模型");
-      }
-      return;
-    }
-    if (field === "foundationScale" || field === "foundationRotation" || field === "foundationOffsetY") {
-      const current = this.doc.visual.foundation;
-      if (!current) return;
-      const next = { ...current };
-      if (field === "foundationScale") next.scale = Math.max(0.01, Math.min(100, Number(value) || 1));
-      if (field === "foundationRotation") next.rotation = Math.max(-360, Math.min(360, Number(value) || 0));
-      if (field === "foundationOffsetY") next.offsetY = Math.max(-100, Math.min(100, Number(value) || 0));
-      this.commit(updateFoundation(this.doc, next), "已调整地基模型");
-      return;
-    }
     if (field === "brushRadius") {
       this.brushRadius = Math.max(1, Math.min(8, Math.round(Number(value) || 2)));
       this.drawOverlay();
@@ -2146,6 +2649,8 @@ export class EditorController {
       const projected = this.scene?.projectGround(site.pos[0], site.pos[1], y);
       return projected ? local(projected) : null;
     };
+
+    this.drawFoundations();
 
     if (this.drag?.moved && this.drag.ground) {
       const site = this.doc.sites.find((entry) => entry.id === this.drag?.id);
@@ -2430,6 +2935,112 @@ export class EditorController {
           this.ctx.lineWidth = 1;
           this.ctx.beginPath();
           this.ctx.arc(localPoint.x, localPoint.y, 10, 0, Math.PI * 2);
+          this.ctx.stroke();
+          this.ctx.restore();
+        }
+      }
+    }
+  }
+
+  private drawFoundations(): void {
+    if (!this.scene) return;
+    for (const foundation of this.doc.visual.foundations) {
+      let preview = foundation;
+      if (this.foundationDrag?.id === foundation.id && this.foundationDrag.moved) {
+        preview = { ...foundation, pos: this.foundationDrag.previewPos };
+      }
+      if (this.foundationResize?.id === foundation.id && this.foundationResize.moved) {
+        const rect = this.foundationResize.rect;
+        preview = {
+          ...foundation,
+          pos: [(rect.minX + rect.maxX) / 2, (rect.minZ + rect.maxZ) / 2],
+          size: [rect.maxX - rect.minX, rect.maxZ - rect.minZ],
+        };
+      }
+      const quad = this.foundationQuad(preview);
+      if (!quad) continue;
+      const selected = this.selection?.kind === "foundation" && this.selection.id === foundation.id;
+      const floating = preview.elevation !== 0;
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.moveTo(quad[0].x, quad[0].y);
+      for (let index = 1; index < quad.length; index += 1) this.ctx.lineTo(quad[index].x, quad[index].y);
+      this.ctx.closePath();
+      this.ctx.fillStyle = selected ? "rgba(201,168,106,.10)" : "rgba(201,168,106,.03)";
+      this.ctx.fill();
+      this.ctx.setLineDash(selected ? [] : [6, 5]);
+      this.ctx.lineWidth = selected ? 2 : 1;
+      this.ctx.strokeStyle = selected ? "#e6c987" : floating ? "rgba(143,182,216,.45)" : "rgba(201,168,106,.3)";
+      this.ctx.stroke();
+      this.ctx.restore();
+
+      const center = this.scene.projectGround(preview.pos[0], preview.pos[1], 0.6);
+      if (center) {
+        const point = {
+          x: center.x - this.canvas.getBoundingClientRect().left,
+          y: center.y - this.canvas.getBoundingClientRect().top,
+        };
+        const size = `${(preview.size[0] / 10).toFixed(0)}×${(preview.size[1] / 10).toFixed(0)}`;
+        const height = preview.elevation === 0 ? "" : ` · ${preview.elevation > 0 ? "+" : ""}${preview.elevation.toFixed(1)}m`;
+        const text = `${preview.id} · ${size}${height}`;
+        this.ctx.save();
+        this.ctx.font = "11px 'Segoe UI', sans-serif";
+        const width = this.ctx.measureText(text).width + 10;
+        this.ctx.fillStyle = "rgba(10,15,11,.72)";
+        this.ctx.fillRect(point.x - width / 2, point.y - 9, width, 18);
+        this.ctx.fillStyle = selected ? "#f0dcae" : "rgba(232,215,180,.7)";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText(text, point.x, point.y);
+        this.ctx.restore();
+      }
+
+      if (selected) {
+        for (const corner of quad) {
+          this.ctx.save();
+          this.ctx.fillStyle = "#0d1410";
+          this.ctx.strokeStyle = "#e6c987";
+          this.ctx.lineWidth = 1.5;
+          this.ctx.beginPath();
+          this.ctx.rect(corner.x - 5, corner.y - 5, 10, 10);
+          this.ctx.fill();
+          this.ctx.stroke();
+          this.ctx.restore();
+        }
+        for (let edge = 0; edge < 4; edge += 1) {
+          const a = quad[edge];
+          const b = quad[(edge + 1) % 4];
+          const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          this.ctx.save();
+          this.ctx.fillStyle = "#0d1410";
+          this.ctx.strokeStyle = "rgba(230,201,135,.8)";
+          this.ctx.lineWidth = 1;
+          this.ctx.beginPath();
+          this.ctx.moveTo(middle.x, middle.y - 4);
+          this.ctx.lineTo(middle.x + 4, middle.y);
+          this.ctx.lineTo(middle.x, middle.y + 4);
+          this.ctx.lineTo(middle.x - 4, middle.y);
+          this.ctx.closePath();
+          this.ctx.fill();
+          this.ctx.stroke();
+          this.ctx.restore();
+        }
+      }
+    }
+    if (this.tool === "select" && !this.foundationDrag && !this.foundationResize) {
+      const hovered = this.pickFoundation(this.pointer.x, this.pointer.y);
+      if (hovered && !(this.selection?.kind === "foundation" && this.selection.id === hovered)) {
+        const foundation = this.doc.visual.foundations.find((entry) => entry.id === hovered);
+        const quad = foundation ? this.foundationQuad(foundation) : null;
+        if (quad) {
+          this.ctx.save();
+          this.ctx.setLineDash([4, 4]);
+          this.ctx.strokeStyle = "rgba(230,201,135,.75)";
+          this.ctx.lineWidth = 1.5;
+          this.ctx.beginPath();
+          this.ctx.moveTo(quad[0].x, quad[0].y);
+          for (let index = 1; index < quad.length; index += 1) this.ctx.lineTo(quad[index].x, quad[index].y);
+          this.ctx.closePath();
           this.ctx.stroke();
           this.ctx.restore();
         }

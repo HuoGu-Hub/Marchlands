@@ -219,8 +219,9 @@ export class BattleScene {
     height: number;
     cellCm: number;
   } | null = null;
-  private foundationGroup: THREE.Group | null = null;
+  private readonly foundationGroups: THREE.Group[] = [];
   private foundationToken = 0;
+  private foundationSignature = "";
   private atmosphere: Atmosphere | null = null;
   private sun: THREE.DirectionalLight | null = null;
   /** 开场前选定的兵团皮肤：兵种 → 资产 id。 */
@@ -260,7 +261,7 @@ export class BattleScene {
     this.scene.add(this.propGroup);
     this.scene.add(this.sceneryGroup);
     this.buildGround();
-    this.applyFoundation();
+    this.applyFoundations();
     this.zoom = Math.max(this.fitZoom(), GAMEPLAY_ZOOM);
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
@@ -275,6 +276,7 @@ export class BattleScene {
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__mlDebug = {
         projectCity: (id: string) => this.projectCity(id as CityId),
+        projectCityBase: (id: string) => this.projectCityBase(id as CityId),
       };
     }
   }
@@ -286,6 +288,12 @@ export class BattleScene {
   rotate(direction: 1 | -1): void {
     this.yawIndex = (this.yawIndex + direction + 4) % 4;
     this.targetYaw = BASE_YAW + (this.yawIndex * Math.PI) / 2;
+  }
+
+  focusOn(x: number, z: number): void {
+    this.focus.set(x, 0, z);
+    this.clampFocus();
+    this.resize();
   }
 
   zoomBy(delta: number): void {
@@ -304,6 +312,12 @@ export class BattleScene {
   }
 
   private computeBounds(): void {
+    this.refreshBounds();
+    this.focus.set((this.bounds.minX + this.bounds.maxX) / 2, 0, (this.bounds.minZ + this.bounds.maxZ) / 2);
+  }
+
+  /** 镜头活动范围取据点与所有地基的并集，浮空岛不会被裁掉。 */
+  private refreshBounds(): void {
     let minX = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
     let minZ = Number.POSITIVE_INFINITY;
@@ -314,8 +328,20 @@ export class BattleScene {
       minZ = Math.min(minZ, position.z);
       maxZ = Math.max(maxZ, position.z);
     }
+    const terrainBounds = this.terrain?.bounds;
+    if (terrainBounds) {
+      minX = Math.min(minX, terrainBounds.minX);
+      maxX = Math.max(maxX, terrainBounds.maxX);
+      minZ = Math.min(minZ, terrainBounds.minZ);
+      maxZ = Math.max(maxZ, terrainBounds.maxZ);
+    }
+    if (!Number.isFinite(minX)) {
+      minX = -30;
+      maxX = 30;
+      minZ = -30;
+      maxZ = 30;
+    }
     this.bounds = { minX: minX - 8, maxX: maxX + 8, minZ: minZ - 8, maxZ: maxZ + 8 };
-    this.focus.set((this.bounds.minX + this.bounds.maxX) / 2, 0, (this.bounds.minZ + this.bounds.maxZ) / 2);
   }
 
   private clampFocus(): void {
@@ -332,6 +358,17 @@ export class BattleScene {
     if (!position) return null;
     const rect = this.canvas.getBoundingClientRect();
     const projected = position.clone().setY(position.y + (this.cityViews.get(cityId)?.labelHeight ?? CITY_LABEL_HEIGHT)).project(this.camera);
+    return {
+      x: rect.left + ((projected.x + 1) / 2) * rect.width,
+      y: rect.top + ((1 - projected.y) / 2) * rect.height,
+    };
+  }
+
+  projectCityBase(cityId: CityId): { x: number; y: number } | null {
+    const position = this.positions.get(cityId);
+    if (!position) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const projected = position.clone().setY(position.y + 1.8).project(this.camera);
     return {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
@@ -356,6 +393,11 @@ export class BattleScene {
     this.terrain.setNavPreview(visible);
   }
 
+  /** 分米坐标是否落在某块地基上。 */
+  hasGround(xDm: number, zDm: number): boolean {
+    return this.terrain.hasGround(xDm / 10, zDm / 10);
+  }
+
   projectGround(x: number, z: number, height = 0): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
     const worldX = x / 10;
@@ -377,8 +419,8 @@ export class BattleScene {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(ndc, this.camera);
     const point = new THREE.Vector3();
-    this.terrain.mesh.updateMatrixWorld(true);
-    const hits = raycaster.intersectObject(this.terrain.mesh, false);
+    for (const mesh of this.terrain.meshes) mesh.updateMatrixWorld(true);
+    const hits = raycaster.intersectObjects(this.terrain.meshes, false);
     if (hits.length > 0) {
       point.copy(hits[0].point);
       return [point.x * 10, point.z * 10];
@@ -918,6 +960,7 @@ export class BattleScene {
     const terrain = this.visual?.terrain;
     this.terrain = buildTerrain(this.map, this.positions, {
       ...terrain,
+      visual: this.visual,
       ...(reuseIsland && previous ? { previous } : {}),
     });
     if (previous) {
@@ -925,48 +968,71 @@ export class BattleScene {
       disposeObject(previous.group);
     }
     this.scene.add(this.terrain.group);
-    if (this.foundationGroup) this.terrain.islandGroup.visible = false;
+    this.refreshBounds();
     if (!(previous && reuseIsland)) this.rebuildAtmosphere(terrain?.style);
   }
 
-  private applyFoundation(): void {
+  /** 按地基逐块套用外壳模型；没有外壳的地基保留程序化浮岛。 */
+  private applyFoundations(): void {
+    const signature = this.terrain.platforms
+      .map((entry) =>
+        [
+          entry.platform.id,
+          entry.platform.assetId ?? "",
+          entry.platform.elevation,
+          entry.platform.scale,
+          entry.platform.rotation,
+          entry.platform.minX,
+          entry.platform.maxX,
+          entry.platform.minZ,
+          entry.platform.maxZ,
+        ].join(":"),
+      )
+      .join("|");
+    if (signature === this.foundationSignature) return;
+    this.foundationSignature = signature;
     this.foundationToken += 1;
     const token = this.foundationToken;
-    if (this.foundationGroup) {
-      this.scene.remove(this.foundationGroup);
-      disposeObject(this.foundationGroup);
-      this.foundationGroup = null;
+    for (const group of this.foundationGroups) {
+      this.scene.remove(group);
+      disposeObject(group);
     }
-    const spec = this.visual?.foundation;
-    if (!spec) {
-      this.terrain.islandGroup.visible = true;
-      return;
+    this.foundationGroups.length = 0;
+    for (const entry of this.terrain.platforms) {
+      const platform = entry.platform;
+      entry.shell.visible = true;
+      if (!platform.assetId) continue;
+      if (!assetRegistry.has(platform.assetId)) {
+        this.missingAssets.add(platform.assetId);
+        continue;
+      }
+      const assetId = platform.assetId;
+      void assetRegistry
+        .build(assetId, { seed: hashId(assetId), terrainStyle: this.visual?.terrain.style })
+        .then((model) => {
+          if (this.disposed || token !== this.foundationToken) {
+            disposeObject(model);
+            return;
+          }
+          const group = new THREE.Group();
+          group.name = `foundation-${platform.id}`;
+          group.add(model);
+          group.position.set(
+            (platform.minX + platform.maxX) / 2,
+            platform.elevation,
+            (platform.minZ + platform.maxZ) / 2,
+          );
+          group.rotation.y = (platform.rotation * Math.PI) / 180;
+          group.scale.setScalar(platform.scale);
+          this.foundationGroups.push(group);
+          this.scene.add(group);
+          entry.shell.visible = false;
+        })
+        .catch(() => {
+          this.missingAssets.add(assetId);
+          entry.shell.visible = true;
+        });
     }
-    if (!assetRegistry.has(spec.assetId)) {
-      this.missingAssets.add(spec.assetId);
-      this.terrain.islandGroup.visible = true;
-      return;
-    }
-    void assetRegistry
-      .build(spec.assetId, { seed: hashId(spec.assetId), terrainStyle: this.visual?.terrain.style })
-      .then((model) => {
-        if (this.disposed || token !== this.foundationToken) {
-          disposeObject(model);
-          return;
-        }
-        const group = new THREE.Group();
-        group.name = "map-foundation";
-        group.add(model);
-        group.position.set(this.terrain.island.centerX, spec.offsetY, this.terrain.island.centerZ);
-        group.rotation.y = (spec.rotation * Math.PI) / 180;
-        group.scale.setScalar(spec.scale);
-        this.foundationGroup = group;
-        this.scene.add(group);
-        this.terrain.islandGroup.visible = false;
-      })
-      .catch(() => {
-        this.missingAssets.add(spec.assetId);
-      });
   }
 
   private rebuildAtmosphere(style: string | undefined): void {
@@ -1022,6 +1088,7 @@ export class BattleScene {
     this.map = map;
     this.visual = visual;
     this.buildGround(previous, reuseIsland);
+    this.applyFoundations();
     for (const position of this.positions.values()) {
       position.y = this.terrain.heightAt(position.x, position.z);
     }
@@ -1370,12 +1437,14 @@ export class BattleScene {
     const treePlacements: Scatter[] = [];
     const rockPlacements: Scatter[] = [];
     const plantPlacements: Scatter[] = [];
+    const scatter = this.terrain.bounds;
 
     let guard = 0;
     while (treePlacements.length < 240 && guard < 30000) {
       guard += 1;
-      const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
-      const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
+      const x = scatter.minX + 3 + random() * (scatter.maxX - scatter.minX - 6);
+      const z = scatter.minZ + 3 + random() * (scatter.maxZ - scatter.minZ - 6);
+      if (!this.terrain.hasGround(x, z)) continue;
       if (nearCity(this.positions, x, z, 3.9)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 2.1)) continue;
       if (nearProp(x, z, 1.2)) continue;
@@ -1385,8 +1454,9 @@ export class BattleScene {
     guard = 0;
     while (rockPlacements.length < 80 && guard < 14000) {
       guard += 1;
-      const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
-      const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
+      const x = scatter.minX + 3 + random() * (scatter.maxX - scatter.minX - 6);
+      const z = scatter.minZ + 3 + random() * (scatter.maxZ - scatter.minZ - 6);
+      if (!this.terrain.hasGround(x, z)) continue;
       if (nearCity(this.positions, x, z, 3.4)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.5)) continue;
       if (nearProp(x, z, 1.0)) continue;
@@ -1396,8 +1466,9 @@ export class BattleScene {
     guard = 0;
     while (plantPlacements.length < 180 && guard < 24000) {
       guard += 1;
-      const x = this.bounds.minX + 3 + random() * (this.bounds.maxX - this.bounds.minX - 6);
-      const z = this.bounds.minZ + 3 + random() * (this.bounds.maxZ - this.bounds.minZ - 6);
+      const x = scatter.minX + 3 + random() * (scatter.maxX - scatter.minX - 6);
+      const z = scatter.minZ + 3 + random() * (scatter.maxZ - scatter.minZ - 6);
+      if (!this.terrain.hasGround(x, z)) continue;
       if (nearCity(this.positions, x, z, 2.7)) continue;
       if (nearRoad(this.map.edges, this.positions, x, z, 1.2)) continue;
       if (nearProp(x, z, 0.8)) continue;
@@ -1408,9 +1479,10 @@ export class BattleScene {
     const cliffRocks: Scatter[] = [];
     const rimTrees: Scatter[] = [];
     const island = this.terrain.island;
-    island.rim.forEach((point, index) => {
-      const theta = Math.atan2(point.z - island.centerZ, point.x - island.centerX);
-      const radius = Math.hypot(point.x - island.centerX, point.z - island.centerZ);
+    const rimCenter = this.terrain.primaryCenter;
+    this.terrain.primaryRim.forEach((point, index) => {
+      const theta = Math.atan2(point.z - rimCenter.z, point.x - rimCenter.x);
+      const radius = Math.hypot(point.x - rimCenter.x, point.z - rimCenter.z);
       const cos = Math.cos(theta);
       const sin = Math.sin(theta);
 
@@ -1431,8 +1503,8 @@ export class BattleScene {
         const t = 0.16 + random() * 0.34;
         const shrink = 0.8 * Math.pow(t, 0.9);
         const cliffRadius = radius * (1 - shrink) * (0.84 + random() * 0.06);
-        const x = island.centerX + cos * cliffRadius;
-        const z = island.centerZ + sin * cliffRadius;
+        const x = rimCenter.x + cos * cliffRadius;
+        const z = rimCenter.z + sin * cliffRadius;
         const scale = 2.8 + random() * 2.4;
         const y = point.y - t * island.depth * 0.95 - scale * 0.2;
         cliffRocks.push({ x, z, y, rotation: random() * Math.PI * 2, scale, fixedY: y });

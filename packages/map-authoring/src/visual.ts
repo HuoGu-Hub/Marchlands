@@ -1,5 +1,6 @@
 import type { MapDef } from "@marchlands/sim";
 import type {
+  FoundationDraft,
   MapDocument,
   MapVisual,
   PropDraft,
@@ -9,6 +10,7 @@ import type {
   VisualDraft,
 } from "./types";
 import { TERRAIN_STYLE_IDS } from "./types";
+import { createFoundation } from "./foundations";
 
 const STARTER_SEED = 20261102;
 
@@ -248,20 +250,51 @@ export function createStarterVisual(document: MapDocument): VisualDraft {
   return {
     terrain: { style: "frontier", seed: STARTER_SEED, amplitude: 1 },
     roads: { style: "cobble", width: 1.6 },
+    foundations: foundationsForDocument(document),
     props,
     units: {},
     scatter: true,
   };
 }
 
-export function createDefaultVisual(seed = STARTER_SEED): VisualDraft {
+export function createDefaultVisual(seed = STARTER_SEED, size: [number, number] = [700, 700]): VisualDraft {
   return {
     terrain: { style: "frontier", seed, amplitude: 1 },
     roads: { style: "cobble", width: 1.6 },
+    foundations: [createFoundation([], { pos: [0, 0], size })],
     props: [],
     units: {},
     scatter: true,
   };
+}
+
+/** 编辑器文档的默认地基：铺满当前地图尺寸。 */
+export function foundationsForDocument(document: MapDocument): FoundationDraft[] {
+  return [createFoundation([], { pos: [0, 0], size: [document.size[0], document.size[1]] })];
+}
+
+/** 内置地图的默认地基：网格图铺满地图，据点图包住所有据点并留出 14 米边缘。 */
+export function foundationsForMap(map: MapDef): FoundationDraft[] {
+  if (map.navigation === "grid" || map.cities.length === 0) {
+    return [createFoundation([], { pos: [0, 0], size: [map.size[0], map.size[1]] })];
+  }
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  for (const city of map.cities) {
+    minX = Math.min(minX, city.pos[0]);
+    maxX = Math.max(maxX, city.pos[0]);
+    minZ = Math.min(minZ, city.pos[1]);
+    maxZ = Math.max(maxZ, city.pos[1]);
+  }
+  const pad = 140;
+  return [
+    createFoundation([], {
+      pos: [(minX + maxX) / 2, (minZ + maxZ) / 2],
+      size: [maxX - minX + pad * 2, maxZ - minZ + pad * 2],
+    }),
+  ];
 }
 
 export function defaultVisualForMap(map: MapDef): MapVisual {
@@ -269,6 +302,7 @@ export function defaultVisualForMap(map: MapDef): MapVisual {
   return {
     terrain: { style, seed: hashText(map.slug) % 1_000_000, amplitude: 1 },
     roads: { style: map.biome === "forest" ? "dirt" : "cobble", width: 1.6 },
+    foundations: foundationsForMap(map),
     props: [],
     units: {},
     scatter: true,
@@ -280,6 +314,11 @@ export function cloneVisual(visual: VisualDraft): VisualDraft {
   return {
     terrain: { ...visual.terrain },
     roads: { ...visual.roads },
+    foundations: visual.foundations.map((foundation) => ({
+      ...foundation,
+      pos: [foundation.pos[0], foundation.pos[1]] as [number, number],
+      size: [foundation.size[0], foundation.size[1]] as [number, number],
+    })),
     props: visual.props.map((entry) => ({
       ...entry,
       pos: [entry.pos[0], entry.pos[1]],
@@ -302,7 +341,11 @@ export function compileVisual(document: MapDocument): MapVisual {
   return {
     terrain: { ...document.visual.terrain },
     roads: { ...document.visual.roads },
-    ...(document.visual.foundation ? { foundation: { ...document.visual.foundation } } : {}),
+    foundations: document.visual.foundations.map((foundation) => ({
+      ...foundation,
+      pos: [foundation.pos[0], foundation.pos[1]] as [number, number],
+      size: [foundation.size[0], foundation.size[1]] as [number, number],
+    })),
     props: document.visual.props.map((entry) => ({
       ...entry,
       pos: [entry.pos[0], entry.pos[1]],

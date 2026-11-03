@@ -315,7 +315,6 @@ function withTerrainPreset(visual: MapVisual, id: string): MapVisual {
       material: preset.material,
     },
     roads: { ...visual.roads, style: preset.roadStyle },
-    foundation: undefined,
   };
 }
 

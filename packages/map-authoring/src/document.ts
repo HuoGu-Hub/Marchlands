@@ -4,6 +4,7 @@ import { mapHashOf, type MapDef, type MapGridDef, type MapPlayer, type Navigatio
 import type {
   CompileResult,
   EditorDiagnostic,
+  FoundationDraft,
   GridDraft,
   MapDocument,
   MapVisual,
@@ -31,12 +32,27 @@ import {
   compileVisual,
   createDefaultVisual,
   createStarterVisual,
+  foundationsForDocument,
+  foundationsForMap,
   isAssetId,
   isRoadStyle,
   isTerrainStyle,
   roadDraft,
   terrainDraft,
 } from "./visual";
+import type { FoundationBoundsDm } from "./foundations";
+import {
+  MAX_FOUNDATION_SIZE_DM,
+  MIN_FOUNDATION_SIZE_DM,
+  clampDepth,
+  clampElevation,
+  clampRotation,
+  clampScale,
+  createFoundation,
+  documentBounds,
+  foundationContains,
+  overlapArea,
+} from "./foundations";
 
 const DEFAULT_PLAYERS: MapPlayer[] = [
   { id: 1, name: "Player", color: "green", ai: false },
@@ -115,6 +131,18 @@ export function convertToGrid(document: MapDocument): MapDocument {
   next.navigation = "grid";
   next.vision = { enabled: false };
   if (!next.grid) next.grid = createGridDraft(next.size);
+  // 网格导航只支持一块与网格同心的地基，转换时收拢。
+  const primary = next.visual.foundations[0];
+  next.visual.foundations = [
+    createFoundation([], {
+      pos: [0, 0],
+      size: [next.size[0], next.size[1]],
+      elevation: primary?.elevation ?? 0,
+      ...(primary?.assetId ? { assetId: primary.assetId } : {}),
+      scale: primary?.scale ?? 1,
+      rotation: primary?.rotation ?? 0,
+    }),
+  ];
   for (const site of next.sites) {
     if (site.footprintDm === undefined) site.footprintDm = DEFAULT_FOOTPRINT_DM;
     if (site.captureRadiusDm === undefined) site.captureRadiusDm = DEFAULT_CAPTURE_RADIUS_DM;
@@ -326,8 +354,68 @@ function navigationFromUnknown(value: unknown, schema: number): NavigationMode {
   return "graph";
 }
 
-function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
-  const fallback = createDefaultVisual(fallbackSeed);
+function foundationFromUnknown(value: unknown, index: number): FoundationDraft {
+  if (!asRecord(value)) throw new Error("地基配置必须是对象");
+  const pos = numberPair(value.pos) ?? [0, 0];
+  const size = numberPair(value.size);
+  if (!size) throw new Error("地基尺寸必须是两个整数");
+  if (size[0] < MIN_FOUNDATION_SIZE_DM || size[1] < MIN_FOUNDATION_SIZE_DM) {
+    throw new Error(`地基尺寸不能小于 ${MIN_FOUNDATION_SIZE_DM / 10} 米`);
+  }
+  if (size[0] > MAX_FOUNDATION_SIZE_DM || size[1] > MAX_FOUNDATION_SIZE_DM) {
+    throw new Error(`地基尺寸不能大于 ${MAX_FOUNDATION_SIZE_DM / 10} 米`);
+  }
+  const id = typeof value.id === "string" && value.id.length > 0 ? value.id : `f${index + 1}`;
+  const elevation = finiteNumber(value.elevation) ?? 0;
+  const foundation: FoundationDraft = {
+    id,
+    pos: [Math.round(pos[0]), Math.round(pos[1])],
+    size: [Math.round(size[0]), Math.round(size[1])],
+    elevation: clampElevation(elevation),
+    scale: clampScale(finiteNumber(value.scale) ?? 1),
+    rotation: clampRotation(finiteNumber(value.rotation) ?? 0),
+  };
+  if (value.depth !== undefined) {
+    const depth = finiteNumber(value.depth);
+    if (depth === null || depth <= 0) throw new Error(`地基 ${id} 的厚度无效`);
+    foundation.depth = clampDepth(depth);
+  }
+  if (value.assetId !== undefined && value.assetId !== "") {
+    if (!isAssetId(value.assetId)) throw new Error(`地基 ${id} 的外壳资产 ID 无效`);
+    foundation.assetId = value.assetId;
+  }
+  return foundation;
+}
+
+function legacyFoundationFromUnknown(value: unknown, bounds: FoundationBoundsDm): FoundationDraft {
+  if (!asRecord(value)) throw new Error("地基模型配置必须是对象");
+  const assetId = value.assetId;
+  if (!isAssetId(assetId)) throw new Error("地基模型资产 ID 无效");
+  const scale = typeof value.scale === "number" && Number.isFinite(value.scale) ? value.scale : 1;
+  const rotation = typeof value.rotation === "number" && Number.isFinite(value.rotation) ? value.rotation : 0;
+  const offsetY = typeof value.offsetY === "number" && Number.isFinite(value.offsetY) ? value.offsetY : 0;
+  return createFoundation([], {
+    id: "f1",
+    pos: [(bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2],
+    size: [bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ],
+    elevation: clampElevation(offsetY),
+    assetId,
+    scale: clampScale(scale),
+    rotation: clampRotation(rotation),
+  });
+}
+
+function visualFromUnknown(value: unknown, fallbackSeed: number, fallbackBounds: FoundationBoundsDm): VisualDraft {
+  const fallback = createDefaultVisual(fallbackSeed, [
+    fallbackBounds.maxX - fallbackBounds.minX,
+    fallbackBounds.maxZ - fallbackBounds.minZ,
+  ]);
+  fallback.foundations = [
+    createFoundation([], {
+      pos: [(fallbackBounds.minX + fallbackBounds.maxX) / 2, (fallbackBounds.minZ + fallbackBounds.maxZ) / 2],
+      size: [fallbackBounds.maxX - fallbackBounds.minX, fallbackBounds.maxZ - fallbackBounds.minZ],
+    }),
+  ];
   if (value === undefined) return fallback;
   if (!asRecord(value)) throw new Error("地图视觉配置必须是对象");
   const terrainInput = asRecord(value.terrain) ? value.terrain : undefined;
@@ -342,26 +430,19 @@ function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
   }
   const roads = roadDraft(roadsInput as Partial<VisualDraft["roads"]> | undefined, fallback.roads);
   const scatter = typeof value.scatter === "boolean" ? value.scatter : fallback.scatter;
-  let foundation: VisualDraft["foundation"];
-  if (value.foundation !== undefined) {
-    if (!asRecord(value.foundation)) throw new Error("地基模型配置必须是对象");
-    const assetId = value.foundation.assetId;
-    if (!isAssetId(assetId)) throw new Error("地基模型资产 ID 无效");
-    const scale = typeof value.foundation.scale === "number" && Number.isFinite(value.foundation.scale)
-      ? value.foundation.scale
-      : 1;
-    const rotation = typeof value.foundation.rotation === "number" && Number.isFinite(value.foundation.rotation)
-      ? value.foundation.rotation
-      : 0;
-    const offsetY = typeof value.foundation.offsetY === "number" && Number.isFinite(value.foundation.offsetY)
-      ? value.foundation.offsetY
-      : 0;
-    foundation = {
-      assetId,
-      scale: Math.max(0.01, Math.min(100, scale)),
-      rotation: Math.max(-3600, Math.min(3600, rotation)),
-      offsetY: Math.max(-100, Math.min(100, offsetY)),
-    };
+  let foundations: FoundationDraft[];
+  if (Array.isArray(value.foundations)) {
+    if (value.foundations.length === 0) throw new Error("地图至少需要一块地基");
+    foundations = value.foundations.map((entry, index) => foundationFromUnknown(entry, index));
+    const foundationIds = new Set<string>();
+    for (const entry of foundations) {
+      if (foundationIds.has(entry.id)) throw new Error(`地基编号重复：${entry.id}`);
+      foundationIds.add(entry.id);
+    }
+  } else if (value.foundation !== undefined) {
+    foundations = [legacyFoundationFromUnknown(value.foundation, fallbackBounds)];
+  } else {
+    foundations = fallback.foundations.map((entry) => ({ ...entry }));
   }
   const propsInput = value.props;
   let props: PropDraft[] = [];
@@ -392,7 +473,7 @@ function visualFromUnknown(value: unknown, fallbackSeed: number): VisualDraft {
   return {
     terrain,
     roads,
-    ...(foundation ? { foundation } : {}),
+    foundations,
     props,
     units,
     scatter,
@@ -435,6 +516,7 @@ export function fromMapDef(map: MapDef): MapDocument {
   const visual = createDefaultVisual();
   visual.terrain.style = map.biome === "forest" ? "meadow" : "frontier";
   visual.roads.style = map.biome === "forest" ? "dirt" : "cobble";
+  visual.foundations = foundationsForMap(map);
   return {
     schema: 3,
     navigation: map.navigation ?? "graph",
@@ -466,6 +548,26 @@ export function fromMapDef(map: MapDef): MapDocument {
     transit: map.transit ?? "open",
     visual,
   };
+}
+
+function centeredBounds(size: [number, number]): FoundationBoundsDm {
+  return { minX: -size[0] / 2, maxX: size[0] / 2, minZ: -size[1] / 2, maxZ: size[1] / 2 };
+}
+
+/** 旧文档没有地基数据时，按据点范围加 14 米边缘还原原来的浮岛。 */
+function fallbackBounds(sites: ReadonlyArray<SiteDraft>, size: [number, number]): FoundationBoundsDm {
+  if (sites.length === 0) return centeredBounds(size);
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  for (const site of sites) {
+    minX = Math.min(minX, site.pos[0]);
+    maxX = Math.max(maxX, site.pos[0]);
+    minZ = Math.min(minZ, site.pos[1]);
+    maxZ = Math.max(maxZ, site.pos[1]);
+  }
+  return { minX: minX - 140, maxX: maxX + 140, minZ: minZ - 140, maxZ: maxZ + 140 };
 }
 
 export function parseDocument(input: unknown): ParsedDocument {
@@ -533,7 +635,11 @@ export function parseDocument(input: unknown): ParsedDocument {
       roads,
       objectives,
       transit: input.transit === "open" ? "open" : "friendly",
-      visual: visualFromUnknown(input.visual, 20261102),
+      visual: visualFromUnknown(
+        input.visual,
+        20261102,
+        navigation === "grid" ? centeredBounds(size) : fallbackBounds(sites, size),
+      ),
     };
     return { document, diagnostics: compileDocument(document).diagnostics };
   }
@@ -591,6 +697,30 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
 
   if (document.players.length !== 2) error("players", "地图必须恰好有两名玩家");
   if (document.size[0] < 100 || document.size[1] < 100) error("size", "地图尺寸至少为 100 x 100");
+  const bounds = documentBounds(document);
+  if (document.visual.foundations.length === 0) error("foundation-empty", "地图至少需要一块地基");
+  const foundationIds = new Set<string>();
+  for (const foundation of document.visual.foundations) {
+    if (foundationIds.has(foundation.id)) {
+      error("foundation-duplicate", `地基编号重复：${foundation.id}`);
+    }
+    foundationIds.add(foundation.id);
+    if (foundation.size[0] < MIN_FOUNDATION_SIZE_DM || foundation.size[1] < MIN_FOUNDATION_SIZE_DM) {
+      error("foundation-size", `${foundation.id} 的尺寸不能小于 ${MIN_FOUNDATION_SIZE_DM / 10} 米`);
+    }
+    if (foundation.size[0] > MAX_FOUNDATION_SIZE_DM || foundation.size[1] > MAX_FOUNDATION_SIZE_DM) {
+      error("foundation-size", `${foundation.id} 的尺寸不能大于 ${MAX_FOUNDATION_SIZE_DM / 10} 米`);
+    }
+  }
+  for (let a = 0; a < document.visual.foundations.length; a += 1) {
+    for (let b = a + 1; b < document.visual.foundations.length; b += 1) {
+      const first = document.visual.foundations[a];
+      const second = document.visual.foundations[b];
+      if (Math.abs(first.elevation - second.elevation) > 0.001) continue;
+      const overlap = overlapArea(first, second);
+      if (overlap > 0) warning("foundation-overlap", `${first.id} 与 ${second.id} 在同一高度重叠`);
+    }
+  }
 
   const gridProblems = document.grid ? gridIssues(document.grid, document.size) : [];
   if (document.navigation === "grid" && !document.grid) error("grid", "网格地图缺少网格数据");
@@ -615,14 +745,23 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
     if (ids.has(site.id)) error("duplicate-site", `据点编号重复：${site.id}`, site.id);
     ids.add(site.id);
     siteById.set(site.id, site);
-    if (site.pos[0] < -document.size[0] / 2 || site.pos[0] > document.size[0] / 2) {
+    if (site.pos[0] < bounds.minX || site.pos[0] > bounds.maxX) {
       error("site-outside", `${site.id} 超出地图左右边界`, site.id);
     }
-    if (site.pos[1] < -document.size[1] / 2 || site.pos[1] > document.size[1] / 2) {
+    if (site.pos[1] < bounds.minZ || site.pos[1] > bounds.maxZ) {
       error("site-outside", `${site.id} 超出地图上下边界`, site.id);
     }
     if (site.visualAssetId !== undefined && !isAssetId(site.visualAssetId)) {
       error("site-visual", `${site.id} 的外观资产 ID 无效`, site.id);
+    }
+  }
+
+  if (document.navigation === "graph" && document.visual.foundations.length > 0) {
+    for (const site of document.sites) {
+      if (document.visual.foundations.some((foundation) => foundationContains(foundation, site.pos[0], site.pos[1]))) {
+        continue;
+      }
+      warning("site-off-foundation", `${site.id} 不在地基上`, site.id);
     }
   }
 
@@ -678,12 +817,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
         path = undefined;
       } else {
         for (const point of path) {
-          if (
-            point[0] < -document.size[0] / 2 ||
-            point[0] > document.size[0] / 2 ||
-            point[1] < -document.size[1] / 2 ||
-            point[1] > document.size[1] / 2
-          ) {
+          if (point[0] < bounds.minX || point[0] > bounds.maxX || point[1] < bounds.minZ || point[1] > bounds.maxZ) {
             error("road-path", `${road.id} 的控制点超出地图边界`, undefined, [from ?? "", to ?? ""]);
             path = undefined;
             break;
@@ -873,11 +1007,12 @@ function validateVisual(document: MapDocument): Array<{ code: string; message: s
     if (!isAssetId(prop.assetId)) {
       issues.push({ code: "prop-asset", message: `${prop.id} 的资产 ID 无效`, propId: prop.id });
     }
+    const bounds = documentBounds(document);
     if (
-      prop.pos[0] < -document.size[0] / 2 ||
-      prop.pos[0] > document.size[0] / 2 ||
-      prop.pos[1] < -document.size[1] / 2 ||
-      prop.pos[1] > document.size[1] / 2
+      prop.pos[0] < bounds.minX ||
+      prop.pos[0] > bounds.maxX ||
+      prop.pos[1] < bounds.minZ ||
+      prop.pos[1] > bounds.maxZ
     ) {
       issues.push({ code: "prop-outside", message: `${prop.id} 超出地图边界`, propId: prop.id });
     }

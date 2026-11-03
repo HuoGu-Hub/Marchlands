@@ -10,12 +10,24 @@ import type {
   TerrainDraft,
 } from "./types";
 import { cloneVisual } from "./visual";
+import {
+  clampDepth,
+  clampElevation,
+  clampRotation,
+  clampScale,
+  clampSize,
+  createFoundation,
+  documentBounds,
+  foundationBounds,
+  foundationRect,
+  mergeFoundationRects,
+} from "./foundations";
+import type { FoundationInput } from "./foundations";
 
 export function clampPosition(document: MapDocument, pos: [number, number]): [number, number] {
-  const halfW = Math.floor(document.size[0] / 2);
-  const halfH = Math.floor(document.size[1] / 2);
-  const x = Math.max(-halfW, Math.min(halfW, Math.round(pos[0])));
-  const z = Math.max(-halfH, Math.min(halfH, Math.round(pos[1])));
+  const bounds = documentBounds(document);
+  const x = Math.max(bounds.minX, Math.min(bounds.maxX, Math.round(pos[0])));
+  const z = Math.max(bounds.minZ, Math.min(bounds.maxZ, Math.round(pos[1])));
   return [Object.is(x, -0) ? 0 : x, Object.is(z, -0) ? 0 : z];
 }
 
@@ -324,14 +336,106 @@ export function updateUnitVisual(
   return next;
 }
 
+/** 合并同高度相邻地基，并把地图尺寸同步成地基并集。 */
+function applyFoundationChanges(document: MapDocument): MapDocument {
+  let next = document;
+  if (next.navigation === "grid") return next;
+  const merged = mergeFoundationRects(next.visual.foundations);
+  if (merged.length !== next.visual.foundations.length) {
+    next = { ...next, visual: { ...next.visual, foundations: merged } };
+  }
+  const bounds = foundationBounds(next.visual.foundations);
+  if (!bounds) return next;
+  const width = Math.max(100, Math.round(bounds.maxX - bounds.minX));
+  const height = Math.max(100, Math.round(bounds.maxZ - bounds.minZ));
+  if (width === next.size[0] && height === next.size[1]) return next;
+  return { ...next, size: [width, height] };
+}
+
+export function addFoundation(
+  document: MapDocument,
+  input: FoundationInput = {},
+): { document: MapDocument; foundation: FoundationDraft } {
+  const next = cloneDocument(document);
+  const foundation = createFoundation(next.visual.foundations, input);
+  next.visual.foundations.push(foundation);
+  return { document: applyFoundationChanges(next), foundation };
+}
+
 export function updateFoundation(
   document: MapDocument,
-  foundation: FoundationDraft | null,
+  id: string,
+  patch: Partial<Omit<FoundationDraft, "id" | "assetId">> & { assetId?: string | null },
 ): MapDocument {
   const next = cloneDocument(document);
-  if (foundation === null) delete next.visual.foundation;
-  else next.visual.foundation = { ...foundation };
-  return next;
+  const foundation = next.visual.foundations.find((entry) => entry.id === id);
+  if (!foundation) return next;
+  if (patch.pos) foundation.pos = [Math.round(patch.pos[0]), Math.round(patch.pos[1])];
+  if (patch.size) {
+    foundation.size = [clampSize(patch.size[0]), clampSize(patch.size[1])];
+  }
+  if (patch.elevation !== undefined) foundation.elevation = clampElevation(patch.elevation);
+  if (patch.depth !== undefined) foundation.depth = clampDepth(patch.depth);
+  if (patch.scale !== undefined) foundation.scale = clampScale(patch.scale);
+  if (patch.rotation !== undefined) foundation.rotation = clampRotation(patch.rotation);
+  if (patch.assetId !== undefined) {
+    if (patch.assetId) foundation.assetId = patch.assetId;
+    else delete foundation.assetId;
+  }
+  if (next.navigation === "grid") {
+    foundation.pos = [0, 0];
+    foundation.size = [next.size[0], next.size[1]];
+    foundation.elevation = 0;
+  }
+  return applyFoundationChanges(next);
+}
+
+export function removeFoundation(document: MapDocument, id: string): MapDocument {
+  if (document.visual.foundations.length <= 1) return document;
+  const next = cloneDocument(document);
+  next.visual.foundations = next.visual.foundations.filter((entry) => entry.id !== id);
+  return applyFoundationChanges(next);
+}
+
+export function duplicateFoundation(
+  document: MapDocument,
+  id: string,
+): { document: MapDocument; foundation: FoundationDraft } | null {
+  const source = document.visual.foundations.find((entry) => entry.id === id);
+  if (!source) return null;
+  const next = cloneDocument(document);
+  const foundation = createFoundation(next.visual.foundations, {
+    pos: [source.pos[0] + source.size[0] + 10, source.pos[1]],
+    size: [source.size[0], source.size[1]],
+    elevation: source.elevation,
+    depth: source.depth,
+    ...(source.assetId ? { assetId: source.assetId } : {}),
+    scale: source.scale,
+    rotation: source.rotation,
+  });
+  next.visual.foundations.push(foundation);
+  return { document: applyFoundationChanges(next), foundation };
+}
+
+/** 把选中地基的某条边外扩到指定位置，用于点击空白处扩大地图。 */
+export function growFoundationTo(
+  document: MapDocument,
+  id: string,
+  edge: "west" | "east" | "north" | "south",
+  value: number,
+): MapDocument {
+  const source = document.visual.foundations.find((entry) => entry.id === id);
+  if (!source) return document;
+  const rect = foundationRect(source);
+  const snapped = Math.round(value / 5) * 5;
+  if (edge === "west") rect.minX = Math.min(rect.minX, snapped);
+  if (edge === "east") rect.maxX = Math.max(rect.maxX, snapped);
+  if (edge === "north") rect.minZ = Math.min(rect.minZ, snapped);
+  if (edge === "south") rect.maxZ = Math.max(rect.maxZ, snapped);
+  return updateFoundation(document, id, {
+    pos: [(rect.minX + rect.maxX) / 2, (rect.minZ + rect.maxZ) / 2],
+    size: [rect.maxX - rect.minX, rect.maxZ - rect.minZ],
+  });
 }
 
 export function updateScatter(document: MapDocument, scatter: boolean): MapDocument {
@@ -345,6 +449,13 @@ export function updateDocument(
   patch: Partial<Omit<MapDocument, "sites" | "roads">>,
 ): MapDocument {
   const next = cloneDocument(document);
+  if (patch.size && next.navigation === "grid") {
+    const foundation = next.visual.foundations[0];
+    if (foundation) {
+      foundation.pos = [0, 0];
+      foundation.size = [patch.size[0], patch.size[1]];
+    }
+  }
   return {
     ...next,
     ...patch,
