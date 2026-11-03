@@ -8,7 +8,8 @@ import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
 import { compileDocument, defaultVisualForMap, parseDocument } from "@marchlands/map-authoring";
 import type { MapDocument, MapVisual } from "@marchlands/map-authoring";
-import { defenseMilliFor } from "@marchlands/sim";
+import { defenseMilliFor, isProductionSiteKind } from "@marchlands/sim";
+import { siteKindLabel } from "./game/site-kind";
 import type { MapDef, SimState } from "@marchlands/sim";
 import { audio } from "./audio";
 import { EditorController } from "./editor/editor";
@@ -40,7 +41,7 @@ const TEMPLATE = `
       <h1 class="menu-title">MARCH<span>LANDS</span></h1>
       <div class="menu-cn">边境之地</div>
       <div class="menu-rule"></div>
-      <p class="menu-desc">六十米的边境沙盘，多座城镇与据点，一场没有退路的领地战争。派兵、行军、占领，把最后一面旗插满地图。</p>
+      <p class="menu-desc">六十米的边境沙盘，多座产兵据点与要地，一场没有退路的领地战争。派兵、行军、占领，把最后一面旗插满地图。</p>
     </div>
     <div class="menu-actions">
       <button class="btn primary" id="btn-start">开始游戏</button>
@@ -57,7 +58,7 @@ const TEMPLATE = `
     <div class="panel">
       <div class="kicker">战役简报</div>
       <h2 id="brief-title">Forest 01</h2>
-      <p id="brief-desc">你的旗帜插在西侧。东侧的红旗正在集结，五座中立城镇在等待第一个到达的人。</p>
+      <p id="brief-desc">你的旗帜插在西侧。东侧的红旗正在集结，五座中立据点等待第一个到达的人。</p>
       <div class="form-row">
         <label for="map-select">地图</label>
         <select id="map-select">
@@ -70,9 +71,9 @@ const TEMPLATE = `
         </select>
       </div>
       <ul class="brief-list">
-        <li><span>目标</span><b id="brief-objective">占领全部 7 座城镇</b></li>
+        <li><span>目标</span><b id="brief-objective">占领全部 7 座产兵据点</b></li>
         <li><span>时限</span><b id="brief-time">15 分钟</b></li>
-        <li><span>判定</span><b>城镇数 · 人口 · 金币</b></li>
+        <li><span>判定</span><b>据点数 · 人口 · 金币</b></li>
       </ul>
       <details class="brief-skins">
         <summary>
@@ -102,7 +103,7 @@ const TEMPLATE = `
     <div class="hud-left">
       <div class="res-card">
         <svg viewBox="0 0 24 24"><path d="M4 20V10l4-3 4 3v10M12 20V7l4-3 4 3v13M3 20h18" /></svg>
-        <div><span>城镇</span><b id="hud-cities">1</b></div>
+        <div><span>产兵据点</span><b id="hud-cities">1</b></div>
       </div>
       <div class="res-card">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5" /></svg>
@@ -173,7 +174,7 @@ const TEMPLATE = `
       <div class="kicker">战报</div>
       <h2 class="result-mark" id="result-mark">胜利</h2>
       <div class="stat-grid">
-        <div class="stat"><span>城镇</span><b id="stat-cities">7</b></div>
+        <div class="stat"><span>产兵据点</span><b id="stat-cities">7</b></div>
         <div class="stat"><span>人口</span><b id="stat-pop">0</b></div>
         <div class="stat"><span>金币</span><b id="stat-gold">0</b></div>
         <div class="stat"><span>用时</span><b id="stat-time">00:00</b></div>
@@ -349,7 +350,7 @@ export class App {
           label: "Forest 01",
           content: forest,
           visual: defaultVisualForMap(forest.map),
-          description: "你的旗帜插在西侧。东侧的红旗正在集结，五座中立城镇在等待第一个到达的人。",
+          description: "你的旗帜插在西侧。东侧的红旗正在集结，五座中立据点等待第一个到达的人。",
         },
       ],
       [
@@ -360,7 +361,7 @@ export class App {
           content: crossroads,
           visual: defaultVisualForMap(crossroads.map),
           description:
-            "十二座城镇沿河谷铺开，四条粮道与四个路边驻兵点卡在岔路口。先拿下路口和粮仓的人，才能让兵团走得更远。",
+            "十二座产兵据点沿河谷铺开，四条粮道与四个路边驻兵点卡在岔路口。先拿下路口和粮仓的人，才能让兵团走得更远。",
         },
       ],
       [
@@ -371,7 +372,7 @@ export class App {
           content: frontier,
           visual: defaultVisualForMap(frontier.map),
           description:
-            "三十二座城镇铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
+            "三十二座产兵据点铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
         },
       ],
       [
@@ -655,7 +656,7 @@ export class App {
     const stats: ResultStats = {
       won: state.winner === 1,
       draw: state.winner === 0,
-      cities: state.cities.filter((city) => city.owner === 1 && city.kind === "town").length,
+      cities: state.cities.filter((city) => city.owner === 1 && isProductionSiteKind(city.kind)).length,
       pop: state.cities.filter((city) => city.owner === 1).reduce((sum, city) => sum + city.pop, 0),
       gold: state.players.find((player) => player.id === 1)?.gold ?? 0,
       time: this.formatTime(state.tick),
@@ -827,11 +828,11 @@ export class App {
   private syncBriefing(): void {
     const entry = this.mapEntries.get(this.currentMapId);
     if (!entry) return;
-    const towns = entry.content.map.cities.filter((city) => city.kind === "town").length;
+    const towns = entry.content.map.cities.filter((city) => isProductionSiteKind(city.kind)).length;
     const minutes = Math.round(entry.content.rules.maxTicks / entry.content.rules.tickHz / 60);
     this.el("brief-title").textContent = entry.content.map.name;
     this.el("brief-desc").textContent = entry.description;
-    this.el("brief-objective").textContent = `占领全部 ${towns} 座城镇`;
+    this.el("brief-objective").textContent = `占领全部 ${towns} 座产兵据点`;
     this.el("brief-time").textContent = `${minutes} 分钟`;
     (this.el("map-select") as HTMLSelectElement).value = this.currentMapId;
     this.syncUnitSkins();
@@ -910,7 +911,7 @@ export class App {
       return;
     }
     panel.classList.add("on");
-    const kindLabel = city.kind === "town" ? "城镇" : city.kind === "granary" ? "粮仓" : "驻兵点";
+    const kindLabel = siteKindLabel(city.kind);
     this.el("city-name").textContent = `${city.id} · ${kindLabel}`;
     this.el("city-level").textContent = `LV.${city.level}`;
     this.el("city-pop").textContent = String(city.pop);
@@ -926,7 +927,7 @@ export class App {
     this.el("city-defense").textContent = defense.toFixed(2);
     const cost = [15, 22, 32][city.level - 1] ?? 0;
     const button = this.el("city-upgrade") as HTMLButtonElement;
-    if (city.kind !== "town") {
+    if (!isProductionSiteKind(city.kind)) {
       button.textContent = "不可升级";
       button.disabled = true;
     } else {

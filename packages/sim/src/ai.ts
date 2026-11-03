@@ -1,6 +1,7 @@
 import { attackValue, defenseValue } from "./combat";
 import { granaryStrengthMilli, levelRule, sendPercent } from "./rules";
 import { blockedTransit } from "./routes";
+import { isProductionSiteKind } from "./types";
 import { planGridRoute } from "./grid";
 import type { CityState, Command, Owner, PlayerId, SimState } from "./types";
 
@@ -94,7 +95,7 @@ export function createAi(player: PlayerId): AiController {
       }
 
       const own = state.cities
-        .filter((city) => city.owner === player && city.kind !== "outpost")
+        .filter((city) => city.owner === player && isProductionSiteKind(city.kind))
         .sort(byCityId);
 
       for (const city of own) {
@@ -109,7 +110,7 @@ export function createAi(player: PlayerId): AiController {
           }
         }
 
-        if (city.kind === "town" && city.level < state.rules.maxLevel && full) {
+        if (isProductionSiteKind(city.kind) && city.level < state.rules.maxLevel && full) {
           const rule = levelRule(state.rules, city.level);
           if (city.pop >= rule.upgradeCost) {
             commands.push({ type: "upgrade", city: city.id });

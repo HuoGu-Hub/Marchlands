@@ -10,16 +10,18 @@ import type {
   SimState,
   SquadState,
 } from "@marchlands/sim";
+import { isProductionSiteKind } from "@marchlands/sim";
 import { audio } from "../audio";
 import { RouteOverlay } from "./route-overlay";
 import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
 const REASONS: Record<string, string> = {
-  unknown_city: "城镇不存在",
+  unknown_city: "据点不存在",
   unknown_target: "目标不存在",
   same_city: "不能派往本城",
-  not_owned: "不是你的城镇",
+  not_owned: "不是你的据点",
+  not_producer: "该据点不产兵",
   too_few_troops: "守军不足两人",
   no_route: "没有可行路线：中立或敌方据点阻断了道路",
   max_level: "已达最高等级",
@@ -176,11 +178,11 @@ export class GameSession {
 
   upgradeSelected(): void {
     if (!this.selected) {
-      this.options.onToast("先选择己方城镇");
+      this.options.onToast("先选择己方产兵据点");
       return;
     }
     const city = this.getCity(this.selected);
-    if (city?.kind !== "town") {
+    if (!city || !isProductionSiteKind(city.kind)) {
       this.options.onToast("该据点不能升级");
       return;
     }
@@ -307,7 +309,7 @@ export class GameSession {
   }
 
   private updateHud(): void {
-    const cities = this.state.cities.filter((city) => city.owner === 1 && city.kind === "town");
+    const cities = this.state.cities.filter((city) => city.owner === 1 && isProductionSiteKind(city.kind));
     const pop = this.state.cities
       .filter((city) => city.owner === 1)
       .reduce((sum, city) => sum + city.pop, 0);
@@ -452,7 +454,7 @@ export class GameSession {
       if (!city) return;
       if (!this.selected) {
         if (city.owner === 1) this.select(cityId);
-        else this.options.onToast("先选择己方城镇");
+        else this.options.onToast("先选择己方据点");
         return;
       }
       if (cityId === this.selected) return;

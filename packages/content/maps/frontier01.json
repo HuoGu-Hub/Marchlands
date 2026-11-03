@@ -27,7 +27,7 @@
   "cities": [
     {
       "id": "c1",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 1,
       "level": 2,
       "pop": 30,
@@ -39,7 +39,7 @@
     },
     {
       "id": "c2",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -51,7 +51,7 @@
     },
     {
       "id": "c3",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -63,7 +63,7 @@
     },
     {
       "id": "c4",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -75,7 +75,7 @@
     },
     {
       "id": "c5",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -87,7 +87,7 @@
     },
     {
       "id": "c6",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -99,7 +99,7 @@
     },
     {
       "id": "c7",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -111,7 +111,7 @@
     },
     {
       "id": "c8",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -123,7 +123,7 @@
     },
     {
       "id": "c9",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -135,7 +135,7 @@
     },
     {
       "id": "c10",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -147,7 +147,7 @@
     },
     {
       "id": "c11",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -159,7 +159,7 @@
     },
     {
       "id": "c12",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -171,7 +171,7 @@
     },
     {
       "id": "c13",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -183,7 +183,7 @@
     },
     {
       "id": "c14",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -195,7 +195,7 @@
     },
     {
       "id": "c15",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -207,7 +207,7 @@
     },
     {
       "id": "c16",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -219,7 +219,7 @@
     },
     {
       "id": "c17",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -231,7 +231,7 @@
     },
     {
       "id": "c18",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -243,7 +243,7 @@
     },
     {
       "id": "c19",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -255,7 +255,7 @@
     },
     {
       "id": "c20",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -267,7 +267,7 @@
     },
     {
       "id": "c21",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -279,7 +279,7 @@
     },
     {
       "id": "c22",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -291,7 +291,7 @@
     },
     {
       "id": "c23",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -303,7 +303,7 @@
     },
     {
       "id": "c24",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -315,7 +315,7 @@
     },
     {
       "id": "c25",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -327,7 +327,7 @@
     },
     {
       "id": "c26",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -339,7 +339,7 @@
     },
     {
       "id": "c27",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -351,7 +351,7 @@
     },
     {
       "id": "c28",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -363,7 +363,7 @@
     },
     {
       "id": "c29",
-      "kind": "town",
+      "kind": "barracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -375,7 +375,7 @@
     },
     {
       "id": "c30",
-      "kind": "town",
+      "kind": "stable",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -387,7 +387,7 @@
     },
     {
       "id": "c31",
-      "kind": "town",
+      "kind": "shieldBarracks",
       "owner": 0,
       "level": 1,
       "pop": 6,
@@ -399,7 +399,7 @@
     },
     {
       "id": "c32",
-      "kind": "town",
+      "kind": "archerBarracks",
       "owner": 2,
       "level": 2,
       "pop": 30,

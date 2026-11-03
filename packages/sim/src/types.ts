@@ -7,7 +7,30 @@ export type NavigationMode = "graph" | "grid";
 export type PlayerId = 1 | 2;
 export type Owner = 0 | PlayerId;
 export type Level = 1 | 2 | 3;
-export type SiteKind = "town" | "granary" | "outpost";
+export type ProductionSiteKind = "barracks" | "stable" | "shieldBarracks" | "archerBarracks";
+export type SiteKind = ProductionSiteKind | "granary" | "outpost";
+export type UnitKind = "infantry" | "shield" | "cavalry" | "archer" | "elite";
+
+export const PRODUCTION_SITE_KINDS: readonly ProductionSiteKind[] = [
+  "barracks",
+  "stable",
+  "shieldBarracks",
+  "archerBarracks",
+];
+
+/** 可产兵据点；粮仓与驻兵点不产兵。 */
+export function isProductionSiteKind(kind: SiteKind): kind is ProductionSiteKind {
+  return kind === "barracks" || kind === "stable" || kind === "shieldBarracks" || kind === "archerBarracks";
+}
+
+/** 建筑类型固定绑定唯一兵种；弓箭塔不产兵。 */
+export function siteUnitKind(kind: SiteKind): UnitKind | null {
+  if (kind === "barracks") return "infantry";
+  if (kind === "stable") return "cavalry";
+  if (kind === "shieldBarracks") return "shield";
+  if (kind === "archerBarracks") return "archer";
+  return null;
+}
 export type Stance = "evade" | "engage";
 export type MatchStatus = "playing" | "finished";
 export type FinishReason = "capture_all" | "eliminated" | "time_limit" | "draw";

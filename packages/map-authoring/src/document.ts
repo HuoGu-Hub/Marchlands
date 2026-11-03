@@ -15,7 +15,7 @@ import type {
   TerrainDraft,
   VisualDraft,
 } from "./types";
-import { isFoundationShape, TERRAIN_STYLE_IDS } from "./types";
+import { isFoundationShape, isProductionSiteKind, TERRAIN_STYLE_IDS } from "./types";
 import { createHeightField, edgeGrade } from "./height";
 import {
   DEFAULT_CAPTURE_RADIUS_DM,
@@ -63,10 +63,10 @@ const MAX_PROPS = 2000;
 
 function starterSites(): SiteDraft[] {
   return [
-    { id: "c1", kind: "town", owner: 1, level: 3, pop: 30, pos: [-200, -150] },
-    { id: "c2", kind: "town", owner: 2, level: 3, pop: 30, pos: [200, 150] },
-    { id: "c3", kind: "town", owner: 0, level: 1, pop: 10, pos: [-200, 150] },
-    { id: "c4", kind: "town", owner: 0, level: 1, pop: 10, pos: [200, -150] },
+    { id: "c1", kind: "barracks", owner: 1, level: 3, pop: 30, pos: [-200, -150] },
+    { id: "c2", kind: "stable", owner: 2, level: 3, pop: 30, pos: [200, 150] },
+    { id: "c3", kind: "shieldBarracks", owner: 0, level: 1, pop: 10, pos: [-200, 150] },
+    { id: "c4", kind: "archerBarracks", owner: 0, level: 1, pop: 10, pos: [200, -150] },
   ];
 }
 
@@ -112,10 +112,10 @@ export function createGridDocument(): MapDocument {
     biome: "frontier",
     players: DEFAULT_PLAYERS.map((player) => ({ ...player })),
     sites: [
-      { id: "c1", kind: "town", owner: 1, level: 3, pop: 30, pos: [-200, -150], footprintDm: 80, captureRadiusDm: 40 },
-      { id: "c2", kind: "town", owner: 2, level: 3, pop: 30, pos: [200, 150], footprintDm: 80, captureRadiusDm: 40 },
-      { id: "c3", kind: "town", owner: 0, level: 1, pop: 10, pos: [-200, 150], footprintDm: 80, captureRadiusDm: 40 },
-      { id: "c4", kind: "town", owner: 0, level: 1, pop: 10, pos: [200, -150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c1", kind: "barracks", owner: 1, level: 3, pop: 30, pos: [-200, -150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c2", kind: "stable", owner: 2, level: 3, pop: 30, pos: [200, 150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c3", kind: "shieldBarracks", owner: 0, level: 1, pop: 10, pos: [-200, 150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c4", kind: "archerBarracks", owner: 0, level: 1, pop: 10, pos: [200, -150], footprintDm: 80, captureRadiusDm: 40 },
     ],
     roads: [],
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
@@ -212,13 +212,15 @@ function finiteNumber(value: unknown): number | null {
 function siteFromUnknown(value: unknown): SiteDraft | null {
   if (!asRecord(value)) return null;
   if (typeof value.id !== "string" || value.id.length === 0) return null;
-  if (value.kind !== "town" && value.kind !== "granary" && value.kind !== "outpost") return null;
+  // 旧文档的 town 统一迁移为兵营，新文档不再提供城镇类型。
+  const kind = value.kind === "town" ? "barracks" : value.kind;
+  if (!isProductionSiteKind(kind as SiteDraft["kind"]) && kind !== "granary" && kind !== "outpost") return null;
   const pos = numberPair(value.pos);
   if (!pos) return null;
   const owner = value.owner === 1 || value.owner === 2 ? value.owner : 0;
   const level = value.level === 2 || value.level === 3 ? value.level : 1;
   const pop = typeof value.pop === "number" && Number.isFinite(value.pop) ? Math.max(0, Math.round(value.pop)) : 0;
-  const site: SiteDraft = { id: value.id, kind: value.kind, owner, level, pop, pos };
+  const site: SiteDraft = { id: value.id, kind: kind as SiteDraft["kind"], owner, level, pop, pos };
   if (value.kind === "outpost") {
     site.stance = value.stance === "engage" ? "engage" : "evade";
     const watch = value.watch;
@@ -805,10 +807,10 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
     }
   }
 
-  const towns = document.sites.filter((site) => site.kind === "town");
-  if (towns.length < 2) error("town-count", "地图至少需要两座城镇");
-  if (!towns.some((site) => site.owner === 1)) warning("no-player-town", "绿方没有起始城镇");
-  if (!towns.some((site) => site.owner === 2)) warning("no-enemy-town", "红方没有起始城镇");
+  const producers = document.sites.filter((site) => isProductionSiteKind(site.kind));
+  if (producers.length < 2) error("producer-count", "地图至少需要两个产兵据点");
+  if (!producers.some((site) => site.owner === 1)) warning("no-player-producer", "绿方没有起始产兵据点");
+  if (!producers.some((site) => site.owner === 2)) warning("no-enemy-producer", "红方没有起始产兵据点");
 
   const heightField = createHeightField({
     cities: document.sites.map((site) => [site.pos[0] / 10, site.pos[1] / 10] as [number, number]),
@@ -910,7 +912,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
 
   for (const site of document.sites) {
     const degree = adjacency.get(site.id)?.length ?? 0;
-    if (document.navigation === "graph" && site.kind !== "town" && degree !== 1) {
+    if (document.navigation === "graph" && !isProductionSiteKind(site.kind) && degree !== 1) {
       error("leaf-site", `${site.id} 是${site.kind === "granary" ? "粮仓" : "驻兵点"}，只能连接一条道路`, site.id);
     }
     if (site.kind !== "outpost") continue;
@@ -990,7 +992,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
         id: site.id,
         kind: site.kind,
         owner: site.owner,
-        level: site.kind === "town" ? site.level : 1,
+        level: isProductionSiteKind(site.kind) ? site.level : 1,
         pop: site.pop,
         pos: [site.pos[0], site.pos[1]],
         layer: 0,

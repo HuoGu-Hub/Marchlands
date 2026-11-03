@@ -6,7 +6,7 @@ import type { CityState } from "../src/types";
 function city(level: CityState["level"], pop: number): CityState {
   return {
     id: "x",
-    kind: "town",
+    kind: "barracks",
     owner: 2,
     level,
     pop,

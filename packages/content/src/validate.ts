@@ -14,7 +14,7 @@ import type {
   SiteKind,
   Stance,
 } from "@marchlands/sim";
-import { mapHashOf } from "@marchlands/sim";
+import { isProductionSiteKind, mapHashOf } from "@marchlands/sim";
 
 export class ContentError extends Error {
   readonly issues: string[];
@@ -171,13 +171,13 @@ export function validateMap(input: unknown): MapDef {
     cityIds.add(id);
     const kind = entry.kind;
     cityKinds.set(id, kind);
-    if (kind !== "town" && kind !== "granary" && kind !== "outpost") {
-      issues.push(`cities[${id}].kind must be town, granary or outpost`);
+    if (!isProductionSiteKind(kind as SiteKind) && kind !== "granary" && kind !== "outpost") {
+      issues.push(`cities[${id}].kind must be a producing site, granary or outpost`);
     }
     const owner = requireInt(entry.owner, `cities[${id}].owner`, issues, 0);
     if (owner !== 0 && !playerIds.has(owner)) issues.push(`cities[${id}].owner must be 0 or a player id`);
     const level = requireInt(entry.level, `cities[${id}].level`, issues, 1);
-    if (kind === "town") {
+    if (isProductionSiteKind(kind as SiteKind)) {
       if (level !== 1 && level !== 2 && level !== 3) issues.push(`cities[${id}].level must be 1..3`);
     } else if (kind === "granary" || kind === "outpost") {
       if (level !== 1) issues.push(`cities[${id}].level must be 1 for ${kind}`);
@@ -292,8 +292,8 @@ export function validateMap(input: unknown): MapDef {
     adjacency.get(edge.to)?.push(edge.from);
   }
 
-  const townCount = [...cityKinds.values()].filter((kind) => kind === "town").length;
-  if (townCount < 2) issues.push("map must contain at least 2 towns");
+  const producerCount = [...cityKinds.values()].filter((kind) => isProductionSiteKind(kind as SiteKind)).length;
+  if (producerCount < 2) issues.push("map must contain at least 2 producing sites");
 
   for (const [id, kind] of cityKinds) {
     if (!gridMode && (kind === "granary" || kind === "outpost")) {

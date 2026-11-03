@@ -11,8 +11,9 @@ import {
   TreeViewItem,
 } from "@playcanvas/pcui";
 import "@playcanvas/pcui/styles";
-import { createGame } from "@marchlands/sim";
+import { createGame, isProductionSiteKind } from "@marchlands/sim";
 import type { CityId, MapDef, Ruleset, SimState, SiteKind } from "@marchlands/sim";
+import { SITE_KIND_OPTIONS, siteKindLabel } from "../../game/site-kind";
 import {
   addFoundation,
   addProp,
@@ -258,7 +259,7 @@ export class EditorNext {
   private tool: NextTool = "select";
   private selection: Selection = null;
   private libraryTab: LibraryTab = "site";
-  private activeSiteKind: SiteKind = "town";
+  private activeSiteKind: SiteKind = "barracks";
   private activeAssetId: string | null = null;
   private activeFoundationKind: "platform" | "island" = "platform";
   private activeFoundationShape: FoundationShape = "plateau";
@@ -721,7 +722,7 @@ export class EditorNext {
     }
     const siteNode = new TreeViewItem({ text: "据点 (" + this.doc.sites.length + ")", open: true });
     for (const site of this.doc.sites) {
-      const kind = site.kind === "town" ? "城镇" : site.kind === "granary" ? "粮仓" : "驻兵点";
+      const kind = siteKindLabel(site.kind);
       const item = new TreeViewItem({ text: site.id + " · " + kind + " · L" + site.level });
       const selection: Selection = { kind: "site", id: site.id };
       (item as unknown as { __selection?: Selection }).__selection = selection;
@@ -843,11 +844,7 @@ export class EditorNext {
       return;
     }
     if (this.libraryTab === "site") {
-      const kinds: Array<{ kind: SiteKind; label: string; desc: string }> = [
-        { kind: "town", label: "城镇", desc: "产兵 · 可升级" },
-        { kind: "granary", label: "粮仓", desc: "增幅 · 叶子据点" },
-        { kind: "outpost", label: "驻兵点", desc: "监视一条路" },
-      ];
+      const kinds = SITE_KIND_OPTIONS;
       const host = document.createElement("div");
       host.className = "mlnx-library-grid";
       let html = "";
@@ -1644,7 +1641,7 @@ export class EditorNext {
       this.renderInspector();
       return;
     }
-    const kind = site.kind === "town" ? "城镇" : site.kind === "granary" ? "粮仓" : "驻兵点";
+    const kind = siteKindLabel(site.kind);
     this.addHeading(site.id, kind + " · 坐标 " + (site.pos[0] / 10).toFixed(1) + ", " + (site.pos[1] / 10).toFixed(1));
     this.addSection("位置");
     this.addNumber("X", site.pos[0] / 10, (value) => this.commit(updateSite(this.doc, id, { pos: [Math.round(value * 10), site.pos[1]] }), "已移动据点", { sites: true }), { step: 0.5 });
@@ -1653,11 +1650,7 @@ export class EditorNext {
     this.addSelect(
       "类型",
       site.kind,
-      [
-        { t: "城镇", v: "town" },
-        { t: "粮仓", v: "granary" },
-        { t: "驻兵点", v: "outpost" },
-      ],
+      SITE_KIND_OPTIONS.map((entry) => ({ t: entry.label + " · " + entry.desc, v: entry.kind })),
       (value) => this.commit(updateSite(this.doc, id, { kind: value as SiteKind }), "已修改据点类型", { sites: true }),
     );
     this.addSelect(
@@ -1670,7 +1663,7 @@ export class EditorNext {
       ],
       (value) => this.commit(updateSite(this.doc, id, { owner: Number(value) as 0 | 1 | 2 }), "已修改归属", { sites: true }),
     );
-    if (site.kind === "town") {
+    if (isProductionSiteKind(site.kind)) {
       this.addSelect(
         "等级",
         site.level,
@@ -3004,8 +2997,7 @@ export class EditorNext {
         }
         const result = addSite(this.doc, this.activeSiteKind, [Math.round(x), Math.round(z)], 0);
         this.selection = { kind: "site", id: result.site.id };
-        const kind = this.activeSiteKind === "town" ? "城镇" : this.activeSiteKind === "granary" ? "粮仓" : "驻兵点";
-        this.commit(result.document, "已放置 " + kind, { sites: true });
+        this.commit(result.document, "已放置 " + siteKindLabel(this.activeSiteKind), { sites: true });
         return;
       }
       const assetId = this.activeAssetId;

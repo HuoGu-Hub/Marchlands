@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RULESET } from "@marchlands/sim";
+import { DEFAULT_RULESET, isProductionSiteKind } from "@marchlands/sim";
 import { loadContent } from "../src/node";
 import { ContentError, validateContent, validateMap, validateRules } from "../src";
 import type { MapCity, MapDef } from "@marchlands/sim";
@@ -7,9 +7,9 @@ import type { MapCity, MapDef } from "@marchlands/sim";
 describe("forest01", () => {
   const { map, rules } = loadContent();
 
-  it("loads seven towns, two granaries and two outposts", () => {
+  it("loads seven producing sites, two granaries and two outposts", () => {
     expect(map.cities).toHaveLength(11);
-    expect(map.cities.filter((city) => city.kind === "town")).toHaveLength(7);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(7);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(2);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(2);
     expect(map.players).toHaveLength(2);
@@ -85,9 +85,9 @@ describe("forest01", () => {
 describe("crossroads01", () => {
   const { map, rules } = loadContent("maps/crossroads01.json");
 
-  it("loads twenty sites with twelve towns", () => {
+  it("loads twenty sites with twelve producing sites", () => {
     expect(map.cities).toHaveLength(20);
-    expect(map.cities.filter((city) => city.kind === "town")).toHaveLength(12);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(12);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
     expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(18);
@@ -130,7 +130,7 @@ describe("validation", () => {
   });
 
   it("rejects a disconnected graph", () => {
-    const towns = map.cities.filter((city) => city.kind === "town");
+    const towns = map.cities.filter((city) => isProductionSiteKind(city.kind));
     const ids = new Set(towns.map((city) => city.id));
     const townEdges = map.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
     const broken: MapDef = { ...map, cities: towns, edges: [townEdges[0], townEdges[3]] };
@@ -232,9 +232,9 @@ describe("validation", () => {
 describe("frontier01", () => {
   const { map } = loadContent("maps/frontier01.json");
 
-  it("builds a forty-site frontier with thirty-two towns", () => {
+  it("builds a forty-site frontier with thirty-two producing sites", () => {
     expect(map.cities).toHaveLength(40);
-    expect(map.cities.filter((city) => city.kind === "town")).toHaveLength(32);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(32);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
     expect(map.edges).toHaveLength(75);

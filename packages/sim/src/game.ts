@@ -12,6 +12,7 @@ import {
   polylineLength,
 } from "./grid";
 import { blockedTransit, buildRetargetPath } from "./routes";
+import { isProductionSiteKind } from "./types";
 import {
   DEFAULT_RULESET,
   granarySpeedMilli,
@@ -179,12 +180,14 @@ function resolveInterceptions(state: SimState, events: SimEvent[]): void {
 export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_RULESET): SimState {
   if (map.cities.length === 0) throw new Error("map has no cities");
   if (map.players.length !== 2) throw new Error("map must define exactly 2 players");
-  if (!map.cities.some((city) => city.kind === "town")) throw new Error("map has no towns");
+  if (!map.cities.some((city) => isProductionSiteKind(city.kind))) {
+    throw new Error("map has no producing sites");
+  }
 
   const cities: CityState[] = map.cities
     .map((city: MapCity) => {
       const kind = city.kind;
-      const level: Level = kind === "town" ? city.level : 1;
+      const level: Level = isProductionSiteKind(kind) ? city.level : 1;
       const maxPop = siteMaxPop(kind, level, rules);
       const stance: Stance = kind === "outpost" ? (city.stance ?? "evade") : "evade";
       const watch: [CityId, CityId] | null =
@@ -271,6 +274,7 @@ function applyCommand(
     if (!to) return reject(rejected, command, "unknown_target");
     if (from.id === to.id) return reject(rejected, command, "same_city");
     if (from.owner === 0) return reject(rejected, command, "not_owned");
+    if (!isProductionSiteKind(from.kind)) return reject(rejected, command, "not_producer");
     if (from.pop < 2) return reject(rejected, command, "too_few_troops");
 
     if (state.nav) {
@@ -376,7 +380,7 @@ function applyCommand(
   const city = findCity(state, command.city);
   if (!city) return reject(rejected, command, "unknown_city");
   if (city.owner === 0) return reject(rejected, command, "not_owned");
-  if (city.kind !== "town") return reject(rejected, command, "not_upgradable");
+  if (!isProductionSiteKind(city.kind)) return reject(rejected, command, "not_upgradable");
   if (city.level >= state.rules.maxLevel) return reject(rejected, command, "max_level");
 
   const cost = levelRule(state.rules, city.level).upgradeCost;
@@ -389,7 +393,7 @@ function applyCommand(
 function growEconomy(state: SimState): void {
   const goldByPlayer: number[] = [0, 0, 0];
   for (const city of state.cities) {
-    if (city.kind !== "town") continue;
+    if (!isProductionSiteKind(city.kind)) continue;
     const rule = levelRule(state.rules, city.level);
     growCity(city, rule);
     if (city.owner !== 0) goldByPlayer[city.owner] += rule.goldMilli;
@@ -534,7 +538,7 @@ function finish(state: SimState, winner: SimState["winner"], reason: FinishReaso
 }
 
 function checkFinish(state: SimState, events: SimEvent[]): void {
-  const towns = state.cities.filter((city) => city.kind === "town");
+  const towns = state.cities.filter((city) => isProductionSiteKind(city.kind));
   const total = towns.length;
   if (total === 0) return finish(state, 0, "draw", events);
   const counts: number[] = [0, 0, 0];

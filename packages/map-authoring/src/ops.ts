@@ -23,6 +23,7 @@ import {
   mergeFoundationRects,
 } from "./foundations";
 import type { FoundationInput } from "./foundations";
+import { isProductionSiteKind } from "./types";
 
 export function clampPosition(document: MapDocument, pos: [number, number]): [number, number] {
   const bounds = documentBounds(document);
@@ -32,7 +33,7 @@ export function clampPosition(document: MapDocument, pos: [number, number]): [nu
 }
 
 export function nextSiteId(document: MapDocument, kind: SiteKind): CityId {
-  const prefix = kind === "town" ? "c" : kind === "granary" ? "g" : "o";
+  const prefix = isProductionSiteKind(kind) ? "c" : kind === "granary" ? "g" : "o";
   let next = 1;
   const used = new Set(document.sites.map((site) => site.id));
   while (used.has(prefix + String(next))) next += 1;
@@ -65,7 +66,7 @@ export function addSite(
     kind,
     owner,
     level: 1,
-    pop: kind === "town" ? 10 : 0,
+    pop: isProductionSiteKind(kind) ? 10 : 0,
     pos: clampPosition(next, pos),
     ...(kind === "outpost" ? { stance: "evade" as const } : {}),
   };
@@ -109,8 +110,8 @@ export function updateSite(
   Object.assign(site, patch);
   if (patch.kind) {
     site.kind = patch.kind;
-    site.level = site.kind === "town" ? (site.level as Level) : 1;
-    if (site.kind === "town") {
+    site.level = isProductionSiteKind(site.kind) ? (site.level as Level) : 1;
+    if (isProductionSiteKind(site.kind)) {
       site.pop = Math.max(0, Math.round(site.pop));
     } else {
       site.pop = 0;
@@ -127,7 +128,7 @@ export function updateSite(
     site.pop = Math.max(0, Math.round(site.pop));
     site.stance = site.stance === "engage" ? "engage" : "evade";
   }
-  if (site.kind === "town") {
+  if (isProductionSiteKind(site.kind)) {
     site.level = site.level === 3 ? 3 : site.level === 2 ? 2 : 1;
     site.pop = Math.max(0, Math.round(site.pop));
   }

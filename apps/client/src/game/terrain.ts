@@ -747,7 +747,6 @@ export function buildTerrain(
 
   const random = seeded(20261123);
   const townPositions = map.cities
-    .filter((city) => city.kind === "town")
     .map((city) => positions.get(city.id))
     .filter((city): city is THREE.Vector3 => city !== undefined);
   let cityMinX = Number.POSITIVE_INFINITY;

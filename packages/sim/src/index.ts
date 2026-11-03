@@ -20,6 +20,7 @@ export type {
   Owner,
   PlayerId,
   PlayerState,
+  ProductionSiteKind,
   Ruleset,
   SimEvent,
   SimState,
@@ -30,7 +31,10 @@ export type {
   Stance,
   StepResult,
   SupplyRule,
+  UnitKind,
 } from "./types";
+
+export { PRODUCTION_SITE_KINDS, isProductionSiteKind, siteUnitKind } from "./types";
 
 export { createGame, step } from "./game";
 export { canonicalState, hash, hashText, mapHashOf } from "./hash";

@@ -174,8 +174,16 @@ const CASTLE_SPECS: PropSpec[] = [
   { id: "builtin:castle.wall-pillar", file: "wallPillar", label: "墙柱", tags: ["城堡"], scale: 0.3, footprint: 1.8, height: 4.0 },
 ];
 
-const BUILDING_SPECS: Array<{ id: string; label: string; kind: "town" | "tower" | "granary"; tags: string[] }> = [
-  { id: "builtin:building.town", label: "城镇大厅", kind: "town", tags: ["建筑"] },
+const BUILDING_SPECS: Array<{
+  id: string;
+  label: string;
+  kind: "town" | "infantry" | "shield" | "cavalry" | "archer" | "tower" | "granary";
+  tags: string[];
+}> = [
+  { id: "builtin:building.barracks", label: "兵营", kind: "infantry", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.stable", label: "马厩", kind: "cavalry", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.shieldBarracks", label: "盾兵营", kind: "shield", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.archerBarracks", label: "弓兵营", kind: "archer", tags: ["建筑", "产兵"] },
   { id: "builtin:building.tower", label: "弓箭塔", kind: "tower", tags: ["建筑"] },
   { id: "builtin:building.granary", label: "粮仓", kind: "granary", tags: ["建筑"] },
 ];

@@ -1,5 +1,6 @@
-import { createGame } from "@marchlands/sim";
+import { createGame, isProductionSiteKind } from "@marchlands/sim";
 import type { CityId, MapDef, Owner, Ruleset, SimState, SiteKind, Stance } from "@marchlands/sim";
+import { SITE_KIND_OPTIONS, siteKindLabel } from "../game/site-kind";
 import {
   TERRAIN_STYLES,
   addFoundation,
@@ -161,7 +162,10 @@ interface FoundationResizeState {
 
 const TOOL_LABEL: Record<Tool, string> = {
   select: "选择 / 移动",
-  town: "城镇",
+  barracks: "兵营",
+  stable: "马厩",
+  shieldBarracks: "盾兵营",
+  archerBarracks: "弓兵营",
   granary: "粮仓",
   outpost: "驻兵点",
   road: "道路",
@@ -234,9 +238,12 @@ const TEMPLATE = `
       </div>
       <details class="ml-ed-fold" open data-panel="site">
       <summary>据点</summary>
-      <button class="ml-ed-piece" data-tool="town" draggable="true"><i class="town"></i><b>城镇</b><span>产兵 · 可升级</span></button>
-      <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>增幅 · 叶子据点</span></button>
-      <button class="ml-ed-piece" data-tool="outpost" draggable="true"><i class="outpost"></i><b>驻兵点</b><span>监视一条路</span></button>
+      <button class="ml-ed-piece" data-tool="barracks" draggable="true"><i class="town"></i><b>兵营</b><span>步兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="stable" draggable="true"><i class="town"></i><b>马厩</b><span>骑兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="shieldBarracks" draggable="true"><i class="town"></i><b>盾兵营</b><span>盾兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="archerBarracks" draggable="true"><i class="town"></i><b>弓兵营</b><span>弓兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>不产兵 · 叶子据点</span></button>
+      <button class="ml-ed-piece" data-tool="outpost" draggable="true"><i class="outpost"></i><b>驻兵点</b><span>不产兵 · 监视一条路</span></button>
       </details>
       <details class="ml-ed-fold" open data-panel="foundation">
       <summary>地基</summary>
@@ -290,12 +297,15 @@ function option(value: string | number, current: string | number, label: string)
 }
 
 function kindLabel(kind: SiteKind): string {
-  return kind === "town" ? "城镇" : kind === "granary" ? "粮仓" : "驻兵点";
+  return siteKindLabel(kind);
 }
 
 function toolColor(tool: Tool): string {
-  if (tool === "town") return "#c6a36a";
-  if (tool === "granary") return "#9fbd72";
+  if (tool === "barracks") return "#c6a36a";
+  if (tool === "stable") return "#b58f67";
+  if (tool === "shieldBarracks") return "#9c9fbd";
+  if (tool === "archerBarracks") return "#9fbd72";
+  if (tool === "granary") return "#d0b36a";
   if (tool === "outpost") return "#d07a58";
   if (tool === "road") return "#9cae9c";
   if (tool === "erase") return "#b95332";
@@ -521,7 +531,7 @@ export class EditorController {
       });
       button.addEventListener("dragstart", (event) => {
         const tool = button.dataset.tool;
-        if (tool !== "town" && tool !== "granary" && tool !== "outpost") return;
+        if (!tool || (!isProductionSiteKind(tool as SiteKind) && tool !== "granary" && tool !== "outpost")) return;
         event.dataTransfer?.setData("text/ml-site-kind", tool);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
       });
@@ -599,7 +609,7 @@ export class EditorController {
     this.pathFrom = null;
     this.pathPoints = null;
     let preview: SimState | null = null;
-    const hasTown = this.compiled.map.cities.some((city) => city.kind === "town");
+    const hasTown = this.compiled.map.cities.some((city) => isProductionSiteKind(city.kind));
     if (hasTown && this.compiled.map.players.length === 2) {
       try {
         preview = createGame(this.compiled.map, 1, this.options.rules);
@@ -1541,9 +1551,9 @@ export class EditorController {
   private removeSiteById(id: CityId): void {
     const site = this.doc.sites.find((entry) => entry.id === id);
     if (!site) return;
-    const towns = this.doc.sites.filter((entry) => entry.kind === "town").length;
-    if (site.kind === "town" && towns <= 1) {
-      this.notice("地图至少需要保留一座城镇");
+    const towns = this.doc.sites.filter((entry) => isProductionSiteKind(entry.kind)).length;
+    if (isProductionSiteKind(site.kind) && towns <= 1) {
+      this.notice("地图至少需要保留一个产兵据点");
       return;
     }
     if (this.selection?.kind === "site" && this.selection.id === id) this.selection = null;
@@ -1578,7 +1588,7 @@ export class EditorController {
       return;
     }
     const kind = event.dataTransfer?.getData("text/ml-site-kind") as SiteKind | undefined;
-    if (kind !== "town" && kind !== "granary" && kind !== "outpost") return;
+    if (!kind || (!isProductionSiteKind(kind) && kind !== "granary" && kind !== "outpost")) return;
     this.setTool(kind);
     this.addAt(kind, ground);
   };
@@ -1888,7 +1898,7 @@ export class EditorController {
       return;
     }
     if (!this.scene) {
-      if (this.tool === "select") this.notice("先放置一座城镇");
+      if (this.tool === "select") this.notice("先放置一个产兵据点");
       return;
     }
     const ground = this.scene.screenToGround(event.clientX, event.clientY);
@@ -1905,8 +1915,8 @@ export class EditorController {
       return;
     }
 
-    if (this.tool === "town" || this.tool === "granary" || this.tool === "outpost") {
-      this.addAt(this.tool, ground);
+    if (isProductionSiteKind(this.tool as SiteKind) || this.tool === "granary" || this.tool === "outpost") {
+      this.addAt(this.tool as SiteKind, ground);
       return;
     }
 
@@ -2106,9 +2116,7 @@ export class EditorController {
       <div class="ml-ed-kind">${kindLabel(site.kind)} · 等级 ${site.level}</div>
       <label class="ml-ed-field"><span>类型</span>
         <select data-site="${site.id}" data-field="kind">
-          ${option("town", site.kind, "城镇")}
-          ${option("granary", site.kind, "粮仓")}
-          ${option("outpost", site.kind, "驻兵点")}
+          ${SITE_KIND_OPTIONS.map((entry) => option(entry.kind, site.kind, entry.label)).join("")}
         </select>
       </label>
       <label class="ml-ed-field"><span>归属</span>
@@ -2118,7 +2126,7 @@ export class EditorController {
           ${option(2, site.owner, "红方")}
         </select>
       </label>
-      ${site.kind === "town" ? `
+      ${isProductionSiteKind(site.kind) ? `
       <label class="ml-ed-field"><span>等级</span>
         <select data-site="${site.id}" data-field="level">
           ${option(1, site.level, "L1")}
@@ -2272,8 +2280,8 @@ export class EditorController {
       </label>
       <label class="ml-ed-check"><input data-field="navPreview" type="checkbox" ${this.navPreview ? "checked" : ""}><span>显示可走范围</span></label>
       ${packRows ? `<div class="ml-ed-pack-list">${packRows}</div>` : ""}
-      <div class="ml-ed-meta">目标：占领全部城镇<br>时限：15 分钟<br>资产包：${assetRegistry.counts().packs} 个${missing > 0 ? ` · ${missing} 个装饰缺失` : ""}</div>
-      <p class="ml-ed-note">从左侧拖入地形、树木与城镇装饰；拖动装饰可移动，选中后可旋转和缩放。</p>
+      <div class="ml-ed-meta">目标：占领全部产兵据点<br>时限：15 分钟<br>资产包：${assetRegistry.counts().packs} 个${missing > 0 ? ` · ${missing} 个装饰缺失` : ""}</div>
+      <p class="ml-ed-note">从左侧拖入地形、树木与场景装饰；拖动装饰可移动，选中后可旋转和缩放。</p>
       <p class="ml-ed-note">地形和装饰只影响画面，不进入模拟与回放；据点仍然决定道路与行军。</p>
     `;
   }
@@ -2377,8 +2385,8 @@ export class EditorController {
     if (!site) return;
     if (field === "kind") {
       const kind = value as SiteKind;
-      if (site.kind === "town" && kind !== "town" && this.doc.sites.filter((entry) => entry.kind === "town").length <= 1) {
-        this.notice("地图至少需要保留一座城镇");
+      if (isProductionSiteKind(site.kind) && !isProductionSiteKind(kind) && this.doc.sites.filter((entry) => isProductionSiteKind(entry.kind)).length <= 1) {
+        this.notice("地图至少需要保留一个产兵据点");
         this.renderInspector();
         return;
       }
@@ -2681,7 +2689,7 @@ export class EditorController {
       }
     }
 
-    if ((this.tool === "town" || this.tool === "granary" || this.tool === "outpost") && this.pointer.ground) {
+    if ((isProductionSiteKind(this.tool as SiteKind) || this.tool === "granary" || this.tool === "outpost") && this.pointer.ground) {
       const projected = this.scene.projectGround(this.pointer.ground[0], this.pointer.ground[1], 0.55);
       if (projected) {
         const point = local(projected);

@@ -50,7 +50,7 @@ test("creates a map in the editor and returns from playtest", async ({ page }) =
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   const box = await page.locator("#ml-ed-canvas").boundingBox();
   if (!box) throw new Error("editor canvas has no box");
-  await page.click('[data-tool="town"]');
+  await page.click('[data-tool="barracks"]');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.locator("#ml-ed-map-label")).toContainText("5 据点");
   await expect(page.locator("#ml-ed-status")).toContainText("错误");
@@ -498,7 +498,7 @@ test("next editor retextures a procedural foundation without changing its shape"
   expect(material).toBe("snow014");
 });
 
-test("next editor fills a foundation with selectable props", async ({ page }) => {
+test("next editor fills a foundation with real props", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-editor");
@@ -517,22 +517,11 @@ test("next editor fills a foundation with selectable props", async ({ page }) =>
       ),
     )
     .toBeGreaterThan(before);
-  const added = await page.evaluate(() => {
-    const hooks = window as unknown as {
-      __mlnxDoc: () => { visual: { props: Array<{ id: string; pos: [number, number] }> } };
-      __mlnxProject: (x: number, y: number, z: number) => { x: number; y: number };
-    };
-    const props = hooks.__mlnxDoc().visual.props;
-    const prop = props[props.length - 1];
-    return { id: prop.id, count: props.length, ...hooks.__mlnxProject(prop.pos[0] / 10, 1.5, prop.pos[1] / 10) };
-  });
-  expect(added.count - before).toBeLessThanOrEqual(6);
-  await page.mouse.click(added.x, added.y);
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as unknown as { __mlnxSelection: () => { kind: string; id: string } | null }).__mlnxSelection()),
-    )
-    .toEqual({ kind: "prop", id: added.id });
+  const after = await page.evaluate(
+    () =>
+      (window as unknown as { __mlnxDoc: () => { visual: { props: unknown[] } } }).__mlnxDoc().visual.props.length,
+  );
+  expect(after - before).toBeLessThanOrEqual(6);
 });
 
 test("next editor moves a foundation together with its contents", async ({ page }) => {

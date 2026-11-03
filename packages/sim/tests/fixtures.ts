@@ -16,9 +16,9 @@ export const THREE_CITY_MAP: MapDef = {
   ruleset: "1",
   players,
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 10, pos: [-100, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 0, level: 1, pop: 5, pos: [0, 0], layer: 0 },
-    { id: "c", kind: "town", owner: 2, level: 1, pop: 10, pos: [100, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 10, pos: [-100, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 0, level: 1, pop: 5, pos: [0, 0], layer: 0 },
+    { id: "c", kind: "barracks", owner: 2, level: 1, pop: 10, pos: [100, 0], layer: 0 },
   ],
   edges: [
     { from: "a", to: "b", length: 100 },
@@ -31,8 +31,8 @@ export const TWO_CITY_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "two",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 3, pop: 30, pos: [-100, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 2, level: 1, pop: 10, pos: [100, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 3, pop: 30, pos: [-100, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 2, level: 1, pop: 10, pos: [100, 0], layer: 0 },
   ],
   edges: [{ from: "a", to: "b", length: 200 }],
 };
@@ -41,10 +41,10 @@ export const SQUARE_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "square",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 10, pos: [-100, -100], layer: 0 },
-    { id: "b", kind: "town", owner: 0, level: 1, pop: 5, pos: [100, -100], layer: 0 },
-    { id: "c", kind: "town", owner: 0, level: 1, pop: 5, pos: [-100, 100], layer: 0 },
-    { id: "d", kind: "town", owner: 2, level: 1, pop: 10, pos: [100, 100], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 10, pos: [-100, -100], layer: 0 },
+    { id: "b", kind: "barracks", owner: 0, level: 1, pop: 5, pos: [100, -100], layer: 0 },
+    { id: "c", kind: "barracks", owner: 0, level: 1, pop: 5, pos: [-100, 100], layer: 0 },
+    { id: "d", kind: "barracks", owner: 2, level: 1, pop: 10, pos: [100, 100], layer: 0 },
   ],
   edges: [
     { from: "a", to: "b", length: 100 },
@@ -59,11 +59,11 @@ export const AI_MAP: MapDef = {
   slug: "ai",
   size: [600, 600],
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 3, pop: 30, pos: [-250, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 0, level: 1, pop: 10, pos: [-100, 0], layer: 0 },
-    { id: "c", kind: "town", owner: 0, level: 2, pop: 20, pos: [0, 0], layer: 0 },
-    { id: "d", kind: "town", owner: 0, level: 1, pop: 10, pos: [100, 0], layer: 0 },
-    { id: "e", kind: "town", owner: 2, level: 3, pop: 30, pos: [250, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 3, pop: 30, pos: [-250, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 0, level: 1, pop: 10, pos: [-100, 0], layer: 0 },
+    { id: "c", kind: "barracks", owner: 0, level: 2, pop: 20, pos: [0, 0], layer: 0 },
+    { id: "d", kind: "barracks", owner: 0, level: 1, pop: 10, pos: [100, 0], layer: 0 },
+    { id: "e", kind: "barracks", owner: 2, level: 3, pop: 30, pos: [250, 0], layer: 0 },
   ],
   edges: [
     { from: "a", to: "b", length: 150 },
@@ -89,9 +89,9 @@ export const OUTPOST_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "outpost",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [0, 0], layer: 0 },
-    { id: "c", kind: "town", owner: 0, level: 1, pop: 5, pos: [150, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 2, level: 1, pop: 5, pos: [0, 0], layer: 0 },
+    { id: "c", kind: "barracks", owner: 0, level: 1, pop: 5, pos: [150, 0], layer: 0 },
     {
       id: "o1",
       kind: "outpost",
@@ -115,8 +115,8 @@ export const GRANARY_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "granary",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [50, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 2, level: 1, pop: 5, pos: [50, 0], layer: 0 },
     { id: "g1", kind: "granary", owner: 1, level: 1, pop: 0, pos: [-150, 100], layer: 0 },
   ],
   edges: [
@@ -129,8 +129,8 @@ export const GRANARY_DEFENSE_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "granary-defense",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 2, level: 1, pop: 10, pos: [50, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 2, level: 1, pop: 10, pos: [50, 0], layer: 0 },
     { id: "g1", kind: "granary", owner: 2, level: 1, pop: 0, pos: [50, 100], layer: 0 },
   ],
   edges: [
@@ -143,8 +143,8 @@ export const DECAY_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "decay",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [150, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 2, level: 1, pop: 5, pos: [150, 0], layer: 0 },
     {
       id: "o1",
       kind: "outpost",
@@ -167,9 +167,9 @@ export const VICTORY_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "victory",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-100, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 2, level: 1, pop: 5, pos: [100, 0], layer: 0 },
-    { id: "c", kind: "town", owner: 0, level: 1, pop: 0, pos: [0, 200], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 20, pos: [-100, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 2, level: 1, pop: 5, pos: [100, 0], layer: 0 },
+    { id: "c", kind: "barracks", owner: 0, level: 1, pop: 0, pos: [0, 200], layer: 0 },
     { id: "g1", kind: "granary", owner: 2, level: 1, pop: 0, pos: [100, 100], layer: 0 },
     {
       id: "o1",
@@ -196,8 +196,8 @@ export const AI_OUTPOST_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "ai-outpost",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 10, pos: [-100, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 2, level: 1, pop: 10, pos: [100, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 10, pos: [-100, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 2, level: 1, pop: 10, pos: [100, 0], layer: 0 },
     {
       id: "o1",
       kind: "outpost",
@@ -220,10 +220,10 @@ export const JUNCTION_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "junction",
   cities: [
-    { id: "a", kind: "town", owner: 1, level: 1, pop: 20, pos: [-200, 0], layer: 0 },
-    { id: "b", kind: "town", owner: 0, level: 1, pop: 5, pos: [0, 100], layer: 0 },
-    { id: "c", kind: "town", owner: 0, level: 1, pop: 5, pos: [0, -100], layer: 0 },
-    { id: "d", kind: "town", owner: 2, level: 1, pop: 5, pos: [200, 0], layer: 0 },
+    { id: "a", kind: "barracks", owner: 1, level: 1, pop: 20, pos: [-200, 0], layer: 0 },
+    { id: "b", kind: "barracks", owner: 0, level: 1, pop: 5, pos: [0, 100], layer: 0 },
+    { id: "c", kind: "barracks", owner: 0, level: 1, pop: 5, pos: [0, -100], layer: 0 },
+    { id: "d", kind: "barracks", owner: 2, level: 1, pop: 5, pos: [200, 0], layer: 0 },
   ],
   edges: [
     { from: "a", to: "b", length: 224 },

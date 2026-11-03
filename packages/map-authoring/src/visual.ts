@@ -9,7 +9,7 @@ import type {
   TerrainStyle,
   VisualDraft,
 } from "./types";
-import { TERRAIN_STYLE_IDS } from "./types";
+import { isProductionSiteKind, TERRAIN_STYLE_IDS } from "./types";
 import { createFoundation } from "./foundations";
 
 const STARTER_SEED = 20261102;
@@ -207,7 +207,7 @@ export function createStarterVisual(document: MapDocument): VisualDraft {
   }
 
   for (const site of document.sites) {
-    if (site.kind !== "town") continue;
+    if (!isProductionSiteKind(site.kind)) continue;
     const count = site.owner === 0 ? 2 : 3;
     for (let index = 0; index < count; index += 1) {
       const angle = random() * Math.PI * 2;

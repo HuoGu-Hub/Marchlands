@@ -4,7 +4,8 @@ import type { MapVisual } from "@marchlands/map-authoring";
 import { Surface, decodeInt16Base64, decodeUint8Base64 } from "@marchlands/nav";
 import { art } from "./assets";
 import { assetRegistry } from "./asset-registry";
-import { CITY_HALL_SCALE, buildBuilding, paletteFor, townBuildingKind } from "./buildings";
+import { buildBuilding, paletteFor } from "./buildings";
+import { siteBuildingKind, siteDefaultAsset, producingUnitKind } from "./site-kind";
 import { GlbUnitActor } from "./unit-glb";
 import type { UnitActorView } from "./unit-glb";
 import { UnitActor } from "./unit-actor";
@@ -750,9 +751,8 @@ export class BattleScene {
     view.model.clear();
     const seed = hashId(city.id) + city.level * 17;
     const palette = paletteFor(city.owner);
-    const kind = city.kind === "town" ? townBuildingKind(hashId(city.id)) : city.kind === "granary" ? "granary" : "tower";
-    const fallback = buildBuilding(kind, palette, city.level, seed);
-    fallback.scale.multiplyScalar(city.kind === "town" ? CITY_HALL_SCALE : 1.7);
+    const fallback = buildBuilding(siteBuildingKind(city.kind), palette, city.level, seed);
+    fallback.scale.multiplyScalar(1.7);
     view.model.add(fallback);
     this.enableShadows(view.model);
     this.fitCityLabel(view);
@@ -761,11 +761,7 @@ export class BattleScene {
     view.kind = city.kind;
 
     const siteVisual = this.visual?.sites[city.id];
-    const defaultAssetId = city.kind === "town"
-      ? "builtin:building.town"
-      : city.kind === "granary"
-        ? "builtin:building.granary"
-        : "builtin:building.tower";
+    const defaultAssetId = siteDefaultAsset(city.kind);
     const assetId = siteVisual?.assetId ?? defaultAssetId;
     if (!assetRegistry.has(assetId)) {
       this.missingAssets.add(assetId);
@@ -863,13 +859,11 @@ export class BattleScene {
     return this.unitSkins[kind] ?? null;
   }
 
-  /** 据点出兵兵种：城镇按 id 稳定对应一种兵营，驻兵点是弓箭塔，粮仓出步兵。 */
+  /** 兵团外观由出发建筑类型固定决定；弓箭塔与粮仓不产兵。 */
   private unitKindFor(siteId: CityId): UnitKind {
     const site = this.map.cities.find((city) => city.id === siteId);
     if (!site) return "infantry";
-    if (site.kind === "outpost") return "archer";
-    if (site.kind === "granary") return "infantry";
-    return townBuildingKind(hashId(site.id)) as UnitKind;
+    return producingUnitKind(site.kind) ?? "infantry";
   }
 
   private populateProceduralUnits(
