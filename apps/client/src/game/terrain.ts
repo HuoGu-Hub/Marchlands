@@ -551,8 +551,8 @@ function islandRim(
     const support = rectangleSupport(theta, halfX, halfZ);
     const broad = valueNoise(cos * 2.7 + shift, sin * 2.7 - shift, seed + 41);
     const fine = valueNoise(cos * 6.5 - shift, sin * 6.5 + shift, seed + 97);
-    const margin = 9 + broad * 17 + fine * 6;
-    const radius = support + margin;
+    const base = Math.hypot(halfX, halfZ) + 12;
+    const radius = base * (0.94 + broad * 0.1 + fine * 0.05);
     const innerX = centerX + cos * support * 0.995;
     const innerZ = centerZ + sin * support * 0.995;
     const baseY = heightAt(innerX, innerZ);
@@ -600,7 +600,7 @@ function buildIslandApron(
   const rock = new THREE.Color(palette.rock);
   const tSteps = [0, 0.1, 0.22, 0.34, 0.46, 0.58, 0.7, 0.82, 0.92, 1];
   const crestAt = (theta: number, t: number): number => {
-    const ridge = 6 + valueNoise(Math.cos(theta) * 2.6 + 4, Math.sin(theta) * 2.6 - 1, seed + 5) * 11;
+    const ridge = 4.5 + valueNoise(Math.cos(theta) * 2.6 + 4, Math.sin(theta) * 2.6 - 1, seed + 5) * 7.5;
     const wobble = valueNoise(theta * 3.1 + 7, t * 4.6, seed + 9) * 0.6 + 0.4;
     return Math.sin(Math.min(1, t) * Math.PI) * ridge * wobble;
   };
@@ -822,7 +822,7 @@ function buildIsland(
   const halfX = Math.max(1, (maxX - minX) / 2);
   const halfZ = Math.max(1, (maxZ - minZ) / 2);
   const span = Math.max(halfX, halfZ) * 2;
-  const depth = THREE.MathUtils.clamp(span * 0.62, 28, 96);
+  const depth = THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 1.35, 40, 170);
   const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt);
   const group = new THREE.Group();
   group.name = "island";

@@ -24,10 +24,10 @@ const PITCH = (28 * Math.PI) / 180;
 const FIELD_OF_VIEW = 28;
 const BASE_YAW = (12 * Math.PI) / 180;
 const VIEW_HEIGHT = 58;
-const ZOOM_MIN = 0.34;
+const ZOOM_MIN = 0.48;
 const ZOOM_MAX = 2.4;
 const DEFAULT_ZOOM = 1.12;
-const GAMEPLAY_ZOOM = 0.38;
+const GAMEPLAY_ZOOM = 0.48;
 const CITY_BASE_RADIUS = 2.3;
 const CITY_BASE_HEIGHT = 0.26;
 const CITY_LABEL_HEIGHT = 4.3;
@@ -976,7 +976,7 @@ export class BattleScene {
       this.atmosphere = null;
     }
     const island = this.terrain.island;
-    this.frameY = -island.depth * 0.22;
+    this.frameY = -island.depth * 0.06;
     const atmosphere = buildAtmosphere({
       centerX: island.centerX,
       centerZ: island.centerZ,
