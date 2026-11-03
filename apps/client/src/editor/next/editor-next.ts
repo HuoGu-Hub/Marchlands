@@ -29,6 +29,7 @@ import {
   createStarterDocument,
   documentBounds,
   duplicateFoundation,
+  foundationAt,
   foundationContains,
   foundationDepth,
   foundationRect,
@@ -485,7 +486,7 @@ export class EditorNext {
     scene3.add(this.roadSelectionRoot);
 
     const gizmo = new TransformControls(camera, this.canvas);
-    gizmo.setSize(1.05);
+    gizmo.setSize(0.45);
     gizmo.setTranslationSnap(0.5);
     gizmo.setRotationSnap(THREE.MathUtils.degToRad(15));
     gizmo.setScaleSnap(0.1);
@@ -548,6 +549,11 @@ export class EditorNext {
         return atmosphere ? atmosphere.uuid : null;
       };
       (window as unknown as Record<string, unknown>).__mlnxRoadMarker = () => this.roadSelectionRoot?.children.length ?? 0;
+      (window as unknown as Record<string, unknown>).__mlnxGizmo = () => {
+        if (!this.gizmo) return null;
+        const gizmo = this.gizmo as unknown as { mode?: string; axis?: string | null; visible?: boolean };
+        return { mode: gizmo.mode ?? null, axis: gizmo.axis ?? null, visible: gizmo.visible ?? null };
+      };
     }
   }
 
@@ -1790,8 +1796,7 @@ export class EditorNext {
 
   private updateOrbitButtons(): void {
     if (!this.orbit) return;
-    const leftPan =
-      this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale";
+    const leftPan = this.tool === "select" || this.tool === "move";
     this.orbit.mouseButtons = {
       LEFT: leftPan ? THREE.MOUSE.PAN : null,
       MIDDLE: THREE.MOUSE.PAN,
@@ -1895,6 +1900,11 @@ export class EditorNext {
     }
     if (selection.kind === "prop") {
       const pos: [number, number] = [snapDm(proxy.position.x * 10), snapDm(proxy.position.z * 10)];
+      if (this.roadAtGround(pos[0], pos[1])) {
+        this.notice("道路上方不能放置装饰");
+        this.syncProxies();
+        return;
+      }
       const patch: Partial<PropDraft> = { pos };
       if (this.tool === "rotate") {
         patch.rotation = ((Math.round((proxy.rotation.y * 180) / Math.PI) % 360) + 360) % 360;
@@ -1954,10 +1964,11 @@ export class EditorNext {
     for (const prop of this.doc.visual.props) {
       const height = this.scene?.groundHeight(prop.pos[0], prop.pos[1]) ?? 0;
       const info = assetRegistry.info(prop.assetId);
-      const radius = Math.max(0.8, (info?.footprint ?? 1.5) * prop.scale * 0.5);
+      const visualHeight = Math.max(1, (info?.height ?? 3) * prop.scale);
+      const radius = Math.max(1.2, (info?.footprint ?? 1.5) * prop.scale * 0.65);
       const material = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true, opacity: 0 });
-      const proxy = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 6), material);
-      proxy.position.set(prop.pos[0] / 10, height + radius, prop.pos[1] / 10);
+      const proxy = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, visualHeight, 8), material);
+      proxy.position.set(prop.pos[0] / 10, height + visualHeight / 2, prop.pos[1] / 10);
       proxy.userData = { kind: "prop", id: prop.id };
       this.proxyRoot.add(proxy);
       this.proxies.push(proxy);
@@ -2342,7 +2353,56 @@ export class EditorNext {
     this.syncFoundationHandles();
   }
 
-  private pickRoad(clientX: number, clientY: number): string | null {
+  private pickRoadScreen(clientX: number, clientY: number, paddingPx = 12): string | null {
+    if (!this.scene) return null;
+    const camera = this.scene.getEditorCamera();
+    const rect = this.canvas.getBoundingClientRect();
+    const project = (x: number, z: number): { x: number; y: number } => {
+      const point = new THREE.Vector3(
+        x,
+        (this.scene?.groundHeight(x * 10, z * 10) ?? 0) + 0.15,
+        z,
+      ).project(camera);
+      return {
+        x: rect.left + ((point.x + 1) / 2) * rect.width,
+        y: rect.top + ((1 - point.y) / 2) * rect.height,
+      };
+    };
+    const distanceToSegment = (
+      px: number,
+      py: number,
+      a: { x: number; y: number },
+      b: { x: number; y: number },
+    ): number => {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lengthSq = dx * dx + dy * dy;
+      const t = lengthSq > 0 ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / lengthSq)) : 0;
+      return Math.hypot(px - (a.x + dx * t), py - (a.y + dy * t));
+    };
+    let best: { id: string; distance: number } | null = null;
+    for (const road of this.doc.roads) {
+      let path: Array<[number, number]> | null = road.path && road.path.length >= 2
+        ? road.path.map((point) => [point[0], point[1]] as [number, number])
+        : null;
+      if (!path && road.from && road.to) {
+        const from = this.doc.sites.find((entry) => entry.id === road.from);
+        const to = this.doc.sites.find((entry) => entry.id === road.to);
+        if (from && to) path = [[from.pos[0], from.pos[1]], [to.pos[0], to.pos[1]]];
+      }
+      if (!path) continue;
+      let previous = project(path[0][0] / 10, path[0][1] / 10);
+      for (let index = 1; index < path.length; index += 1) {
+        const current = project(path[index][0] / 10, path[index][1] / 10);
+        const distance = distanceToSegment(clientX, clientY, previous, current);
+        if (distance <= paddingPx && (!best || distance < best.distance)) best = { id: road.id, distance };
+        previous = current;
+      }
+    }
+    return best?.id ?? null;
+  }
+
+  private pickRoad(clientX: number, clientY: number, paddingDm = 15): string | null {
     if (!this.scene) return null;
     const ground = this.scene.screenToGround(clientX, clientY);
     if (!ground) return null;
@@ -2357,7 +2417,7 @@ export class EditorNext {
         if (from && to) path = [[from.pos[0], from.pos[1]], [to.pos[0], to.pos[1]]];
       }
       if (!path) continue;
-      const threshold = (road.widthDm ?? this.doc.visual.roads.width * 10) / 2 + 15;
+      const threshold = (road.widthDm ?? this.doc.visual.roads.width * 10) / 2 + paddingDm;
       for (let index = 0; index < path.length - 1; index += 1) {
         const a = path[index];
         const b = path[index + 1];
@@ -2372,7 +2432,48 @@ export class EditorNext {
     return best?.id ?? null;
   }
 
-  private pick(clientX: number, clientY: number): Selection {
+  private gizmoNearPointer(clientX: number, clientY: number): boolean {
+    if (!this.gizmo?.axis || !this.selectedProxy || !this.scene) return false;
+    const camera = this.scene.getEditorCamera();
+    const rect = this.canvas.getBoundingClientRect();
+    const point = this.selectedProxy.getWorldPosition(new THREE.Vector3()).project(camera);
+    const x = rect.left + ((point.x + 1) / 2) * rect.width;
+    const y = rect.top + ((1 - point.y) / 2) * rect.height;
+    return Math.hypot(clientX - x, clientY - y) <= 120;
+  }
+
+  private roadAtGround(xDm: number, zDm: number, clearanceDm = 3): boolean {
+    const distanceToSegment = (
+      x: number,
+      z: number,
+      a: [number, number],
+      b: [number, number],
+    ): number => {
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+      const lengthSq = dx * dx + dz * dz;
+      const t = lengthSq > 0 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / lengthSq)) : 0;
+      return Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
+    };
+    for (const road of this.doc.roads) {
+      let path: Array<[number, number]> | null = road.path && road.path.length >= 2
+        ? road.path
+        : null;
+      if (!path && road.from && road.to) {
+        const from = this.doc.sites.find((entry) => entry.id === road.from);
+        const to = this.doc.sites.find((entry) => entry.id === road.to);
+        if (from && to) path = [[from.pos[0], from.pos[1]], [to.pos[0], to.pos[1]]];
+      }
+      if (!path) continue;
+      const width = (road.widthDm ?? this.doc.visual.roads.width * 10) / 2;
+      for (let index = 1; index < path.length; index += 1) {
+        if (distanceToSegment(xDm, zDm, path[index - 1], path[index]) <= width + clearanceDm) return true;
+      }
+    }
+    return false;
+  }
+
+  private pickObject(clientX: number, clientY: number): Selection {
     if (!this.scene || !this.proxyRoot) return null;
     const camera = this.scene.getEditorCamera();
     const rect = this.canvas.getBoundingClientRect();
@@ -2388,9 +2489,16 @@ export class EditorNext {
       while (object && !(object.userData as { kind?: string }).kind) object = object.parent;
       if (!object) continue;
       const data = object.userData as { kind?: "foundation" | "site" | "prop"; id?: string };
-      if (data.kind && data.id) return { kind: data.kind, id: data.id };
+      if ((data.kind === "site" || data.kind === "prop") && data.id) return { kind: data.kind, id: data.id };
     }
     return null;
+  }
+
+  private pickFoundation(clientX: number, clientY: number): Selection {
+    const ground = this.scene?.screenToGround(clientX, clientY);
+    if (!ground) return null;
+    const foundation = foundationAt(this.doc.visual.foundations, ground[0], ground[1]);
+    return foundation ? { kind: "foundation", id: foundation.id } : null;
   }
 
   private groundOnPlane(clientX: number, clientY: number, y: number): [number, number] | null {
@@ -2574,7 +2682,10 @@ export class EditorNext {
 
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0 || !this.scene) return;
-    if (this.gizmo?.axis) return;
+    if (this.gizmoNearPointer(event.clientX, event.clientY)) {
+      if (this.orbit) this.orbit.enabled = false;
+      return;
+    }
     if (this.tool === "place" && this.libraryTab === "foundation") {
       const point = this.groundOnPlane(event.clientX, event.clientY, this.toolElevation);
       if (!point) return;
@@ -2629,12 +2740,21 @@ export class EditorNext {
       }
     }
     if (this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale") {
-      const hit = this.pick(event.clientX, event.clientY);
-      if (hit) {
+      const hit = this.pickObject(event.clientX, event.clientY);
+      // 道路端点落在据点里；据点优先，否则点击路端会选中道路。
+      if (hit?.kind === "site") {
         this.select(hit);
       } else {
-        const roadId = this.pickRoad(event.clientX, event.clientY);
-        this.select(roadId ? { kind: "road", id: roadId } : null);
+        const strictRoad = this.pickRoadScreen(event.clientX, event.clientY, 12);
+        if (strictRoad) {
+          this.select({ kind: "road", id: strictRoad });
+        } else if (hit) {
+          this.select(hit);
+        } else {
+          const roadId = this.pickRoad(event.clientX, event.clientY);
+          if (roadId) this.select({ kind: "road", id: roadId });
+          else this.select(this.pickFoundation(event.clientX, event.clientY));
+        }
       }
     }
   };
@@ -2680,6 +2800,9 @@ export class EditorNext {
   };
 
   private readonly onPointerUp = (): void => {
+    if (!this.faceDrag && !this.roadPointDrag) {
+      if (this.orbit) this.orbit.enabled = true;
+    }
     if (this.roadPointDrag) {
       this.finishRoadPointDrag();
       return;
@@ -2739,6 +2862,10 @@ export class EditorNext {
       const assetId = this.activeAssetId;
       if (!assetId) {
         this.notice("先在左侧选择资产");
+        return;
+      }
+      if (this.roadAtGround(x, z)) {
+        this.notice("道路上方不能放置装饰");
         return;
       }
       const result = addProp(this.doc, assetId, [Math.round(x), Math.round(z)], 0, 1);
@@ -2936,7 +3063,11 @@ export class EditorNext {
           ? "点击加点 · Enter 完成 · Esc 取消"
           : this.tool === "terrain"
             ? "左键拖动刷地形 · 网格图专用"
-            : "右键环绕 · 中键平移 · 滚轮缩放";
+            : this.tool === "rotate"
+              ? "拖动圆环旋转 · 右键环绕 · 中键平移"
+              : this.tool === "scale"
+                ? "拖动轴缩放 · 右键环绕 · 中键平移"
+                : "右键环绕 · 中键平移 · 滚轮缩放";
     this.viewInfoEl.innerHTML =
       '<span class="mlnx-chip">' + escapeHtml(tool) + '</span><span class="mlnx-chip">' + escapeHtml(selection) + '</span><span class="mlnx-chip">' + escapeHtml(hint) + "</span>";
   }

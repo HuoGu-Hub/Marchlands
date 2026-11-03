@@ -284,6 +284,119 @@ test("next editor marks selected roads and keeps settings scoped", async ({ page
   expect(mapSettings).not.toContain("未占领时");
 });
 
+test("next editor selects props and roads by clicking", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  const sitePoint = await page.evaluate(() => {
+    const hooks = window as unknown as {
+      __mlnxDoc: () => { sites: Array<{ id: string; pos: [number, number] }> };
+      __mlnxProject: (x: number, y: number, z: number) => { x: number; y: number };
+    };
+    const site = hooks.__mlnxDoc().sites.find((entry) => entry.id === "c1");
+    if (!site) throw new Error("missing site");
+    return hooks.__mlnxProject(site.pos[0] / 10, 2.2, site.pos[1] / 10);
+  });
+  await page.mouse.click(sitePoint.x, sitePoint.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __mlnxSelection: () => { kind: string; id: string } | null }).__mlnxSelection()),
+    )
+    .toEqual({ kind: "site", id: "c1" });
+  const propPoint = await page.evaluate(() => {
+    const hooks = window as unknown as {
+      __mlnxDoc: () => { visual: { props: Array<{ id: string; pos: [number, number] }> } };
+      __mlnxProject: (x: number, y: number, z: number) => { x: number; y: number };
+    };
+    const prop = hooks.__mlnxDoc().visual.props[1];
+    return { id: prop.id, ...hooks.__mlnxProject(prop.pos[0] / 10, 1.5, prop.pos[1] / 10) };
+  });
+  await page.mouse.click(propPoint.x, propPoint.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __mlnxSelection: () => { kind: string; id: string } | null }).__mlnxSelection()),
+    )
+    .toEqual({ kind: "prop", id: propPoint.id });
+  const roadPoint = await page.evaluate(() => {
+    const hooks = window as unknown as {
+      __mlnxDoc: () => { sites: Array<{ id: string; pos: [number, number] }> };
+      __mlnxProject: (x: number, y: number, z: number) => { x: number; y: number };
+    };
+    const doc = hooks.__mlnxDoc();
+    const from = doc.sites.find((site) => site.id === "c1");
+    const to = doc.sites.find((site) => site.id === "c4");
+    if (!from || !to) throw new Error("missing road endpoints");
+    return hooks.__mlnxProject((from.pos[0] + to.pos[0]) / 20, 1, (from.pos[1] + to.pos[1]) / 20);
+  });
+  await page.mouse.click(roadPoint.x, roadPoint.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __mlnxSelection: () => { kind: string; id: string } | null }).__mlnxSelection()),
+    )
+    .toEqual({ kind: "road", id: "r1" });
+});
+
+test("next editor adds road control points by double-clicking", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  const point = await page.evaluate(() => {
+    const hooks = window as unknown as {
+      __mlnxDoc: () => { sites: Array<{ id: string; pos: [number, number] }> };
+      __mlnxProject: (x: number, y: number, z: number) => { x: number; y: number };
+    };
+    const doc = hooks.__mlnxDoc();
+    const from = doc.sites.find((site) => site.id === "c1");
+    const to = doc.sites.find((site) => site.id === "c4");
+    if (!from || !to) throw new Error("missing road endpoints");
+    return hooks.__mlnxProject((from.pos[0] + to.pos[0]) / 20, 0.5, (from.pos[1] + to.pos[1]) / 20);
+  });
+  await page.mouse.dblclick(point.x, point.y);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { roads: Array<{ id: string; path?: unknown[] }> } })
+            .__mlnxDoc().roads.find((road) => road.id === "r1")?.path?.length,
+      ),
+    )
+    .toBe(3);
+});
+
+test("next editor rotates a selected site with the gizmo", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "c1 ·" }).click();
+  await page.keyboard.press("e");
+  const start = await page.evaluate(() => {
+    const hooks = window as unknown as {
+      __mlnxDoc: () => { sites: Array<{ id: string; pos: [number, number] }> };
+      __mlnxProject: (x: number, y: number, z: number) => { x: number; y: number };
+    };
+    const site = hooks.__mlnxDoc().sites.find((entry) => entry.id === "c1");
+    if (!site) throw new Error("missing site");
+    return hooks.__mlnxProject(site.pos[0] / 10 + 0.8, 3.2, site.pos[1] / 10);
+  });
+  await page.mouse.move(start.x, start.y);
+  await page.waitForTimeout(200);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 50, start.y + 20, { steps: 10 });
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { sites: Array<{ id: string; visualRotation?: number }> } })
+            .__mlnxDoc().sites.find((site) => site.id === "c1")?.visualRotation,
+      ),
+    )
+    .toBeGreaterThan(0);
+});
+
 test("next editor keeps map rules on the map and terrain on foundations", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
