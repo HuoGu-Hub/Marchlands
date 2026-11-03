@@ -689,6 +689,15 @@ input {
   margin-left: 10px;
 }
 
+.city-name i.multi {
+  color: #9fe3ad;
+  letter-spacing: 0.12em;
+}
+
+.city-name i.multi:empty {
+  display: none;
+}
+
 .city-line {
   color: var(--muted);
   font-size: 13px;

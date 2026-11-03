@@ -55,6 +55,7 @@ export {
 export { MapGraph } from "./path";
 export type { Route } from "./path";
 export { blockedTransit, buildRetargetPath, nextAnchor, pathTicks, routeOptions } from "./routes";
+export { sendReachableTargets } from "./reach";
 export type { RetargetFailure, RetargetPath, RouteOption } from "./routes";
 export {
   attackValue,

@@ -31,6 +31,9 @@ const DEFAULT_ZOOM = 1.12;
 const GAMEPLAY_ZOOM = 0.42;
 const CITY_BASE_RADIUS = 2.3;
 const CITY_BASE_HEIGHT = 0.26;
+/** 可派兵目标的浅绿色格子：边长与离地高度，单位：米。 */
+const REACH_CELL_SIZE = 12;
+const REACH_CELL_LIFT = 0.1;
 const CITY_LABEL_HEIGHT = 4.3;
 const UNIT_SCALE = 1.15;
 const CAVALRY_SCALE = 0.95;
@@ -185,7 +188,34 @@ export class BattleScene {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly cityViews = new Map<CityId, CityView>();
   private readonly squadViews = new Map<string, SquadView>();
-  private readonly ring: THREE.Mesh;
+  private readonly rings = new Map<CityId, THREE.Mesh>();
+  private readonly ringGeometry = new THREE.RingGeometry(2.55, 2.85, 48);
+  private readonly ringMaterial = new THREE.MeshBasicMaterial({
+    color: 0xe8c883,
+    transparent: true,
+    opacity: 0.75,
+    side: THREE.DoubleSide,
+  });
+  private readonly reachGroup = new THREE.Group();
+  private readonly reachFillMaterial = new THREE.MeshBasicMaterial({
+    color: 0x8ef0a8,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+    side: THREE.FrontSide,
+    toneMapped: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  private readonly reachEdgeMaterial = new THREE.LineBasicMaterial({
+    color: 0xc8ffd4,
+    transparent: true,
+    opacity: 0.9,
+    toneMapped: false,
+  });
+  private reachTiles: THREE.Object3D[] = [];
+  private reachKey = "";
   private readonly resizeObserver: ResizeObserver;
   private readonly positions = new Map<CityId, THREE.Vector3>();
   private terrain!: Terrain;
@@ -199,7 +229,7 @@ export class BattleScene {
   private readonly focus = new THREE.Vector3();
   private bounds = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
   private elapsed = 0;
-  private selected: CityId | null = null;
+  private selectedIds: CityId[] = [];
   private disposed = false;
   private propBuildToken = 0;
   private propPoints: Array<{ x: number; z: number; radius: number }> = [];
@@ -262,6 +292,7 @@ export class BattleScene {
     this.scene.add(this.roadGroup);
     this.scene.add(this.propGroup);
     this.scene.add(this.sceneryGroup);
+    this.scene.add(this.reachGroup);
     this.buildGround();
     this.applyFoundations();
     this.zoom = Math.max(this.fitZoom(), GAMEPLAY_ZOOM);
@@ -271,7 +302,6 @@ export class BattleScene {
     this.buildRoads();
     this.buildScenery();
     this.buildExplicitProps();
-    this.ring = this.buildRing();
     this.resize();
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas.parentElement ?? canvas);
@@ -283,8 +313,31 @@ export class BattleScene {
     }
   }
 
-  setSelected(cityId: CityId | null): void {
-    this.selected = cityId;
+  setSelected(cityIds: readonly CityId[] | CityId | null): void {
+    this.selectedIds = cityIds === null ? [] : typeof cityIds === "string" ? [cityIds] : cityIds.slice();
+    this.updateRings();
+  }
+
+  /** 用浅绿色格子标出当前可派兵抵达的据点。 */
+  setReachable(cityIds: readonly CityId[]): void {
+    const key = cityIds.join(",");
+    if (key === this.reachKey) return;
+    this.reachKey = key;
+    for (const tile of this.reachTiles) {
+      this.reachGroup.remove(tile);
+      tile.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+      });
+    }
+    this.reachTiles = [];
+    for (const id of cityIds) {
+      const tile = this.buildReachTile(id);
+      if (!tile) continue;
+      this.reachGroup.add(tile);
+      this.reachTiles.push(tile);
+    }
+    this.reachGroup.visible = this.reachTiles.length > 0;
   }
 
   rotate(direction: 1 | -1): void {
@@ -455,14 +508,9 @@ export class BattleScene {
     this.updateCamera(deltaMs);
     this.updateCities(state);
     this.updateSquads(state);
-    this.ring.visible = this.selected !== null;
-    if (this.selected) {
-      const position = this.positions.get(this.selected);
-      const radius = this.cityViews.get(this.selected)?.baseRadius ?? CITY_BASE_RADIUS;
-      this.ring.scale.setScalar(radius / 2.7);
-      if (position) this.ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
-      const material = this.ring.material as THREE.MeshBasicMaterial;
-      material.opacity = 0.5 + Math.sin(this.elapsed / 260) * 0.18;
+    this.updateRings();
+    if (this.reachTiles.length > 0) {
+      this.reachFillMaterial.opacity = 0.3 + (Math.sin(this.elapsed / 620) + 1) * 0.05;
     }
     this.atmosphere?.update(this.elapsed);
     this.renderer.render(this.scene, this.camera);
@@ -1103,10 +1151,7 @@ export class BattleScene {
     }
     this.updateCities(state);
     this.updateRoads(map, visual);
-    if (this.selected) {
-      const position = this.positions.get(this.selected);
-      if (position) this.ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
-    }
+    this.updateRings();
   }
 
   updateTerrain(map: MapDef, visual: MapVisual | null): void {
@@ -1139,10 +1184,7 @@ export class BattleScene {
     this.buildRoads();
     this.updateSceneryHeights();
     this.regroundProps();
-    if (this.selected) {
-      const position = this.positions.get(this.selected);
-      if (position) this.ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
-    }
+    this.updateRings();
   }
 
   updateRoads(map: MapDef, visual: MapVisual | null): void {
@@ -1712,15 +1754,76 @@ export class BattleScene {
     for (const prop of this.visual?.props ?? []) this.buildProp(prop);
   }
 
-  private buildRing(): THREE.Mesh {
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(2.55, 2.85, 48),
-      new THREE.MeshBasicMaterial({ color: 0xe8c883, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.09;
-    this.scene.add(ring);
-    return ring;
+  /** 同步所有被选中据点的地面环，多选时逐座显示。 */
+  private updateRings(): void {
+    const active = new Set(this.selectedIds);
+    for (const [id, ring] of this.rings) {
+      if (!active.has(id)) ring.visible = false;
+    }
+    for (const id of this.selectedIds) {
+      const position = this.positions.get(id);
+      if (!position) continue;
+      let ring = this.rings.get(id);
+      if (!ring) {
+        ring = new THREE.Mesh(this.ringGeometry, this.ringMaterial);
+        ring.rotation.x = -Math.PI / 2;
+        this.scene.add(ring);
+        this.rings.set(id, ring);
+      }
+      const radius = this.cityViews.get(id)?.baseRadius ?? CITY_BASE_RADIUS;
+      ring.visible = true;
+      ring.scale.setScalar(radius / 2.7);
+      ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
+    }
+    this.ringMaterial.opacity = 0.5 + Math.sin(this.elapsed / 260) * 0.18;
+  }
+
+  /** 贴地绘制浅绿色格子，格子随地形起伏，不会插进山坡。 */
+  private buildReachTile(id: CityId): THREE.Object3D | null {
+    const position = this.positions.get(id);
+    if (!position) return null;
+    const half = REACH_CELL_SIZE / 2;
+    const segments = 8;
+    const geometry = new THREE.PlaneGeometry(REACH_CELL_SIZE, REACH_CELL_SIZE, segments, segments);
+    geometry.rotateX(-Math.PI / 2);
+    const attribute = geometry.getAttribute("position") as THREE.BufferAttribute;
+    for (let index = 0; index < attribute.count; index += 1) {
+      const x = position.x + attribute.getX(index);
+      const z = position.z + attribute.getZ(index);
+      attribute.setXYZ(index, x, this.terrain.heightAt(x, z) + REACH_CELL_LIFT, z);
+    }
+    attribute.needsUpdate = true;
+
+    const mesh = new THREE.Mesh(geometry, this.reachFillMaterial);
+    mesh.renderOrder = 2;
+
+    const border: number[] = [];
+    const corners: Array<[number, number]> = [
+      [-half, -half],
+      [half, -half],
+      [half, half],
+      [-half, half],
+    ];
+    const steps = 6;
+    for (let side = 0; side < corners.length; side += 1) {
+      const start = corners[side];
+      const end = corners[(side + 1) % corners.length];
+      for (let step = 0; step < steps; step += 1) {
+        const t = step / steps;
+        const x = position.x + start[0] + (end[0] - start[0]) * t;
+        const z = position.z + start[1] + (end[1] - start[1]) * t;
+        border.push(x, this.terrain.heightAt(x, z) + REACH_CELL_LIFT + 0.03, z);
+      }
+    }
+    const borderGeometry = new THREE.BufferGeometry();
+    borderGeometry.setAttribute("position", new THREE.Float32BufferAttribute(border, 3));
+    const outline = new THREE.LineLoop(borderGeometry, this.reachEdgeMaterial);
+    outline.renderOrder = 3;
+
+    const group = new THREE.Group();
+    group.add(mesh);
+    group.add(outline);
+    return group;
   }
 
   private fitZoom(): number {

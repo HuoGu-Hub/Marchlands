@@ -804,3 +804,55 @@ test("loads the crossroads01 map and selector", async ({ page }) => {
   await expect(page.locator("#page-game")).toBeVisible();
   await expect(page.locator("#hud-cities")).toHaveText("1");
 });
+
+test("highlights reachable towns and sends from a multi-selection", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/?map=frontier01");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-start");
+  await expect(page.locator("#page-briefing")).toBeVisible();
+  await page.click("#btn-brief-start");
+  await expect(page.locator("#page-game")).toBeVisible();
+
+  const reach = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __mlReach?: { targets: string[] } }).__mlReach?.targets ?? [],
+    );
+  // frontier01 的中立据点阻断道路：c1 只能直达相邻的五座据点。
+  await expect.poll(reach).toEqual(["c17", "c2", "c3", "c9", "g1"]);
+
+  const c2 = await page.evaluate(() =>
+    (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug?.projectCity("c2"),
+  );
+  if (!c2) throw new Error("c2 has no screen position");
+  await page.mouse.click(c2.x, c2.y);
+  await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 40_000 });
+  await expect.poll(reach).toEqual(["c10", "c17", "c3", "c9", "g1"]);
+
+  // 选中刚占领的 c2，等守军增长到可以派兵后与 c1 组成多选。
+  await page.mouse.click(c2.x, c2.y);
+  await expect(page.locator("#city-name")).toContainText("c2");
+  await expect
+    .poll(async () => Number(await page.locator("#city-pop").textContent()), { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(2);
+  const c1 = await page.evaluate(() =>
+    (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug?.projectCity("c1"),
+  );
+  if (!c1) throw new Error("c1 has no screen position");
+  await page.keyboard.down("Control");
+  await page.mouse.click(c1.x, c1.y);
+  await page.keyboard.up("Control");
+  await expect(page.locator("#city-multi")).toHaveText("已选 2 座");
+  await expect.poll(reach).toEqual(["c10", "c17", "c3", "c9", "g1"]);
+
+  const c3 = await page.evaluate(() =>
+    (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug?.projectCity("c3"),
+  );
+  if (!c3) throw new Error("c3 has no screen position");
+  await page.mouse.click(c3.x, c3.y);
+  await expect(page.locator("#toast")).toContainText("2 座据点同时发兵");
+});

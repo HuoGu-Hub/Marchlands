@@ -128,6 +128,7 @@ const TEMPLATE = `
           <span id="city-name">c1</span>
           <i id="city-level">LV.3</i>
           <div class="level-pips" id="city-pips"><i></i><i></i><i></i></div>
+          <i id="city-multi" class="multi"></i>
         </div>
         <div class="city-line">守军 <b id="city-pop">30</b> / <span id="city-max">65</span> · 防御 <b id="city-defense">1.20</b></div>
         <div class="pop-bar"><i id="city-pop-fill"></i></div>
@@ -139,7 +140,7 @@ const TEMPLATE = `
       </div>
     </div>
     <div class="toast" id="toast"></div>
-    <div class="hint">拖动地图 · 左键选择与派兵 · 点击行军兵团改道 · 右键取消 · Q / E 旋转 · 滚轮缩放</div>
+    <div class="hint">拖动地图 · 左键选择与派兵 · Ctrl+点击多选据点 · 点击行军兵团改道 · 右键取消 · Q / E 旋转 · 滚轮缩放</div>
   </div>
 
   <div class="overlay" id="pause-overlay">
@@ -569,7 +570,7 @@ export class App {
       rules: this.content.rules,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),
-      onSelect: (cityId) => this.updateCityPanel(cityId),
+      onSelect: (cityId, count) => this.updateCityPanel(cityId, count),
     });
     this.session.start();
     this.showEditorReturn();
@@ -649,7 +650,7 @@ export class App {
       rules: this.content.rules,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),
-      onSelect: (cityId) => this.updateCityPanel(cityId),
+      onSelect: (cityId, count) => this.updateCityPanel(cityId, count),
     });
     this.session.start();
   }
@@ -901,8 +902,10 @@ export class App {
     window.setTimeout(() => this.toast("浏览器不允许关闭窗口，请直接关闭标签页"), 120);
   }
 
-  private updateCityPanel(cityId: string | null): void {
+  private updateCityPanel(cityId: string | null, count = 0): void {
     const panel = this.el("city-panel");
+    const multi = this.el("city-multi");
+    multi.textContent = count > 1 ? `已选 ${count} 座` : "";
     if (!cityId) {
       panel.classList.remove("on");
       return;

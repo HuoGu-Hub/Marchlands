@@ -10,7 +10,7 @@ import type {
   SimState,
   SquadState,
 } from "@marchlands/sim";
-import { isProductionSiteKind } from "@marchlands/sim";
+import { isProductionSiteKind, sendReachableTargets } from "@marchlands/sim";
 import { audio } from "../audio";
 import { RouteOverlay } from "./route-overlay";
 import { BattleScene } from "./scene";
@@ -45,7 +45,7 @@ export interface GameSessionOptions {
   rules: Ruleset;
   onFinish: (state: SimState) => void;
   onToast: (text: string) => void;
-  onSelect: (cityId: CityId | null) => void;
+  onSelect: (cityId: CityId | null, count: number) => void;
 }
 
 export class GameSession {
@@ -55,8 +55,10 @@ export class GameSession {
   private scene: BattleScene;
   private routeOverlay: RouteOverlay;
   private state: SimState;
-  private selected: CityId | null = null;
+  private selected: CityId[] = [];
   private selectedSquad: string | null = null;
+  private reachKey = "";
+  private reachTargets: CityId[] = [];
   private commands: Command[] = [];
   private accumulator = 0;
   private lastTime = 0;
@@ -125,8 +127,10 @@ export class GameSession {
       scene: this.scene,
       map: this.options.map,
     });
-    this.selected = null;
+    this.selected = [];
     this.selectedSquad = null;
+    this.reachKey = "";
+    this.reachTargets = [];
     this.commands = [];
     this.accumulator = 0;
     this.lastTime = performance.now();
@@ -144,54 +148,58 @@ export class GameSession {
     return this.state.squads.find((squad) => squad.id === id);
   }
 
+  /** 当前选中的己方据点；最后选中或最后追加的一座作为面板主目标。 */
+  private get primary(): CityId | null {
+    return this.selected.length > 0 ? this.selected[this.selected.length - 1] : null;
+  }
+
   select(id: CityId): void {
     const city = this.getCity(id);
     if (!city || city.owner !== 1) return;
     this.selectedSquad = null;
-    this.selected = id;
-    this.scene.setSelected(id);
-    this.options.onSelect(id);
-    if (city.kind === "outpost") {
-      this.options.onToast("R 切换迎战 / 避战");
-    } else if (city.kind === "granary") {
-      const speed = Math.round(this.state.rules.granary.speedBonusMilli / 10);
-      const strength = Math.round(this.state.rules.granary.strengthBonusMilli / 10);
-      this.options.onToast(`粮仓：行军速度 +${speed}% · 战斗力 +${strength}%`);
-    }
+    this.setSelection([id]);
+    this.announceCity(city);
+  }
+
+  /** Ctrl 点击：把据点加入或移出多选。 */
+  toggleSelect(id: CityId): void {
+    const city = this.getCity(id);
+    if (!city || city.owner !== 1) return;
+    this.selectedSquad = null;
+    if (this.selected.includes(id)) this.setSelection(this.selected.filter((entry) => entry !== id));
+    else this.setSelection([...this.selected, id]);
   }
 
   selectSquad(id: string): void {
     const squad = this.getSquad(id);
     if (!squad || squad.owner !== 1) return;
-    this.selected = null;
     this.selectedSquad = squad.id;
-    this.scene.setSelected(null);
-    this.options.onSelect(null);
+    this.setSelection([]);
   }
 
   clearSelection(): void {
-    this.selected = null;
     this.selectedSquad = null;
-    this.scene.setSelected(null);
-    this.options.onSelect(null);
+    this.setSelection([]);
   }
 
   upgradeSelected(): void {
-    if (!this.selected) {
+    const id = this.primary;
+    if (!id) {
       this.options.onToast("先选择己方产兵据点");
       return;
     }
-    const city = this.getCity(this.selected);
+    const city = this.getCity(id);
     if (!city || !isProductionSiteKind(city.kind)) {
       this.options.onToast("该据点不能升级");
       return;
     }
-    this.commands.push({ type: "upgrade", city: this.selected });
+    this.commands.push({ type: "upgrade", city: id });
   }
 
   toggleTransit(): void {
-    if (!this.selected) return;
-    const city = this.getCity(this.selected);
+    const id = this.primary;
+    if (!id) return;
+    const city = this.getCity(id);
     if (!city || city.owner === 0) {
       this.options.onToast("中立据点不能切换通行状态");
       return;
@@ -204,11 +212,12 @@ export class GameSession {
   }
 
   toggleStance(): void {
-    if (!this.selected) {
+    const id = this.primary;
+    if (!id) {
       this.options.onToast("先选择己方临时驻兵点");
       return;
     }
-    const city = this.getCity(this.selected);
+    const city = this.getCity(id);
     if (!city || city.owner !== 1 || city.kind !== "outpost") {
       this.options.onToast("只有己方临时驻兵点可以切换状态");
       return;
@@ -218,6 +227,79 @@ export class GameSession {
       city: city.id,
       stance: city.stance === "engage" ? "evade" : "engage",
     });
+  }
+
+  private setSelection(ids: CityId[]): void {
+    this.selected = ids;
+    this.scene.setSelected(ids);
+    this.refreshReach(true);
+    this.options.onSelect(this.primary, ids.length);
+  }
+
+  private announceCity(city: CityState): void {
+    if (city.kind === "outpost") {
+      this.options.onToast("R 切换迎战 / 避战");
+    } else if (city.kind === "granary") {
+      const speed = Math.round(this.state.rules.granary.speedBonusMilli / 10);
+      const strength = Math.round(this.state.rules.granary.strengthBonusMilli / 10);
+      this.options.onToast(`粮仓：行军速度 +${speed}% · 战斗力 +${strength}%`);
+    }
+  }
+
+  /** 只用己方可派兵的据点标注浅绿色可达格子；己方据点本身只用于切换选择。 */
+  private refreshReach(force = false): void {
+    const signature = `${this.selected.join(",")}|${this.state.cities
+      .map((city) => `${city.id}:${city.owner}:${city.transit ?? ""}:${city.pop >= 2 ? 1 : 0}`)
+      .join(",")}`;
+    if (!force && signature === this.reachKey) return;
+    this.reachKey = signature;
+    const selected = new Set(this.selected);
+    const targets = new Set<CityId>();
+    for (const id of this.selected) {
+      for (const target of sendReachableTargets(this.state, id)) {
+        if (!selected.has(target)) targets.add(target);
+      }
+    }
+    this.reachTargets = [...targets].filter((id) => this.getCity(id)?.owner !== 1).sort();
+    this.scene.setReachable(this.reachTargets);
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__mlReach = {
+        selected: this.selected.slice(),
+        targets: this.reachTargets.slice(),
+      };
+    }
+  }
+
+  /** 同时向目标派兵；无法出发的据点单独说明原因。 */
+  private sendTo(to: CityId): void {
+    const sources = this.selected.filter((id) => id !== to);
+    if (sources.length === 0) return;
+    let sent = 0;
+    let problem = "";
+    for (const id of sources) {
+      const from = this.getCity(id);
+      if (!from || from.owner !== 1) continue;
+      if (!isProductionSiteKind(from.kind)) {
+        if (!problem) problem = `${id} 不产兵`;
+        continue;
+      }
+      if (from.pop < 2) {
+        if (!problem) problem = `${id} 守军不足两人`;
+        continue;
+      }
+      if (!sendReachableTargets(this.state, id).includes(to)) {
+        if (!problem) problem = `${id} 路线被阻断`;
+        continue;
+      }
+      this.commands.push({ type: "send", from: id, to });
+      sent += 1;
+    }
+    if (sent === 0) {
+      this.options.onToast(problem || "无法派兵");
+      return;
+    }
+    if (sent < sources.length && problem) this.options.onToast(`${sent} 座发兵 · ${problem}`);
+    else if (sent > 1) this.options.onToast(`${sent} 座据点同时发兵`);
   }
 
   dispose(): void {
@@ -272,9 +354,19 @@ export class GameSession {
     if (this.selectedSquad && !this.getSquad(this.selectedSquad)) {
       this.clearSelection();
     }
+    const owned = this.selected.filter((id) => this.getCity(id)?.owner === 1);
+    const lostSelection = owned.length !== this.selected.length;
+    if (lostSelection) {
+      this.selected = owned;
+      this.scene.setSelected(owned);
+      this.refreshReach(true);
+    } else {
+      this.refreshReach();
+    }
     this.handleEvents();
     this.updateHud();
-    if (this.selected) this.options.onSelect(this.selected);
+    if (this.selected.length > 0) this.options.onSelect(this.primary, this.selected.length);
+    else if (lostSelection) this.options.onSelect(null, 0);
 
     if (this.state.status === "finished" && !this.finished) {
       this.finished = true;
@@ -466,20 +558,20 @@ export class GameSession {
     if (cityId) {
       const city = this.getCity(cityId);
       if (!city) return;
-      if (!this.selected) {
-        if (city.owner === 1) this.select(cityId);
-        else this.options.onToast("先选择己方据点");
-        return;
-      }
-      if (cityId === this.selected) return;
       if (city.owner === 1) {
-        this.select(cityId);
+        if (event.ctrlKey || event.metaKey) this.toggleSelect(cityId);
+        else this.select(cityId);
         return;
       }
-      this.commands.push({ type: "send", from: this.selected, to: cityId });
+      if (this.selected.length === 0) {
+        this.options.onToast("先选择己方据点");
+        return;
+      }
+      this.sendTo(cityId);
       return;
     }
 
+    if (event.ctrlKey || event.metaKey) return;
     this.clearSelection();
   };
 
