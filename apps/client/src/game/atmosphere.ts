@@ -208,7 +208,7 @@ function buildCloudBank(
     const size = 16 + random() * 42;
     sprite.position.set(
       centerX + Math.cos(angle) * distance,
-      cloudSeaY + (random() - 0.6) * depth * 0.55,
+      cloudSeaY + (random() - 0.9) * depth * 0.35,
       centerZ + Math.sin(angle) * distance,
     );
     sprite.scale.set(size, size * 0.55, 1);
@@ -225,7 +225,7 @@ export function buildAtmosphere(options: AtmosphereOptions): Atmosphere {
   group.name = "atmosphere";
 
   const sky = skyTexture(profile);
-  const cloudSeaY = options.topY - options.depth * 0.78;
+  const cloudSeaY = options.topY - options.depth * 1.02;
   const layers: THREE.Mesh[] = [];
   const layerSpeeds: number[] = [];
   const layerConfigs: Array<{ size: number; opacity: number; y: number; rotate: number }> = [

@@ -20,14 +20,14 @@ const PLAYER_COLORS: Record<Owner, number> = {
   2: 0xe06a4a,
 };
 
-const PITCH = (52 * Math.PI) / 180;
+const PITCH = (28 * Math.PI) / 180;
 const FIELD_OF_VIEW = 28;
 const BASE_YAW = (12 * Math.PI) / 180;
 const VIEW_HEIGHT = 58;
 const ZOOM_MIN = 0.34;
 const ZOOM_MAX = 2.4;
 const DEFAULT_ZOOM = 1.12;
-const GAMEPLAY_ZOOM = 0.45;
+const GAMEPLAY_ZOOM = 0.38;
 const CITY_BASE_RADIUS = 2.3;
 const CITY_BASE_HEIGHT = 0.26;
 const CITY_LABEL_HEIGHT = 4.3;
@@ -740,8 +740,8 @@ export class BattleScene {
     const rim = new THREE.DirectionalLight(0x6d9bff, 0.5);
     rim.position.set(-30, 18, -24);
     this.scene.add(rim);
-    const bounce = new THREE.DirectionalLight(0xd6d8d0, 0.6);
-    bounce.position.set(-14, -46, 42);
+    const bounce = new THREE.DirectionalLight(0xd6d8d0, 1.05);
+    bounce.position.set(-16, -52, 48);
     this.scene.add(bounce);
   }
 
@@ -784,7 +784,7 @@ export class BattleScene {
       this.atmosphere = null;
     }
     const island = this.terrain.island;
-    this.frameY = -island.depth * 0.12;
+    this.frameY = -island.depth * 0.22;
     const atmosphere = buildAtmosphere({
       centerX: island.centerX,
       centerZ: island.centerZ,

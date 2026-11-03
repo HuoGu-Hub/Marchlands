@@ -724,7 +724,7 @@ function buildIslandBase(
   for (let index = 0; index < bottom.length; index += 1) {
     const a = bottom[index];
     const b = bottom[(index + 1) % bottom.length];
-    color.copy(dark).multiplyScalar(0.62);
+    color.copy(dark).multiplyScalar(0.44);
     positions.push(a.x, a.y, a.z, b.x, b.y, b.z, ...tip);
     for (let vertex = 0; vertex < 3; vertex += 1) colors.push(color.r, color.g, color.b);
   }
