@@ -1470,25 +1470,6 @@ export class BattleScene {
       pad.position.set(center.x + direction.x * outer, ground + 0.055, center.z + direction.z * outer);
       this.roadGroup.add(pad);
 
-      if (index % 2 === 0) {
-        const lamp = art.model("lantern");
-        if (lamp) {
-          const perp = new THREE.Vector3(-direction.z, 0, direction.x);
-          lamp.position.set(
-            center.x + direction.x * (outer + 1.2) + perp.x * 1.4,
-            ground,
-            center.z + direction.z * (outer + 1.2) + perp.z * 1.4,
-          );
-          lamp.scale.setScalar(2.5);
-          this.roadGroup.add(lamp);
-          const base = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.34, 0.42, 0.42, 8),
-            new THREE.MeshStandardMaterial({ color: 0x8a8170, roughness: 1 }),
-          );
-          base.position.set(lamp.position.x, ground + 0.21, lamp.position.z);
-          this.roadGroup.add(base);
-        }
-      }
     });
   }
 
