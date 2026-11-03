@@ -92,6 +92,7 @@ export function createStarterDocument(): MapDocument {
     sites: starterSites(),
     roads: starterRoads(),
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
+    startGold: 0,
     transit: "friendly",
     visual: createDefaultVisual(),
   };
@@ -118,6 +119,7 @@ export function createGridDocument(): MapDocument {
     ],
     roads: [],
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
+    startGold: 0,
     transit: "open",
     visual: createDefaultVisual(),
   };
@@ -140,6 +142,9 @@ export function convertToGrid(document: MapDocument): MapDocument {
       elevation: primary?.elevation ?? 0,
       ...(primary?.assetId ? { assetId: primary.assetId } : {}),
       ...(primary?.shape ? { shape: primary.shape } : {}),
+      ...(primary?.terrainStyle ? { terrainStyle: primary.terrainStyle } : {}),
+      ...(primary?.terrainSeed !== undefined ? { terrainSeed: primary.terrainSeed } : {}),
+      ...(primary?.terrainAmplitude !== undefined ? { terrainAmplitude: primary.terrainAmplitude } : {}),
       ...(primary?.scatter !== undefined ? { scatter: primary.scatter } : {}),
       ...(primary?.material ? { material: primary.material } : {}),
       scale: primary?.scale ?? 1,
@@ -395,6 +400,20 @@ function foundationFromUnknown(value: unknown, index: number): FoundationDraft {
     if (!isFoundationShape(value.shape)) throw new Error(`地基 ${id} 的外形无效`);
     foundation.shape = value.shape;
   }
+  if (value.terrainStyle !== undefined) {
+    if (!isTerrainStyle(value.terrainStyle)) throw new Error(`地基 ${id} 的地貌风格无效`);
+    foundation.terrainStyle = value.terrainStyle;
+  }
+  if (value.terrainSeed !== undefined) {
+    const seed = finiteNumber(value.terrainSeed);
+    if (seed === null) throw new Error(`地基 ${id} 的地貌种子无效`);
+    foundation.terrainSeed = Math.round(seed);
+  }
+  if (value.terrainAmplitude !== undefined) {
+    const amplitude = finiteNumber(value.terrainAmplitude);
+    if (amplitude === null) throw new Error(`地基 ${id} 的地貌起伏无效`);
+    foundation.terrainAmplitude = Math.max(0.2, Math.min(1.5, amplitude));
+  }
   if (typeof value.scatter === "boolean") foundation.scatter = value.scatter;
   if (typeof value.material === "string" && value.material.trim().length > 0) {
     foundation.material = value.material.trim().slice(0, 128);
@@ -561,6 +580,7 @@ export function fromMapDef(map: MapDef): MapDocument {
     })),
     roads: roadsFromMapDef(map),
     objectives: map.objectives.map((objective) => ({ ...objective })),
+    startGold: map.startGold ?? 0,
     transit: map.transit ?? "open",
     visual,
   };
@@ -650,6 +670,10 @@ export function parseDocument(input: unknown): ParsedDocument {
       sites,
       roads,
       objectives,
+      startGold:
+        typeof input.startGold === "number" && Number.isFinite(input.startGold)
+          ? Math.max(0, Math.round(input.startGold))
+          : 0,
       transit: input.transit === "open" ? "open" : "friendly",
       visual: visualFromUnknown(
         input.visual,
@@ -984,6 +1008,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
     edges,
     ...(mapRoads.length > 0 ? { roads: mapRoads } : {}),
     objectives: document.objectives.map((objective) => ({ ...objective })),
+    startGold: document.startGold ?? 0,
     transit: document.transit,
   };
   map.mapHash = mapHashOf(map);

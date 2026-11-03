@@ -562,6 +562,7 @@ export class App {
       hud: this.root,
       map,
       visual,
+      unitSkins: this.settings.unitSkins,
       rules: this.content.rules,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),

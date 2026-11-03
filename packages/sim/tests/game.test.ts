@@ -20,6 +20,13 @@ function runUntil(state: ReturnType<typeof createGame>, tick: number, commands: 
   return current;
 }
 
+describe("setup", () => {
+  it("uses the map starting gold", () => {
+    const state = createGame({ ...THREE_CITY_MAP, startGold: 250 }, 1);
+    expect(state.players.map((player) => player.gold)).toEqual([250, 250]);
+  });
+});
+
 describe("send", () => {
   it("sends half rounded down and records a squad", () => {
     const state = createGame(THREE_CITY_MAP, 1, TIMED_RULES);

@@ -45,8 +45,6 @@ import {
   updateRoad,
   updateRoadVisual,
   updateSite,
-  updateTerrain,
-  updateUnitVisual,
   watchCandidates,
 } from "@marchlands/map-authoring";
 import type {
@@ -913,10 +911,12 @@ export class EditorNext {
     objRow.className = "mlnx-actions-row";
     objRow.innerHTML =
       '<button class="mlnx-btn" id="mlnx-obj-import">导入 OBJ</button>' +
-      '<button class="mlnx-btn" id="mlnx-obj-folder">OBJ 文件夹</button>';
+      '<button class="mlnx-btn" id="mlnx-obj-folder">OBJ 文件夹</button>' +
+      '<button class="mlnx-btn" id="mlnx-unit-obj">导入单位</button>';
     this.leftContent.appendChild(objRow);
     objRow.querySelector("#mlnx-obj-import")?.addEventListener("click", () => void this.importObj(false));
     objRow.querySelector("#mlnx-obj-folder")?.addEventListener("click", () => void this.importObj(true));
+    objRow.querySelector("#mlnx-unit-obj")?.addEventListener("click", () => void this.importObj(false, "unit"));
     const objNote = document.createElement("p");
     objNote.className = "mlnx-note";
     objNote.textContent = "OBJ 会连同 MTL 与贴图一起烘焙成 GLB；按当前标签页导入为装饰/据点/地基/地形，单位在地图设置里导入。";
@@ -1017,26 +1017,28 @@ export class EditorNext {
     }
   }
 
-  private async importGroundMaterial(directory: boolean): Promise<void> {
+  private async importFoundationMaterial(foundationId: string, directory: boolean): Promise<void> {
     const files = await openTextureFiles(directory);
     if (files.length === 0) return;
-    this.notice("正在导入地表贴图…");
+    this.notice("正在导入地基贴图…");
     try {
       const record = await saveCustomMaterial(files);
       this.commit(
-        updateTerrain(this.doc, { material: record.id }),
-        "已导入地表材质 " + record.label,
+        updateFoundation(this.doc, foundationId, { material: record.id }),
+        "已导入地基材质 " + record.label,
         { terrain: true, sites: true },
       );
       this.scheduleInspectorRender();
     } catch (error) {
-      this.notice(error instanceof Error ? error.message : "地表贴图导入失败");
+      this.notice(error instanceof Error ? error.message : "地基贴图导入失败");
     }
   }
 
-  private async removeGroundMaterial(id: string): Promise<void> {
-    await removeCustomMaterial(id);
-    this.commit(updateTerrain(this.doc, { material: undefined }), "已移除自定义地表材质", {
+  private async removeFoundationMaterial(foundationId: string): Promise<void> {
+    const foundation = this.doc.visual.foundations.find((entry) => entry.id === foundationId);
+    if (!foundation?.material) return;
+    await removeCustomMaterial(foundation.material);
+    this.commit(updateFoundation(this.doc, foundationId, { material: undefined }), "已移除自定义地基材质", {
       terrain: true,
       sites: true,
     });
@@ -1285,93 +1287,28 @@ export class EditorNext {
     meta.className = "mlnx-sub";
     meta.textContent = "范围 " + ((bounds.maxX - bounds.minX) / 10).toFixed(1) + " × " + ((bounds.maxZ - bounds.minZ) / 10).toFixed(1) + " 米 · 由地基决定";
     this.inspectorEl.appendChild(meta);
-    this.addSection("地貌");
-    this.addSelect(
-      "风格",
-      this.doc.visual.terrain.style,
-      [
-        { t: "边境", v: "frontier" },
-        { t: "草原", v: "meadow" },
-        { t: "秋林", v: "autumn" },
-        { t: "灰烬", v: "ash" },
-        { t: "海岸", v: "coast" },
-        { t: "雪原", v: "snow" },
-      ],
-      (value) => this.commit(updateTerrain(this.doc, { style: value as never }), "已修改地貌", { terrain: true, sites: true }),
+    this.addSection("对局");
+    const timeObjective = this.doc.objectives.find((objective) => objective.type === "time_limit");
+    const timeMinutes = Math.max(1, Math.round((timeObjective?.ticks ?? 18000) / 1200));
+    this.addNumber(
+      "对局时间（分钟）",
+      timeMinutes,
+      (value) => {
+        const ticks = Math.max(1, Math.round(value)) * 1200;
+        const objectives = [
+          ...this.doc.objectives.filter((objective) => objective.type !== "time_limit"),
+          { type: "time_limit", ticks },
+        ];
+        this.commit(updateDocument(this.doc, { objectives }), "已修改对局时间");
+      },
+      { min: 1, max: 180, step: 1, precision: 0 },
     );
     this.addNumber(
-      "起伏",
-      this.doc.visual.terrain.amplitude,
-      (value) => this.commit(updateTerrain(this.doc, { amplitude: Math.max(0.2, Math.min(3.2, value)) }), "已修改起伏", { terrain: true, sites: true }),
-      { min: 0.2, max: 3.2, step: 0.1 },
+      "起始金币",
+      this.doc.startGold ?? 0,
+      (value) => this.commit(updateDocument(this.doc, { startGold: Math.max(0, Math.round(value)) }), "已修改起始金币"),
+      { min: 0, max: 99999, step: 1, precision: 0 },
     );
-    this.addNumber(
-      "种子",
-      this.doc.visual.terrain.seed,
-      (value) => this.commit(updateTerrain(this.doc, { seed: Math.round(value) }), "已修改种子", { terrain: true, sites: true }),
-      { step: 1, precision: 0 },
-    );
-    const materialOptions: Array<{ t: string; v: string }> = [
-      { t: "顶点色（无贴图）", v: "__none__" },
-      ...this.textureMaterialOptions(),
-    ];
-    this.addSelect(
-      "地表材质",
-      this.doc.visual.terrain.material ?? "__none__",
-      materialOptions,
-      (value) =>
-        this.commit(
-          updateTerrain(this.doc, { material: value === "__none__" ? undefined : String(value) }),
-          value === "__none__" ? "已恢复顶点色" : "已更换地表材质",
-          { terrain: true, sites: true },
-        ),
-    );
-    const materialRow = document.createElement("div");
-    materialRow.className = "mlnx-actions-row";
-    materialRow.innerHTML =
-      '<button class="mlnx-btn" id="mlnx-material-import">导入贴图材质</button>' +
-      '<button class="mlnx-btn" id="mlnx-material-folder">贴图文件夹</button>';
-    this.inspectorEl.appendChild(materialRow);
-    materialRow.querySelector("#mlnx-material-import")?.addEventListener("click", () => void this.importGroundMaterial(false));
-    materialRow.querySelector("#mlnx-material-folder")?.addEventListener("click", () => void this.importGroundMaterial(true));
-    const currentMaterial = this.doc.visual.terrain.material;
-    if (currentMaterial?.startsWith("custom.")) {
-      const removeMaterial = document.createElement("button");
-      removeMaterial.className = "mlnx-delete";
-      removeMaterial.textContent = "移除当前自定义材质";
-      removeMaterial.addEventListener("click", () => void this.removeGroundMaterial(currentMaterial));
-      this.inspectorEl.appendChild(removeMaterial);
-    }
-    this.addSection("单位外观");
-    const unitAssets = assetRegistry.list("unit");
-    const unitOptions: Array<{ t: string; v: string }> = [{ t: "默认程序化单位", v: "__none__" }];
-    for (const asset of unitAssets) unitOptions.push({ t: asset.label, v: asset.id });
-    this.addSelect(
-      "绿方单位",
-      this.doc.visual.units.player1 ?? "__none__",
-      unitOptions,
-      (value) => this.commit(updateUnitVisual(this.doc, "player1", value === "__none__" ? undefined : String(value)), "已设置绿方单位"),
-    );
-    this.addSelect(
-      "红方单位",
-      this.doc.visual.units.player2 ?? "__none__",
-      unitOptions,
-      (value) => this.commit(updateUnitVisual(this.doc, "player2", value === "__none__" ? undefined : String(value)), "已设置红方单位"),
-    );
-    if (unitAssets.length === 0) {
-      const unitNote = document.createElement("p");
-      unitNote.className = "mlnx-note";
-      unitNote.textContent = "导入含 unit 资产的 .mlpack 或 OBJ 后，可在这里替换兵团外观。";
-      this.inspectorEl.appendChild(unitNote);
-    }
-    this.addButton("导入单位 OBJ（静态）", () => void this.importObj(false, "unit"));
-    if (this.doc.navigation === "grid" && this.doc.grid) {
-      const navPreview = new BooleanInput({ value: false });
-      navPreview.on("change", () => this.scene?.setNavPreview(navPreview.value));
-      const navGroup = new LabelGroup({ text: "导航预览", field: navPreview });
-      this.inspectorEl.appendChild(navGroup.dom);
-      this.addTop(navGroup);
-    }
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const warnings = this.compiled.diagnostics.filter((entry) => entry.severity === "warning").length;
     const diagnostics = document.createElement("div");
@@ -1482,6 +1419,76 @@ export class EditorNext {
     };
     actions.append(expand(100, 0, "东 +10m"), expand(-100, 0, "西 +10m"), expand(0, -100, "北 +10m"), expand(0, 100, "南 +10m"));
     this.inspectorEl.appendChild(actions);
+    this.addSection("地貌");
+    this.addSelect(
+      "风格",
+      foundation.terrainStyle ?? "__none__",
+      [
+        { t: "跟随地图", v: "__none__" },
+        { t: "边境", v: "frontier" },
+        { t: "草原", v: "meadow" },
+        { t: "秋林", v: "autumn" },
+        { t: "灰烬", v: "ash" },
+        { t: "海岸", v: "coast" },
+        { t: "雪原", v: "snow" },
+      ],
+      (value) =>
+        this.commit(
+          updateFoundation(this.doc, id, { terrainStyle: value === "__none__" ? undefined : (value as never) }),
+          value === "__none__" ? "已跟随地图地貌" : "已修改地基地貌",
+          { terrain: true, sites: true },
+        ),
+    );
+    this.addNumber(
+      "种子",
+      foundation.terrainSeed ?? this.doc.visual.terrain.seed,
+      (value) =>
+        this.commit(updateFoundation(this.doc, id, { terrainSeed: Math.round(value) }), "已修改地基种子", {
+          terrain: true,
+          sites: true,
+        }),
+      { step: 1, precision: 0 },
+    );
+    this.addNumber(
+      "起伏",
+      foundation.terrainAmplitude ?? this.doc.visual.terrain.amplitude,
+      (value) =>
+        this.commit(updateFoundation(this.doc, id, { terrainAmplitude: value }), "已修改地基起伏", {
+          terrain: true,
+          sites: true,
+        }),
+      { min: 0.2, max: 1.5, step: 0.1 },
+    );
+    this.addSelect(
+      "地表材质",
+      foundation.material ?? "__none__",
+      [{ t: "跟随地图材质", v: "__none__" }, ...this.textureMaterialOptions()],
+      (value) =>
+        this.commit(
+          updateFoundation(this.doc, id, { material: value === "__none__" ? undefined : String(value) }),
+          value === "__none__" ? "已跟随地图材质" : "已更换地基材质",
+          { terrain: true, sites: true },
+        ),
+    );
+    const materialRow = document.createElement("div");
+    materialRow.className = "mlnx-actions-row";
+    materialRow.innerHTML =
+      '<button class="mlnx-btn" id="mlnx-foundation-material">导入贴图材质</button>' +
+      '<button class="mlnx-btn" id="mlnx-foundation-material-folder">贴图文件夹</button>';
+    this.inspectorEl.appendChild(materialRow);
+    materialRow.querySelector("#mlnx-foundation-material")?.addEventListener("click", () => void this.importFoundationMaterial(id, false));
+    materialRow.querySelector("#mlnx-foundation-material-folder")?.addEventListener("click", () => void this.importFoundationMaterial(id, true));
+    if (foundation.material?.startsWith("custom.")) {
+      const removeMaterial = document.createElement("button");
+      removeMaterial.className = "mlnx-delete";
+      removeMaterial.textContent = "移除当前自定义材质";
+      removeMaterial.addEventListener("click", () => void this.removeFoundationMaterial(id));
+      this.inspectorEl.appendChild(removeMaterial);
+    }
+    const terrainNote = document.createElement("p");
+    terrainNote.className = "mlnx-note";
+    terrainNote.textContent = "地貌只影响这块地基；选“跟随地图”时使用地图默认。";
+    this.inspectorEl.appendChild(terrainNote);
     this.addSection("外壳");
     this.addSelect(
       "外形",
@@ -1491,17 +1498,6 @@ export class EditorNext {
         this.commit(
           updateFoundation(this.doc, id, { shape: value as FoundationShape }),
           "已更换地基外形",
-          { terrain: true, sites: true },
-        ),
-    );
-    this.addSelect(
-      "贴图",
-      foundation.material ?? "__none__",
-      [{ t: "跟随地表材质", v: "__none__" }, ...this.textureMaterialOptions()],
-      (value) =>
-        this.commit(
-          updateFoundation(this.doc, id, { material: value === "__none__" ? undefined : String(value) }),
-          value === "__none__" ? "已恢复跟随地表材质" : "已更换地基贴图",
           { terrain: true, sites: true },
         ),
     );

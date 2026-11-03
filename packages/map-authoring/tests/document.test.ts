@@ -29,6 +29,7 @@ import {
   updateProp,
   updateRoad,
   updateSite,
+  updateDocument,
   updateFoundation,
   updateTerrain,
   updateUnitVisual,
@@ -168,6 +169,23 @@ describe("map authoring", () => {
     expect(after.edges.map((edge) => edge.length)).toEqual(before.edges.map((edge) => edge.length));
     expect(after.edges.some((edge) => edge.grade !== undefined)).toBe(true);
     expect(after.edges.map((edge) => edge.grade)).not.toEqual(before.edges.map((edge) => edge.grade));
+  });
+
+  it("preserves per-foundation terrain and start gold", () => {
+    const starter = createStarterDocument();
+    const withTerrain = updateFoundation(starter, "f1", {
+      terrainStyle: "snow",
+      terrainSeed: 42,
+      terrainAmplitude: 1.2,
+    });
+    const document = updateDocument(withTerrain, { startGold: 250 });
+    const parsed = parseDocument(JSON.parse(serializeDocument(document))).document;
+    expect(parsed.visual.foundations[0].terrainStyle).toBe("snow");
+    expect(parsed.visual.foundations[0].terrainSeed).toBe(42);
+    expect(parsed.visual.foundations[0].terrainAmplitude).toBe(1.2);
+    expect(parsed.startGold).toBe(250);
+    const map = compileDocument(document).map;
+    expect(map.startGold).toBe(250);
   });
 
   it("preserves a site's neutral transit rule and compiles it", () => {

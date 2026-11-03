@@ -279,9 +279,55 @@ test("next editor marks selected roads and keeps settings scoped", async ({ page
   await expect(page.locator("#mlnx-inspector")).toContainText("未占领时");
   await page.getByText("← 地图设置", { exact: true }).click();
   const mapSettings = await page.locator("#mlnx-inspector").innerText();
-  expect(mapSettings).toContain("地貌");
+  expect(mapSettings).toContain("对局时间");
   expect(mapSettings).not.toContain("全图风格");
   expect(mapSettings).not.toContain("未占领时");
+});
+
+test("next editor keeps map rules on the map and terrain on foundations", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await expect(page.locator("#mlnx-inspector")).toContainText("对局时间（分钟）");
+  await expect(page.locator("#mlnx-inspector")).toContainText("起始金币");
+  await expect(page.locator("#mlnx-inspector")).not.toContainText("地貌");
+  await expect(page.locator("#mlnx-inspector")).not.toContainText("单位外观");
+  const inputs = page.locator("#mlnx-inspector .pcui-numeric-input input");
+  await inputs.nth(1).fill("200");
+  await inputs.nth(1).dispatchEvent("change");
+  await page.waitForTimeout(300);
+  await inputs.nth(0).fill("5");
+  await inputs.nth(0).dispatchEvent("change");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const doc = (
+          window as unknown as {
+            __mlnxDoc: () => { startGold?: number; objectives: Array<{ type: string; ticks?: number }> };
+          }
+        ).__mlnxDoc();
+        return {
+          startGold: doc.startGold,
+          time: doc.objectives.find((objective) => objective.type === "time_limit")?.ticks,
+        };
+      }),
+    )
+    .toEqual({ startGold: 200, time: 6000 });
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
+  await expect(page.locator("#mlnx-inspector")).toContainText("地貌");
+  const style = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "跟随地图" }).first();
+  await style.locator(".pcui-select-input-value").click();
+  await style.locator(".pcui-select-input-list .pcui-label", { hasText: "雪原" }).first().click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { visual: { foundations: Array<{ terrainStyle?: string }> } } })
+            .__mlnxDoc().visual.foundations[0].terrainStyle,
+      ),
+    )
+    .toBe("snow");
 });
 
 test("next editor pans the view with a left drag", async ({ page }) => {
@@ -312,7 +358,7 @@ test("next editor retextures a procedural foundation without changing its shape"
   await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
   await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
-  const select = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "跟随地表材质" }).first();
+  const select = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "跟随地图材质" }).first();
   await select.locator(".pcui-select-input-value").click();
   await select.locator(".pcui-select-input-list .pcui-label", { hasText: "雪地" }).first().click();
   await expect
@@ -339,20 +385,21 @@ test("next editor retextures a procedural foundation without changing its shape"
   expect(material).toBe("snow014");
 });
 
-test("next editor switches ground material and keeps atmosphere on foundation add", async ({ page }) => {
+test("next editor switches foundation material and keeps atmosphere on foundation add", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
-  const material = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "顶点色" }).first();
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
+  const material = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "跟随地图材质" }).first();
   await material.locator(".pcui-select-input-value").click();
   await material.locator(".pcui-select-input-list .pcui-label", { hasText: "岩石" }).first().click();
   await expect
     .poll(() =>
       page.evaluate(
         () =>
-          (window as unknown as { __mlnxDoc: () => { visual: { terrain: { material?: string } } } }).__mlnxDoc().visual
-            .terrain.material,
+          (window as unknown as { __mlnxDoc: () => { visual: { foundations: Array<{ material?: string }> } } }).__mlnxDoc()
+            .visual.foundations[0].material,
       ),
     )
     .toBe("rocks007");
@@ -392,15 +439,16 @@ test("next editor imports a custom ground material and keeps it after reload", a
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
   const chooserPromise = page.waitForEvent("filechooser");
-  await page.click("#mlnx-material-import");
+  await page.click("#mlnx-foundation-material");
   const chooser = await chooserPromise;
   await chooser.setFiles(path.join(process.cwd(), "apps/client/src/assets/materials/snow014/color.jpg"));
   const material = () =>
     page.evaluate(
       () =>
-        (window as unknown as { __mlnxDoc: () => { visual: { terrain: { material?: string } } } }).__mlnxDoc().visual
-          .terrain.material,
+        (window as unknown as { __mlnxDoc: () => { visual: { foundations: Array<{ material?: string }> } } }).__mlnxDoc()
+          .visual.foundations[0].material,
     );
   await expect.poll(material).toMatch(/^custom\./);
   const id = await material();
@@ -409,6 +457,7 @@ test("next editor imports a custom ground material and keeps it after reload", a
   await page.click("#btn-editor");
   await expect(page.locator("#mlnx-root")).toBeVisible();
   await expect.poll(material).toBe(id);
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
   await expect(page.locator("#mlnx-inspector")).toContainText("自定义");
 });
 

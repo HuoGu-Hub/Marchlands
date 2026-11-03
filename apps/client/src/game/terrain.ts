@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
 import type { CityId, MapDef } from "@marchlands/sim";
 import { createHeightField, foundationDepth, foundationRect } from "@marchlands/map-authoring";
-import type { FoundationShape, MapVisual } from "@marchlands/map-authoring";
+import type { FoundationShape, MapVisual, TerrainStyle } from "@marchlands/map-authoring";
 import {
   NavGrid,
   Surface,
@@ -203,6 +203,9 @@ export interface FoundationPlatform {
   depth: number;
   assetId?: string;
   shape?: FoundationShape;
+  terrainStyle?: TerrainStyle;
+  terrainSeed?: number;
+  terrainAmplitude?: number;
   scatter?: boolean;
   material?: string;
   scale: number;
@@ -385,6 +388,9 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         depth: source ? foundationDepth(source) : platformDepth(halfX, halfZ),
         ...(source?.material ? { material: source.material } : {}),
         ...(source?.shape ? { shape: source.shape } : {}),
+        ...(source?.terrainStyle ? { terrainStyle: source.terrainStyle } : {}),
+        ...(source?.terrainSeed !== undefined ? { terrainSeed: source.terrainSeed } : {}),
+        ...(source?.terrainAmplitude !== undefined ? { terrainAmplitude: source.terrainAmplitude } : {}),
         ...(source?.scatter !== undefined ? { scatter: source.scatter } : {}),
         scale: 1,
         rotation: 0,
@@ -405,6 +411,9 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         depth: foundationDepth(foundation),
         ...(foundation.assetId ? { assetId: foundation.assetId } : {}),
         ...(foundation.shape ? { shape: foundation.shape } : {}),
+        ...(foundation.terrainStyle ? { terrainStyle: foundation.terrainStyle } : {}),
+        ...(foundation.terrainSeed !== undefined ? { terrainSeed: foundation.terrainSeed } : {}),
+        ...(foundation.terrainAmplitude !== undefined ? { terrainAmplitude: foundation.terrainAmplitude } : {}),
         ...(foundation.scatter !== undefined ? { scatter: foundation.scatter } : {}),
         ...(foundation.material ? { material: foundation.material } : {}),
         scale: foundation.scale,
@@ -553,13 +562,33 @@ export function buildTerrain(
     if (navGrid) return navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100;
     return heightField.heightAt(x, z);
   };
+  const platformFields = new Map<string, ReturnType<typeof createHeightField>>();
+  const fieldFor = (platform: FoundationPlatform): ReturnType<typeof createHeightField> => {
+    const platformSeed = platform.terrainSeed ?? seed;
+    const platformAmplitude = platform.terrainAmplitude ?? amplitude;
+    const key = String(platformSeed) + "|" + String(platformAmplitude);
+    let field = platformFields.get(key);
+    if (!field) {
+      field = createHeightField({
+        cities: [...positions.values()].map((city) => [city.x, city.z] as [number, number]),
+        terrain: { seed: platformSeed, amplitude: platformAmplitude },
+      });
+      platformFields.set(key, field);
+    }
+    return field;
+  };
   const inside = (platform: FoundationPlatform, x: number, z: number): boolean =>
     x >= platform.minX && x <= platform.maxX && z >= platform.minZ && z <= platform.maxZ;
+  const platformHeightAt = (platform: FoundationPlatform, x: number, z: number): number =>
+    platform.elevation +
+    (navGrid
+      ? navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100
+      : fieldFor(platform).heightAt(x, z));
   const heightAt = (x: number, z: number): number => {
     let best: number | null = null;
     for (const platform of platforms) {
       if (!inside(platform, x, z)) continue;
-      const y = platform.elevation + baseHeightAt(x, z);
+      const y = platformHeightAt(platform, x, z);
       if (best === null || y > best) best = y;
     }
     return best ?? baseHeightAt(x, z);
@@ -598,6 +627,9 @@ export function buildTerrain(
           Math.round(platform.elevation * 100),
           Math.round(platform.depth * 100),
           platform.shape ?? "",
+          platform.terrainStyle ?? "",
+          platform.terrainSeed ?? 0,
+          platform.terrainAmplitude ?? 1,
           platform.material ?? "",
           platform.scatter === false ? "bare" : "decorated",
         ].join(":"),
@@ -620,7 +652,10 @@ export function buildTerrain(
   for (let index = 0; index < platforms.length; index += 1) {
     const platform = platforms[index];
     const ground = platform.material ? groundMaterial(platform.material) : defaultGround;
-    const mesh = buildPlatformSurface(platform, heightAt, palette, navGrid, map, ground, seed, noiseShift);
+    const platformPalette = TERRAIN_PALETTES[platform.terrainStyle ?? style] ?? palette;
+    const platformHeight = (x: number, z: number): number => platformHeightAt(platform, x, z);
+    const platformSeed = platform.terrainSeed ?? seed;
+    const mesh = buildPlatformSurface(platform, platformHeight, platformPalette, navGrid, map, ground, platformSeed, noiseShift);
     group.add(mesh);
     meshes.push(mesh);
     if (reused) {
@@ -633,9 +668,9 @@ export function buildTerrain(
       platform.maxX,
       platform.minZ,
       platform.maxZ,
-      heightAt,
-      palette,
-      seed + (hashText(platform.id) % 997),
+      platformHeight,
+      platformPalette,
+      platformSeed + (hashText(platform.id) % 997),
       ground,
       platform.depth,
       platform.shape ?? "plateau",

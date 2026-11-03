@@ -99,6 +99,8 @@ export interface MapDef {
   /** 手动道路与自由道路，供画面与道路速度层使用。 */
   roads?: MapRoadDef[];
   objectives: MapObjective[];
+  /** 对局起始金币；缺省 0。 */
+  startGold?: number;
   /** undefined: 旧地图不限制；open/friendly: 中立建筑默认开放/关闭；被占领后均为友方通行。 */
   transit?: "open" | "friendly";
 }

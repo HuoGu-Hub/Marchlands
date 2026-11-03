@@ -1,5 +1,5 @@
-import { isFoundationShape } from "./types";
-import type { FoundationDraft, FoundationShape, MapDocument } from "./types";
+import { isFoundationShape, TERRAIN_STYLE_IDS } from "./types";
+import type { FoundationDraft, FoundationShape, MapDocument, TerrainStyle } from "./types";
 
 /** 单块地基的最小边长，分米。 */
 export const MIN_FOUNDATION_SIZE_DM = 100;
@@ -92,6 +92,9 @@ export interface FoundationInput {
   depth?: number;
   assetId?: string;
   shape?: FoundationShape;
+  terrainStyle?: TerrainStyle;
+  terrainSeed?: number;
+  terrainAmplitude?: number;
   scatter?: boolean;
   material?: string;
   scale?: number;
@@ -111,6 +114,18 @@ export function createFoundation(
   const id = input.id && !used.has(input.id) ? input.id : nextFoundationId(foundations);
   const halfX = size[0] / 20;
   const halfZ = size[1] / 20;
+  const terrainStyle =
+    input.terrainStyle && (TERRAIN_STYLE_IDS as readonly string[]).includes(input.terrainStyle)
+      ? input.terrainStyle
+      : undefined;
+  const terrainSeed =
+    typeof input.terrainSeed === "number" && Number.isFinite(input.terrainSeed)
+      ? Math.round(input.terrainSeed)
+      : undefined;
+  const terrainAmplitude =
+    typeof input.terrainAmplitude === "number" && Number.isFinite(input.terrainAmplitude)
+      ? Math.max(0.2, Math.min(1.5, input.terrainAmplitude))
+      : undefined;
   return {
     id,
     pos: [Math.round(input.pos?.[0] ?? 0), Math.round(input.pos?.[1] ?? 0)],
@@ -119,6 +134,9 @@ export function createFoundation(
     depth: clampDepth(input.depth ?? Math.min(38, Math.max(14, Math.hypot(halfX, halfZ) * 0.24))),
     ...(input.assetId ? { assetId: input.assetId } : {}),
     ...(isFoundationShape(input.shape) ? { shape: input.shape } : {}),
+    ...(terrainStyle ? { terrainStyle } : {}),
+    ...(terrainSeed !== undefined ? { terrainSeed } : {}),
+    ...(terrainAmplitude !== undefined ? { terrainAmplitude } : {}),
     ...(input.scatter !== undefined ? { scatter: input.scatter } : {}),
     ...(input.material ? { material: input.material } : {}),
     scale: clampScale(input.scale ?? 1),
@@ -164,6 +182,9 @@ export function mergeFoundationRects(foundations: ReadonlyArray<FoundationDraft>
         if (Math.abs(first.elevation - second.elevation) > 0.001) continue;
         if ((first.assetId ?? "") !== (second.assetId ?? "")) continue;
         if ((first.shape ?? "plateau") !== (second.shape ?? "plateau")) continue;
+        if ((first.terrainStyle ?? "") !== (second.terrainStyle ?? "")) continue;
+        if ((first.terrainSeed ?? 0) !== (second.terrainSeed ?? 0)) continue;
+        if ((first.terrainAmplitude ?? 1) !== (second.terrainAmplitude ?? 1)) continue;
         if ((first.scatter ?? true) !== (second.scatter ?? true)) continue;
         if ((first.material ?? "") !== (second.material ?? "")) continue;
         const merged = mergePair(first, second);
@@ -209,7 +230,8 @@ function mergePair(first: FoundationDraft, second: FoundationDraft): FoundationD
     };
   }
   if (!rect) return null;
-  const keep = first.assetId || first.shape || first.material ? first : second;
+  const keep =
+    first.assetId || first.shape || first.terrainStyle || first.material ? first : second;
   return {
     id: keep.id,
     pos: [(rect.minX + rect.maxX) / 2, (rect.minZ + rect.maxZ) / 2],
@@ -218,6 +240,9 @@ function mergePair(first: FoundationDraft, second: FoundationDraft): FoundationD
     depth: keep.depth,
     ...(keep.assetId ? { assetId: keep.assetId } : {}),
     ...(keep.shape ? { shape: keep.shape } : {}),
+    ...(keep.terrainStyle ? { terrainStyle: keep.terrainStyle } : {}),
+    ...(keep.terrainSeed !== undefined ? { terrainSeed: keep.terrainSeed } : {}),
+    ...(keep.terrainAmplitude !== undefined ? { terrainAmplitude: keep.terrainAmplitude } : {}),
     ...(keep.scatter !== undefined ? { scatter: keep.scatter } : {}),
     ...(keep.material ? { material: keep.material } : {}),
     scale: keep.scale,

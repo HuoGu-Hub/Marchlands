@@ -36,7 +36,6 @@ import {
   updateScatter,
   updateSite,
   updateTerrain,
-  updateUnitVisual,
   watchCandidates,
 } from "@marchlands/map-authoring";
 import type {
@@ -2202,7 +2201,6 @@ export class EditorController {
   private mapSettingsHtml(): string {
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
-    const unitAssets = assetRegistry.list("unit");
     const bounds = documentBounds(this.doc);
     const foundationCount = this.doc.visual.foundations.length;
     const packRows = assetRegistry.packList
@@ -2275,20 +2273,6 @@ export class EditorController {
         </select>
       </label>
       <label class="ml-ed-check"><input data-field="navPreview" type="checkbox" ${this.navPreview ? "checked" : ""}><span>显示可走范围</span></label>
-      <div class="ml-ed-section-label">单位外观</div>
-      <label class="ml-ed-field"><span>绿方兵团</span>
-        <select data-field="unitPlayer1">
-          ${option("", this.doc.visual.units.player1 ?? "", "默认程序化单位")}
-          ${unitAssets.map((asset) => option(asset.id, this.doc.visual.units.player1 ?? "", `${asset.label}${asset.source === "pack" ? " · 资产包" : ""}`)).join("")}
-        </select>
-      </label>
-      <label class="ml-ed-field"><span>红方兵团</span>
-        <select data-field="unitPlayer2">
-          ${option("", this.doc.visual.units.player2 ?? "", "默认程序化单位")}
-          ${unitAssets.map((asset) => option(asset.id, this.doc.visual.units.player2 ?? "", `${asset.label}${asset.source === "pack" ? " · 资产包" : ""}`)).join("")}
-        </select>
-      </label>
-      ${unitAssets.length === 0 ? `<p class="ml-ed-note">当前没有单位资产。导入含 unit 资产的 .mlpack 后，可在这里替换兵团外观。</p>` : ""}
       ${packRows ? `<div class="ml-ed-pack-list">${packRows}</div>` : ""}
       <div class="ml-ed-meta">目标：占领全部城镇<br>时限：15 分钟<br>资产包：${assetRegistry.counts().packs} 个${missing > 0 ? ` · ${missing} 个装饰缺失` : ""}</div>
       <p class="ml-ed-note">从左侧拖入地形、树木与城镇装饰；拖动装饰可移动，选中后可旋转和缩放。</p>
@@ -2516,12 +2500,6 @@ export class EditorController {
       this.updateGridControls();
       this.drawOverlay();
       return;
-    }
-    if (field === "unitPlayer1" || field === "unitPlayer2") {
-      this.commit(
-        updateUnitVisual(this.doc, field === "unitPlayer1" ? "player1" : "player2", value || undefined),
-        value ? "已替换兵团外观" : "已恢复默认兵团",
-      );
     }
   }
 

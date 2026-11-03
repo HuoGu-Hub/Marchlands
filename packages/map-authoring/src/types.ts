@@ -63,6 +63,12 @@ export interface FoundationDraft {
   assetId?: string;
   /** 程序化外壳外形；缺省为高原。 */
   shape?: FoundationShape;
+  /** 该地基的地貌风格；缺省跟随地图地貌。 */
+  terrainStyle?: TerrainStyle;
+  /** 该地基的地貌种子；缺省跟随地图。 */
+  terrainSeed?: number;
+  /** 该地基的起伏强度；缺省跟随地图。 */
+  terrainAmplitude?: number;
   /** 是否在该地基上生成自动补景；缺省 true，新建地基默认 false。 */
   scatter?: boolean;
   /** 外壳/顶面贴图名；缺省跟随地图地表材质。 */
@@ -168,6 +174,8 @@ export interface MapDocument {
   sites: SiteDraft[];
   roads: RoadDraft[];
   objectives: MapObjective[];
+  /** 对局起始金币；缺省 0。 */
+  startGold?: number;
   transit: "open" | "friendly";
   visual: VisualDraft;
 }

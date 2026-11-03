@@ -212,7 +212,7 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
     .sort(byId);
 
   const players: PlayerState[] = map.players
-    .map((player) => ({ id: player.id, gold: 0, goldCarry: 0 }))
+    .map((player) => ({ id: player.id, gold: map.startGold ?? 0, goldCarry: 0 }))
     .sort((a, b) => a.id - b.id);
 
   return {

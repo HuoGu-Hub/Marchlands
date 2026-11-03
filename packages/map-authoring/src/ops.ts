@@ -386,6 +386,19 @@ export function updateFoundation(
     if (patch.shape) foundation.shape = patch.shape;
     else delete foundation.shape;
   }
+  if ("terrainStyle" in patch) {
+    if (patch.terrainStyle) foundation.terrainStyle = patch.terrainStyle;
+    else delete foundation.terrainStyle;
+  }
+  if ("terrainSeed" in patch) {
+    if (patch.terrainSeed !== undefined) foundation.terrainSeed = Math.round(patch.terrainSeed);
+    else delete foundation.terrainSeed;
+  }
+  if ("terrainAmplitude" in patch) {
+    if (patch.terrainAmplitude !== undefined) {
+      foundation.terrainAmplitude = Math.max(0.2, Math.min(1.5, patch.terrainAmplitude));
+    } else delete foundation.terrainAmplitude;
+  }
   if (patch.scatter !== undefined) foundation.scatter = patch.scatter;
   if ("material" in patch) {
     if (patch.material) foundation.material = patch.material;
@@ -420,6 +433,9 @@ export function duplicateFoundation(
     depth: source.depth,
     ...(source.assetId ? { assetId: source.assetId } : {}),
     ...(source.shape ? { shape: source.shape } : {}),
+    ...(source.terrainStyle ? { terrainStyle: source.terrainStyle } : {}),
+    ...(source.terrainSeed !== undefined ? { terrainSeed: source.terrainSeed } : {}),
+    ...(source.terrainAmplitude !== undefined ? { terrainAmplitude: source.terrainAmplitude } : {}),
     scatter: false,
     ...(source.material ? { material: source.material } : {}),
     scale: source.scale,

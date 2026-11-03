@@ -857,11 +857,10 @@ export class BattleScene {
     return view;
   }
 
-  /** 兵团外观：玩家开场前选的兵种皮肤优先，其次地图 visual 的整方覆盖，最后程序化模型。 */
+  /** 兵团外观只由玩家开场前的兵种皮肤设置决定；地图不再覆盖，敌方保留默认模型。 */
   private skinFor(kind: UnitKind, owner: Owner): string | null {
-    const picked = this.unitSkins[kind];
-    if (picked) return picked;
-    return this.visual?.units?.[owner === 1 ? "player1" : "player2"] ?? null;
+    if (owner !== 1) return null;
+    return this.unitSkins[kind] ?? null;
   }
 
   /** 据点出兵兵种：城镇按 id 稳定对应一种兵营，驻兵点是弓箭塔，粮仓出步兵。 */
