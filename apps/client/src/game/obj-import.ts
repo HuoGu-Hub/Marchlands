@@ -32,15 +32,13 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function waitForTextures(manager: THREE.LoadingManager): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => resolve();
-    manager.onLoad = done;
-    manager.onError = done;
-    const total = (manager as unknown as { itemsTotal?: number }).itemsTotal ?? 0;
-    const loaded = (manager as unknown as { itemsLoaded?: number }).itemsLoaded ?? 0;
-    if (total <= loaded) resolve();
-  });
+function textureReady(texture: THREE.Texture): boolean {
+  const image = texture.image as
+    | { complete?: boolean; naturalWidth?: number; width?: number }
+    | undefined;
+  if (!image) return false;
+  if (typeof image.width === "number" && image.width > 0) return true;
+  return Boolean(image.complete && (image.naturalWidth ?? 0) > 0);
 }
 
 function materialList(material: THREE.Material | THREE.Material[]): THREE.Material[] {
@@ -55,6 +53,24 @@ function mapTextures(material: THREE.Material): THREE.Texture[] {
     if (value instanceof THREE.Texture) textures.push(value);
   }
   return textures;
+}
+
+async function waitForObjectTextures(object: THREE.Object3D): Promise<void> {
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const textures = new Set<THREE.Texture>();
+    object.traverse((entry) => {
+      const mesh = entry as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      for (const material of materialList(mesh.material)) {
+        for (const texture of mapTextures(material)) textures.add(texture);
+      }
+    });
+    if (textures.size === 0) return;
+    if ([...textures].every(textureReady)) return;
+    await delay(50);
+  }
+  throw new Error("OBJ 贴图没有加载完成，请重试或改用内嵌贴图的 GLB");
 }
 
 function prepareModel(object: THREE.Object3D): void {
@@ -141,8 +157,8 @@ export async function convertObjToPack(files: File[], kind: AssetKind): Promise<
     const objLoader = new OBJLoader(manager);
     if (materials) objLoader.setMaterials(materials);
     const object = objLoader.parse(await objFile.text());
-    await waitForTextures(manager);
     prepareModel(object);
+    await waitForObjectTextures(object);
     const metrics = normalizeModel(object, kind);
     const glb = new Uint8Array(await exportGlb(object));
 

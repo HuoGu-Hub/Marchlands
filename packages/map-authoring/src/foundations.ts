@@ -90,6 +90,7 @@ export interface FoundationInput {
   elevation?: number;
   depth?: number;
   assetId?: string;
+  material?: string;
   scale?: number;
   rotation?: number;
   id?: string;
@@ -114,6 +115,7 @@ export function createFoundation(
     elevation: clampElevation(input.elevation ?? 0),
     depth: clampDepth(input.depth ?? Math.min(38, Math.max(14, Math.hypot(halfX, halfZ) * 0.24))),
     ...(input.assetId ? { assetId: input.assetId } : {}),
+    ...(input.material ? { material: input.material } : {}),
     scale: clampScale(input.scale ?? 1),
     rotation: clampRotation(input.rotation ?? 0),
   };
@@ -156,6 +158,7 @@ export function mergeFoundationRects(foundations: ReadonlyArray<FoundationDraft>
         const second = list[b];
         if (Math.abs(first.elevation - second.elevation) > 0.001) continue;
         if ((first.assetId ?? "") !== (second.assetId ?? "")) continue;
+        if ((first.material ?? "") !== (second.material ?? "")) continue;
         const merged = mergePair(first, second);
         if (!merged) continue;
         list = list.filter((_, index) => index !== a && index !== b);
@@ -199,7 +202,7 @@ function mergePair(first: FoundationDraft, second: FoundationDraft): FoundationD
     };
   }
   if (!rect) return null;
-  const keep = first.assetId ? first : second;
+  const keep = first.assetId || first.material ? first : second;
   return {
     id: keep.id,
     pos: [(rect.minX + rect.maxX) / 2, (rect.minZ + rect.maxZ) / 2],
@@ -207,6 +210,7 @@ function mergePair(first: FoundationDraft, second: FoundationDraft): FoundationD
     elevation: keep.elevation,
     depth: keep.depth,
     ...(keep.assetId ? { assetId: keep.assetId } : {}),
+    ...(keep.material ? { material: keep.material } : {}),
     scale: keep.scale,
     rotation: keep.rotation,
   };

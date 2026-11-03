@@ -53,6 +53,8 @@ export interface FoundationDraft {
   depth?: number;
   /** 外壳模型资产 ID；缺省使用程序化浮岛。 */
   assetId?: string;
+  /** 外壳/顶面贴图名；缺省跟随地图地表材质。 */
+  material?: string;
   /** 外壳缩放。 */
   scale: number;
   /** 外壳朝向，单位为度。 */

@@ -382,6 +382,10 @@ export function updateFoundation(
     if (patch.assetId) foundation.assetId = patch.assetId;
     else delete foundation.assetId;
   }
+  if ("material" in patch) {
+    if (patch.material) foundation.material = patch.material;
+    else delete foundation.material;
+  }
   if (next.navigation === "grid") {
     foundation.pos = [0, 0];
     foundation.size = [next.size[0], next.size[1]];
@@ -410,6 +414,7 @@ export function duplicateFoundation(
     elevation: source.elevation,
     depth: source.depth,
     ...(source.assetId ? { assetId: source.assetId } : {}),
+    ...(source.material ? { material: source.material } : {}),
     scale: source.scale,
     rotation: source.rotation,
   });

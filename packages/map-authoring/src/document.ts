@@ -384,6 +384,9 @@ function foundationFromUnknown(value: unknown, index: number): FoundationDraft {
     if (!isAssetId(value.assetId)) throw new Error(`地基 ${id} 的外壳资产 ID 无效`);
     foundation.assetId = value.assetId;
   }
+  if (typeof value.material === "string" && value.material.trim().length > 0) {
+    foundation.material = value.material.trim().slice(0, 128);
+  }
   return foundation;
 }
 

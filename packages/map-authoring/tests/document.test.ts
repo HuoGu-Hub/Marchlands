@@ -170,6 +170,14 @@ describe("map authoring", () => {
     expect(after.edges.map((edge) => edge.grade)).not.toEqual(before.edges.map((edge) => edge.grade));
   });
 
+  it("preserves foundation material through save and load", () => {
+    const starter = createStarterDocument();
+    const next = updateFoundation(starter, "f1", { material: "snow014" });
+    const parsed = parseDocument(JSON.parse(serializeDocument(next))).document;
+    expect(parsed.visual.foundations[0].material).toBe("snow014");
+    expect(parsed.visual.foundations[0].assetId).toBeUndefined();
+  });
+
   it("preserves terrain material through save and load", () => {
     const starter = createStarterDocument();
     const next = updateTerrain(starter, { material: "rocks007" });

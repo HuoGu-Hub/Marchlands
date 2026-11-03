@@ -202,6 +202,7 @@ export interface FoundationPlatform {
   elevation: number;
   depth: number;
   assetId?: string;
+  material?: string;
   scale: number;
   rotation: number;
 }
@@ -378,6 +379,7 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         maxZ: halfZ,
         elevation: 0,
         depth: source ? foundationDepth(source) : platformDepth(halfX, halfZ),
+        ...(source?.material ? { material: source.material } : {}),
         scale: 1,
         rotation: 0,
       },
@@ -396,6 +398,7 @@ function resolvePlatforms(map: MapDef, visual: MapVisual | null): FoundationPlat
         elevation: foundation.elevation,
         depth: foundationDepth(foundation),
         ...(foundation.assetId ? { assetId: foundation.assetId } : {}),
+        ...(foundation.material ? { material: foundation.material } : {}),
         scale: foundation.scale,
         rotation: foundation.rotation,
       };
@@ -578,12 +581,13 @@ export function buildTerrain(
           Math.round(platform.maxZ * 100),
           Math.round(platform.elevation * 100),
           Math.round(platform.depth * 100),
+          platform.material ?? "",
         ].join(":"),
       )
       .join("|") + "|" + boundarySignature(bounds, heightAt);
   const reused = options.previous && options.previous.islandSignature === signature ? options.previous : null;
 
-  const ground = groundMaterial(options.material);
+  const defaultGround = groundMaterial(options.material);
   const group = new THREE.Group();
   const islandGroup = reused ? reused.islandGroup : new THREE.Group();
   islandGroup.name = "islands";
@@ -597,6 +601,7 @@ export function buildTerrain(
   const builtPlatforms: TerrainPlatform[] = [];
   for (let index = 0; index < platforms.length; index += 1) {
     const platform = platforms[index];
+    const ground = platform.material ? groundMaterial(platform.material) : defaultGround;
     const mesh = buildPlatformSurface(platform, heightAt, palette, navGrid, map, ground, seed, noiseShift);
     group.add(mesh);
     meshes.push(mesh);

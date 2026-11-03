@@ -263,6 +263,39 @@ test("next editor drags a foundation face handle", async ({ page }) => {
   await expect(page.locator("#mlnx-toast")).toContainText("已扩展地基");
 });
 
+test("next editor retextures a procedural foundation without changing its shape", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "f1 ·" }).click();
+  const select = page.locator("#mlnx-inspector .pcui-select-input").filter({ hasText: "跟随地表材质" }).first();
+  await select.locator(".pcui-select-input-value").click();
+  await select.locator(".pcui-select-input-list .pcui-label", { hasText: "雪地" }).first().click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const doc = (
+          window as unknown as { __mlnxDoc: () => { visual: { foundations: Array<{ material?: string; assetId?: string }> } } }
+        ).__mlnxDoc();
+        const foundation = doc.visual.foundations[0];
+        return { material: foundation.material, assetId: foundation.assetId ?? null, count: doc.visual.foundations.length };
+      }),
+    )
+    .toEqual({ material: "snow014", assetId: null, count: 1 });
+  await page.waitForTimeout(1200);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  const material = await page.evaluate(
+    () =>
+      (
+        window as unknown as { __mlnxDoc: () => { visual: { foundations: Array<{ material?: string }> } } }
+      ).__mlnxDoc().visual.foundations[0].material,
+  );
+  expect(material).toBe("snow014");
+});
+
 test("next editor switches ground material and keeps atmosphere on foundation add", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });

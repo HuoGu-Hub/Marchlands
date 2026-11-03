@@ -92,6 +92,55 @@ const TOOL_LABELS: Record<NextTool, string> = {
 
 const AUTOSAVE_KEY = "marchlands.editor.autosave.v1";
 
+interface SelectInputProto {
+  _updateInputFieldsVisibility: (...args: unknown[]) => void;
+  _labelValue?: unknown;
+  _timeoutLabelValueTabIndex?: number | null;
+  destroy: () => void;
+  __mlnxGuarded?: boolean;
+}
+
+function guardPcuiTabIndex(start: object): void {
+  let proto: object | null = start;
+  while (proto) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, "tabIndex");
+    const setter = descriptor?.set;
+    if (descriptor && setter && descriptor.configurable) {
+      Object.defineProperty(proto, "tabIndex", {
+        ...descriptor,
+        set(this: { dom?: HTMLElement | null }, value: number): void {
+          if (!this.dom) return;
+          setter.call(this, value);
+        },
+      });
+      return;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+}
+
+function guardPcuiSelectLifecycle(): void {
+  guardPcuiTabIndex(SelectInput.prototype);
+  const proto = SelectInput.prototype as unknown as SelectInputProto;
+  if (proto.__mlnxGuarded) return;
+  const original = proto._updateInputFieldsVisibility;
+  if (typeof original !== "function") return;
+  proto._updateInputFieldsVisibility = function guarded(this: SelectInputProto, ...args: unknown[]): void {
+    if (!this._labelValue) return;
+    if ((this._labelValue as { dom?: unknown }).dom === null) return;
+    original.apply(this, args);
+  };
+  const originalDestroy = proto.destroy;
+  proto.destroy = function guardedDestroy(this: SelectInputProto): void {
+    if (this._timeoutLabelValueTabIndex) {
+      cancelAnimationFrame(this._timeoutLabelValueTabIndex);
+      this._timeoutLabelValueTabIndex = null;
+    }
+    originalDestroy.apply(this, []);
+  };
+  proto.__mlnxGuarded = true;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -266,6 +315,7 @@ export class EditorNext {
   }
 
   private mount(): void {
+    guardPcuiSelectLifecycle();
     this.options.root.innerHTML = TEMPLATE;
     this.canvas = document.getElementById("mlnx-canvas") as HTMLCanvasElement;
     this.leftContent = document.getElementById("mlnx-left-content") as HTMLElement;
@@ -1100,6 +1150,16 @@ export class EditorNext {
     return input;
   }
 
+  private textureMaterialOptions(): Array<{ t: string; v: string }> {
+    const options: Array<{ t: string; v: string }> = [
+      { t: "岩石 · rocks007", v: "rocks007" },
+      { t: "泥土 · ground068", v: "ground068" },
+      { t: "雪地 · snow014", v: "snow014" },
+    ];
+    for (const record of customMaterialList()) options.push({ t: "自定义 · " + record.label, v: record.id });
+    return options;
+  }
+
   private addButton(label: string, onClick: () => void): Button {
     const button = new Button({ text: label });
     button.on("click", onClick);
@@ -1147,11 +1207,8 @@ export class EditorNext {
     );
     const materialOptions: Array<{ t: string; v: string }> = [
       { t: "顶点色（无贴图）", v: "__none__" },
-      { t: "岩石 · rocks007", v: "rocks007" },
-      { t: "泥土 · ground068", v: "ground068" },
-      { t: "雪地 · snow014", v: "snow014" },
+      ...this.textureMaterialOptions(),
     ];
-    for (const record of customMaterialList()) materialOptions.push({ t: "自定义 · " + record.label, v: record.id });
     this.addSelect(
       "地表材质",
       this.doc.visual.terrain.material ?? "__none__",
@@ -1353,6 +1410,17 @@ export class EditorNext {
     actions.append(expand(100, 0, "东 +10m"), expand(-100, 0, "西 +10m"), expand(0, -100, "北 +10m"), expand(0, 100, "南 +10m"));
     this.inspectorEl.appendChild(actions);
     this.addSection("外壳");
+    this.addSelect(
+      "贴图",
+      foundation.material ?? "__none__",
+      [{ t: "跟随地表材质", v: "__none__" }, ...this.textureMaterialOptions()],
+      (value) =>
+        this.commit(
+          updateFoundation(this.doc, id, { material: value === "__none__" ? undefined : String(value) }),
+          value === "__none__" ? "已恢复跟随地表材质" : "已更换地基贴图",
+          { terrain: true, sites: true },
+        ),
+    );
     const assets = assetRegistry.list("foundation");
     const shellOptions: Array<{ t: string; v: string }> = [{ t: "程序化浮岛", v: "__none__" }];
     for (const asset of assets) shellOptions.push({ t: asset.label, v: asset.id });
@@ -1375,6 +1443,10 @@ export class EditorNext {
         (value) => this.commit(updateFoundation(this.doc, id, { rotation: value }), "已调整外壳朝向", { terrain: true, sites: true }),
         { step: 5, precision: 0 },
       );
+      const shellNote = document.createElement("p");
+      shellNote.className = "mlnx-note";
+      shellNote.textContent = "当前使用模型外壳；贴图只对程序化浮岛生效，切回“程序化浮岛”后可见。";
+      this.inspectorEl.appendChild(shellNote);
     }
     this.addButton("复制地基", () => {
       const result = duplicateFoundation(this.doc, id);
@@ -2525,9 +2597,13 @@ export class EditorNext {
 
   private scheduleInspectorRender(): void {
     if (this.inspectorFrame) cancelAnimationFrame(this.inspectorFrame);
+    // 选项的 change 事件先于 SelectInput.close()，而 close 会再排一个 rAF 恢复 tabIndex。
+    // 延后两帧再重建检查器，避免在它恢复 tabIndex 之前销毁控件。
     this.inspectorFrame = requestAnimationFrame(() => {
-      this.inspectorFrame = 0;
-      if (!this.disposed) this.renderInspector();
+      this.inspectorFrame = requestAnimationFrame(() => {
+        this.inspectorFrame = 0;
+        if (!this.disposed) this.renderInspector();
+      });
     });
   }
 
