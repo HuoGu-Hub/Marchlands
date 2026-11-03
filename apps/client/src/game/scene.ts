@@ -36,9 +36,67 @@ const CAVALRY_SCALE = 0.95;
 const GLB_UNIT_SCALE = 1.05;
 const SQUAD_LABEL_HEIGHT = 1.55;
 
-const TREE_SPECIES = ["tree_pineTallA", "tree_oak", "tree_detailed", "tree_default", "tree_pineRoundC"];
-const ROCK_SPECIES = ["rock_largeB", "rock_smallA", "rock_smallB"];
-const PLANT_SPECIES = ["plant_bush", "grass", "flower_redA", "flower_yellowA"];
+const TREE_SPECIES = [
+  "tree_pineTallA",
+  "tree_pineTallB",
+  "tree_pineTallC",
+  "tree_pineTallD",
+  "tree_pineRoundA",
+  "tree_pineRoundC",
+  "tree_pineRoundE",
+  "tree_oak",
+  "tree_detailed",
+  "tree_default",
+  "tree_fat",
+  "tree_tall",
+  "tree_cone",
+];
+const TREE_SPECIES_AUTUMN = [
+  "tree_oak_fall",
+  "tree_detailed_fall",
+  "tree_default_fall",
+  "tree_cone_fall",
+  "tree_pineTallA",
+  "tree_fat",
+];
+const TREE_SPECIES_ASH = [
+  "tree_default_dark",
+  "tree_detailed_dark",
+  "tree_oak_dark",
+  "tree_thin_dark",
+  "tree_blocks",
+  "tree_pineRoundB",
+];
+const TREE_SPECIES_COAST = ["tree_palmTall", "tree_palmShort", "tree_oak", "tree_pineRoundD", "tree_small"];
+const ROCK_SPECIES = [
+  "rock_largeB",
+  "rock_largeA",
+  "rock_largeD",
+  "rock_largeE",
+  "rock_tallC",
+  "rock_tallE",
+  "rock_tallG",
+  "rock_smallA",
+  "rock_smallB",
+  "rock_smallD",
+  "rock_smallF",
+  "stone_largeC",
+  "stone_smallG",
+];
+const PLANT_SPECIES = [
+  "plant_bush",
+  "plant_bushDetailed",
+  "plant_bushLarge",
+  "plant_bushSmall",
+  "grass",
+  "grass_large",
+  "grass_leafs",
+  "flower_redA",
+  "flower_redB",
+  "flower_purpleA",
+  "flower_yellowC",
+  "mushroom_tan",
+];
 
 interface CityView {
   group: THREE.Group;
@@ -1277,7 +1335,16 @@ export class BattleScene {
       plantPlacements.push({ x, z, y: this.terrain.heightAt(x, z), rotation: random() * Math.PI * 2, scale: 1.8 + random() * 1.2 });
     }
 
-    this.instanceSpecies(TREE_SPECIES, treePlacements, 0);
+    const style = this.visual?.terrain?.style ?? "frontier";
+    const trees =
+      style === "autumn"
+        ? TREE_SPECIES_AUTUMN
+        : style === "ash"
+          ? TREE_SPECIES_ASH
+          : style === "coast"
+            ? TREE_SPECIES_COAST
+            : TREE_SPECIES;
+    this.instanceSpecies(trees, treePlacements, 0);
     this.instanceSpecies(ROCK_SPECIES, rockPlacements, 1);
     this.instanceSpecies(PLANT_SPECIES, plantPlacements, 2);
   }
