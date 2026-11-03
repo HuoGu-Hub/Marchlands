@@ -455,6 +455,12 @@ export function buildTerrain(
     island = built.metrics;
   }
   group.add(islandGroup);
+  islandGroup.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.receiveShadow = true;
+    mesh.castShadow = false;
+  });
   const navOverlay = navGrid ? buildNavOverlay(navGrid, map) : null;
   if (navOverlay) group.add(navOverlay);
   const setNavPreview = (visible: boolean): void => {

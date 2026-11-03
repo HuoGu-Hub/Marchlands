@@ -539,9 +539,7 @@ export class EditorController {
     this.scene = null;
     this.preview = preview;
     if (this.compiled.map.cities.length > 0) {
-      const scene = new BattleScene(this.canvas, this.compiled.map, this.compiled.visual, {
-        orthographic: true,
-      });
+      const scene = new BattleScene(this.canvas, this.compiled.map, this.compiled.visual);
       if (view) scene.setViewState(view);
       if (preview) scene.update(preview, 0);
       scene.setSelected(this.selection?.kind === "site" ? this.selection.id : null);

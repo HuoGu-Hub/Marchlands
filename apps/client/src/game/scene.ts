@@ -20,9 +20,9 @@ const PLAYER_COLORS: Record<Owner, number> = {
   2: 0xe06a4a,
 };
 
-const PITCH = (34 * Math.PI) / 180;
-const FIELD_OF_VIEW = 26;
-const CAMERA_DISTANCE = 260;
+const PITCH = (52 * Math.PI) / 180;
+const FIELD_OF_VIEW = 28;
+const BASE_YAW = (12 * Math.PI) / 180;
 const VIEW_HEIGHT = 58;
 const ZOOM_MIN = 0.34;
 const ZOOM_MAX = 2.4;
@@ -79,7 +79,7 @@ export class BattleScene {
   private visual: MapVisual | null;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
-  private readonly camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+  private readonly camera: THREE.PerspectiveCamera;
   private readonly cityViews = new Map<CityId, CityView>();
   private readonly squadViews = new Map<string, SquadView>();
   private readonly ring: THREE.Mesh;
@@ -89,8 +89,8 @@ export class BattleScene {
   private lastSquadUpdate = 0;
 
   private yawIndex = 0;
-  private yaw = 0;
-  private targetYaw = 0;
+  private yaw = BASE_YAW;
+  private targetYaw = BASE_YAW;
   private zoom = 1.12;
   private frameY = 0;
   private readonly focus = new THREE.Vector3();
@@ -118,13 +118,9 @@ export class BattleScene {
     cellCm: number;
   } | null = null;
   private atmosphere: Atmosphere | null = null;
+  private sun: THREE.DirectionalLight | null = null;
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    map: MapDef,
-    visual: MapVisual | null = null,
-    options: { orthographic?: boolean } = {},
-  ) {
+  constructor(canvas: HTMLCanvasElement, map: MapDef, visual: MapVisual | null = null) {
     this.canvas = canvas;
     this.map = map;
     this.visual = visual;
@@ -133,14 +129,14 @@ export class BattleScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.28;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0c120e);
     this.scene.fog = new THREE.Fog(0x0c120e, 125, 195);
 
-    this.camera = options.orthographic
-      ? new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1400)
-      : new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.6, 2400);
+    this.camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.6, 2400);
 
     for (const city of map.cities) {
       this.positions.set(city.id, new THREE.Vector3(city.pos[0] / 10, 0, city.pos[1] / 10));
@@ -171,7 +167,7 @@ export class BattleScene {
 
   rotate(direction: 1 | -1): void {
     this.yawIndex = (this.yawIndex + direction + 4) % 4;
-    this.targetYaw = (this.yawIndex * Math.PI) / 2;
+    this.targetYaw = BASE_YAW + (this.yawIndex * Math.PI) / 2;
   }
 
   zoomBy(delta: number): void {
@@ -232,7 +228,7 @@ export class BattleScene {
     this.focus.set(state.focus[0], 0, state.focus[1]);
     this.zoom = THREE.MathUtils.clamp(state.zoom, ZOOM_MIN, ZOOM_MAX);
     this.yawIndex = state.yawIndex;
-    this.targetYaw = (state.yawIndex * Math.PI) / 2;
+    this.targetYaw = BASE_YAW + (state.yawIndex * Math.PI) / 2;
     this.yaw = this.targetYaw;
     this.clampFocus();
     this.resize();
@@ -342,8 +338,7 @@ export class BattleScene {
     this.yaw += delta * step;
     if (Math.abs(delta) < 0.002) this.yaw = this.targetYaw;
 
-    const distance =
-      this.camera instanceof THREE.PerspectiveCamera ? this.cameraDistance() : CAMERA_DISTANCE;
+    const distance = this.cameraDistance();
     const horizontal = Math.cos(PITCH) * distance;
     this.camera.position.set(
       this.focus.x + Math.sin(this.yaw) * horizontal,
@@ -354,8 +349,8 @@ export class BattleScene {
     const radius = Math.max(this.terrain.island.radiusX, this.terrain.island.radiusZ);
     const fog = this.scene.fog as THREE.Fog | null;
     if (fog) {
-      fog.near = distance + radius * 0.55;
-      fog.far = distance + radius * 2.8;
+      fog.near = distance + radius * 0.25;
+      fog.far = distance + radius * 2.3;
     }
   }
 
@@ -545,6 +540,7 @@ export class BattleScene {
     const fallback = buildBuilding(kind, palette, city.level, seed);
     fallback.scale.multiplyScalar(city.kind === "town" ? CITY_HALL_SCALE : 1.7);
     view.model.add(fallback);
+    this.enableShadows(view.model);
     this.fitCityLabel(view);
     view.owner = city.owner;
     view.level = city.level;
@@ -575,11 +571,21 @@ export class BattleScene {
         object.rotation.y = ((siteVisual?.rotation ?? 0) * Math.PI) / 180;
         object.scale.multiplyScalar(siteVisual?.scale ?? 1);
         view.model.add(object);
+        this.enableShadows(view.model);
         this.fitCityLabel(view);
       })
       .catch(() => {
         this.missingAssets.add(assetId);
       });
+  }
+
+  private enableShadows(root: THREE.Object3D): void {
+    root.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
   }
 
   private fitCityLabel(view: CityView): void {
@@ -654,6 +660,7 @@ export class BattleScene {
       });
       unit.position.set(x, 0, z);
       unit.scale.setScalar(kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE);
+      this.enableShadows(unit);
       view.group.add(unit);
       view.units.push(unit);
     });
@@ -680,6 +687,7 @@ export class BattleScene {
         const unit = new GlbUnitActor(built.object, built.animations);
         unit.position.set(x, 0, z);
         unit.scale.setScalar(GLB_UNIT_SCALE);
+        this.enableShadows(unit);
         view.group.add(unit);
         view.units.push(unit);
       }
@@ -718,18 +726,41 @@ export class BattleScene {
   }
 
   private buildLights(): void {
-    const hemisphere = new THREE.HemisphereLight(0xe4edcf, 0x7d8474, 1.35);
-    this.scene.add(new THREE.AmbientLight(0xcfc6ad, 0.32));
+    const hemisphere = new THREE.HemisphereLight(0xe4edcf, 0x5c6254, 0.5);
+    this.scene.add(new THREE.AmbientLight(0xcfc6ad, 0.1));
     this.scene.add(hemisphere);
-    const sun = new THREE.DirectionalLight(0xffd39c, 2.2);
-    sun.position.set(26, 42, 18);
+    const sun = new THREE.DirectionalLight(0xffe0b4, 3.3);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0006;
+    sun.shadow.normalBias = 0.06;
+    this.sun = sun;
     this.scene.add(sun);
-    const rim = new THREE.DirectionalLight(0x6d9bff, 0.65);
+    this.scene.add(sun.target);
+    const rim = new THREE.DirectionalLight(0x6d9bff, 0.5);
     rim.position.set(-30, 18, -24);
     this.scene.add(rim);
-    const bounce = new THREE.DirectionalLight(0xd6d8d0, 1.15);
+    const bounce = new THREE.DirectionalLight(0xd6d8d0, 0.6);
     bounce.position.set(-14, -46, 42);
     this.scene.add(bounce);
+  }
+
+  private configureSunShadow(): void {
+    const sun = this.sun;
+    if (!sun) return;
+    const island = this.terrain.island;
+    const radius = Math.max(island.radiusX, island.radiusZ) * 1.45 + 12;
+    sun.position.set(island.centerX + radius * 0.85, radius * 1.35, island.centerZ + radius * 0.55);
+    sun.target.position.set(island.centerX, 0, island.centerZ);
+    sun.target.updateMatrixWorld();
+    const camera = sun.shadow.camera;
+    camera.left = -radius;
+    camera.right = radius;
+    camera.top = radius;
+    camera.bottom = -radius;
+    camera.near = 1;
+    camera.far = radius * 5;
+    camera.updateProjectionMatrix();
   }
 
   private buildGround(previous?: Terrain, reuseIsland = false): void {
@@ -767,6 +798,7 @@ export class BattleScene {
     this.scene.add(atmosphere.group);
     this.scene.background = atmosphere.background;
     this.scene.fog = new THREE.Fog(atmosphere.fogColor, atmosphere.fogNear, atmosphere.fogFar);
+    this.configureSunShadow();
   }
 
   updateSites(map: MapDef, visual: MapVisual | null, state: SimState): void {
@@ -1238,6 +1270,8 @@ export class BattleScene {
       for (const part of parts) {
         const instanced = new THREE.InstancedMesh(part.geometry, part.material, bucket.length);
         instanced.frustumCulled = false;
+        instanced.castShadow = true;
+        instanced.receiveShadow = true;
         bucket.forEach((placement, index) => {
           dummy.position.set(placement.x, placement.y, placement.z);
           dummy.rotation.set(0, placement.rotation, 0);
@@ -1309,6 +1343,7 @@ export class BattleScene {
         object.userData.groundOffset = info.kind === "terrain" ? 0.04 : 0;
         this.propObjects.set(prop.id, object);
         this.propGroup.add(object);
+        this.enableShadows(object);
         this.applyPropTransform(prop, object);
       })
       .catch(() => {
@@ -1368,16 +1403,8 @@ export class BattleScene {
     const width = Math.max(1, parent?.clientWidth ?? window.innerWidth);
     const height = Math.max(1, parent?.clientHeight ?? window.innerHeight);
     this.renderer.setSize(width, height, false);
-    if (this.camera instanceof THREE.PerspectiveCamera) {
-      this.camera.aspect = width / height;
-      this.camera.fov = FIELD_OF_VIEW;
-    } else {
-      const viewHeight = VIEW_HEIGHT / this.zoom;
-      this.camera.left = (-viewHeight * (width / height)) / 2;
-      this.camera.right = (viewHeight * (width / height)) / 2;
-      this.camera.top = viewHeight / 2;
-      this.camera.bottom = -viewHeight / 2;
-    }
+    this.camera.aspect = width / height;
+    this.camera.fov = FIELD_OF_VIEW;
     this.camera.updateProjectionMatrix();
   }
 }
