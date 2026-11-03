@@ -294,8 +294,14 @@ export class EditorNext {
       event.preventDefault();
       if (this.roadDraw) this.cancelRoad();
     });
-    this.canvas.addEventListener("dblclick", () => {
-      if (this.tool === "road" && this.roadDraw) this.finishRoad();
+    this.canvas.addEventListener("dblclick", (event) => {
+      if (this.tool === "road" && this.roadDraw) {
+        this.finishRoad();
+        return;
+      }
+      if (this.selection?.kind === "road" && (this.tool === "select" || this.tool === "move")) {
+        this.insertRoadPoint(event.clientX, event.clientY);
+      }
     });
     window.addEventListener("keydown", this.onKeyDown);
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -1384,6 +1390,10 @@ export class EditorNext {
       if (target.path) target.path.reverse();
       this.commit(next, "已反转道路", { roads: true });
     });
+    if (road.path && road.path.length >= 2) {
+      this.addButton("末尾加点", () => this.appendRoadPoint(id));
+      this.addButton("删除末点", () => this.removeLastRoadPoint(id));
+    }
     if (road.from && road.to && road.path) {
       this.addButton("拉直", () => this.commit(updateRoad(this.doc, id, { path: undefined }), "已拉直道路", { roads: true }));
     }
@@ -1397,7 +1407,7 @@ export class EditorNext {
     this.inspectorEl.appendChild(deleteButton);
     const note = document.createElement("p");
     note.className = "mlnx-note";
-    note.textContent = "用道路工具点击加点绘制；这里可以改宽度、反向、拉直和删除。";
+    note.textContent = "选中后拖动控制点改线；检查器可末尾加点/删除末点；双击道路加点，Alt+点击控制点删除。";
     this.inspectorEl.appendChild(note);
   }
 
@@ -1728,6 +1738,87 @@ export class EditorNext {
     this.commit(updateRoad(this.doc, road.id, { path }), "已调整道路", { roads: true });
   }
 
+  private appendRoadPoint(id: string): void {
+    const road = this.doc.roads.find((entry) => entry.id === id);
+    if (!road?.path || road.path.length < 2) return;
+    const path = road.path.map((entry) => [entry[0], entry[1]] as [number, number]);
+    const last = path[path.length - 1];
+    const prev = path[path.length - 2];
+    const dx = last[0] - prev[0];
+    const dz = last[1] - prev[1];
+    const length = Math.hypot(dx, dz) || 1;
+    path.push([last[0] + (dx / length) * 20, last[1] + (dz / length) * 20]);
+    this.commit(updateRoad(this.doc, id, { path }), "已添加道路控制点", { roads: true });
+  }
+
+  private removeLastRoadPoint(id: string): void {
+    const road = this.doc.roads.find((entry) => entry.id === id);
+    if (!road?.path || road.path.length <= 2) {
+      this.notice("道路至少保留两个控制点");
+      return;
+    }
+    const path = road.path.map((entry) => [entry[0], entry[1]] as [number, number]);
+    path.pop();
+    this.commit(updateRoad(this.doc, id, { path }), "已删除道路控制点", { roads: true });
+  }
+
+  private insertRoadPoint(clientX: number, clientY: number): void {
+    const road = this.doc.roads.find((entry) => entry.id === this.selection?.id);
+    if (!road || !this.scene) return;
+    const ground = this.scene.screenToGround(clientX, clientY);
+    if (!ground) return;
+    const point = clampPosition(this.doc, [snapDm(ground[0]), snapDm(ground[1])]);
+    let path: [number, number][];
+    if (road.path && road.path.length >= 2) {
+      path = road.path.map((entry) => [entry[0], entry[1]] as [number, number]);
+      let bestIndex = -1;
+      let bestPoint: [number, number] | null = null;
+      let bestDistance = Infinity;
+      for (let index = 0; index < path.length - 1; index += 1) {
+        const a = path[index];
+        const b = path[index + 1];
+        const dx = b[0] - a[0];
+        const dz = b[1] - a[1];
+        const lengthSq = dx * dx + dz * dz;
+        const t = lengthSq > 0 ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dz) / lengthSq)) : 0;
+        const projected: [number, number] = [a[0] + dx * t, a[1] + dz * t];
+        if (Math.hypot(projected[0] - a[0], projected[1] - a[1]) < 8) continue;
+        if (Math.hypot(projected[0] - b[0], projected[1] - b[1]) < 8) continue;
+        const distance = Math.hypot(projected[0] - point[0], projected[1] - point[1]);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+          bestPoint = projected;
+        }
+      }
+      if (!bestPoint || bestIndex < 0 || bestDistance > 60) {
+        this.notice("双击道路附近才能加点");
+        return;
+      }
+      path.splice(bestIndex + 1, 0, bestPoint);
+    } else if (road.from && road.to) {
+      const from = this.doc.sites.find((entry) => entry.id === road.from);
+      const to = this.doc.sites.find((entry) => entry.id === road.to);
+      if (!from || !to) return;
+      path = [[from.pos[0], from.pos[1]], point, [to.pos[0], to.pos[1]]];
+    } else {
+      this.notice("自由道路还没有控制点，先用道路工具画");
+      return;
+    }
+    this.commit(updateRoad(this.doc, road.id, { path }), "已添加道路控制点", { roads: true });
+  }
+
+  private removeRoadPoint(id: string, index: number): void {
+    const road = this.doc.roads.find((entry) => entry.id === id);
+    if (!road?.path || road.path.length <= 2) {
+      this.notice("道路至少保留两个控制点");
+      return;
+    }
+    const path = road.path.map((entry) => [entry[0], entry[1]] as [number, number]);
+    path.splice(index, 1);
+    this.commit(updateRoad(this.doc, id, { path }), "已删除道路控制点", { roads: true });
+  }
+
   private cancelRoadPointDrag(): void {
     this.roadPointDrag = null;
     this.syncRoadHandles();
@@ -1821,6 +1912,36 @@ export class EditorNext {
     drag.ghost.geometry.dispose();
     (drag.ghost.material as THREE.Material).dispose();
     this.syncFoundationHandles();
+  }
+
+  private pickRoad(clientX: number, clientY: number): string | null {
+    if (!this.scene) return null;
+    const ground = this.scene.screenToGround(clientX, clientY);
+    if (!ground) return null;
+    let best: { id: string; distance: number } | null = null;
+    for (const road of this.doc.roads) {
+      let path: Array<[number, number]> | null = road.path && road.path.length >= 2
+        ? road.path.map((point) => [point[0], point[1]] as [number, number])
+        : null;
+      if (!path && road.from && road.to) {
+        const from = this.doc.sites.find((entry) => entry.id === road.from);
+        const to = this.doc.sites.find((entry) => entry.id === road.to);
+        if (from && to) path = [[from.pos[0], from.pos[1]], [to.pos[0], to.pos[1]]];
+      }
+      if (!path) continue;
+      const threshold = (road.widthDm ?? this.doc.visual.roads.width * 10) / 2 + 15;
+      for (let index = 0; index < path.length - 1; index += 1) {
+        const a = path[index];
+        const b = path[index + 1];
+        const dx = b[0] - a[0];
+        const dz = b[1] - a[1];
+        const lengthSq = dx * dx + dz * dz;
+        const t = lengthSq > 0 ? Math.max(0, Math.min(1, ((ground[0] - a[0]) * dx + (ground[1] - a[1]) * dz) / lengthSq)) : 0;
+        const distance = Math.hypot(ground[0] - (a[0] + dx * t), ground[1] - (a[1] + dz * t));
+        if (distance < threshold && (!best || distance < best.distance)) best = { id: road.id, distance };
+      }
+    }
+    return best?.id ?? null;
   }
 
   private pick(clientX: number, clientY: number): Selection {
@@ -2069,6 +2190,11 @@ export class EditorNext {
     if (this.selection?.kind === "road") {
       const handle = this.pickRoadHandle(event.clientX, event.clientY);
       if (handle) {
+        if (event.altKey) {
+          this.removeRoadPoint(handle.id, handle.index);
+          event.preventDefault();
+          return;
+        }
         this.startRoadPointDrag(handle, event.pointerId);
         event.preventDefault();
         return;
@@ -2076,7 +2202,12 @@ export class EditorNext {
     }
     if (this.tool === "select" || this.tool === "move" || this.tool === "rotate" || this.tool === "scale") {
       const hit = this.pick(event.clientX, event.clientY);
-      this.select(hit);
+      if (hit) {
+        this.select(hit);
+      } else {
+        const roadId = this.pickRoad(event.clientX, event.clientY);
+        this.select(roadId ? { kind: "road", id: roadId } : null);
+      }
     }
   };
 
