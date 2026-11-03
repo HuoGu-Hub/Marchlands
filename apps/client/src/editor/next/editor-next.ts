@@ -948,8 +948,12 @@ export class EditorNext {
       elevation: preset.elevation,
       shape: preset.shape,
     });
+    this.activeFoundationKind = preset.elevation > 0 ? "island" : "platform";
+    this.activeFoundationShape = preset.shape;
+    this.toolElevation = preset.elevation;
     this.selection = { kind: "foundation", id: result.foundation.id };
     this.commit(result.document, "已添加" + preset.label, { terrain: true, sites: true });
+    this.renderLibrary();
     this.focusSelection();
   }
 
