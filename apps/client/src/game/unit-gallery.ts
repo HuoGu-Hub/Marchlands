@@ -24,10 +24,10 @@ export function runUnitGallery(host: HTMLElement): void {
     '  <div class="hud-left">',
     '    <div class="chip">单位库 <b>5 类 × 3 阵营</b></div>',
     '    <div class="chip">阵营色 <b>披风 / 盾面 / 旗帜</b></div>',
-    '    <div class="chip">动作 <b>行走循环</b></div>',
+    '    <div class="chip">动作 <b>行走 / 挥击</b></div>',
     '    <div class="chip">造型 <b>边军 v5</b></div>',
     '  </div>',
-    '  <div class="hint">Q / E 旋转 · 滚轮缩放</div>',
+    '  <div class="hint">Q / E 旋转 · 滚轮缩放 · 空格挥击</div>',
     '</div>',
   ].join("");
   const canvas = host.querySelector<HTMLCanvasElement>("#unit-canvas");
@@ -178,6 +178,10 @@ class UnitGallery {
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "q" || event.key === "Q") this.targetYaw += Math.PI / 4;
     if (event.key === "e" || event.key === "E") this.targetYaw -= Math.PI / 4;
+    if (event.code === "Space") {
+      event.preventDefault();
+      for (const actor of this.actors) actor.playAttack();
+    }
   };
 
   private readonly onWheel = (event: WheelEvent): void => {

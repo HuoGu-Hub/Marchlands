@@ -132,6 +132,32 @@ function unitClips(rig: ReturnType<typeof buildUnit>): THREE.AnimationClip[] {
     rotationTrack("head", [0, 1, 2], [[0, 0, 0], [0, 0.08, 0], [0, 0, 0]]),
     new THREE.VectorKeyframeTrack("torso.position", [0, 1, 2], [0, 0.19, 0, 0, 0.195, 0, 0, 0.19, 0]),
   ]);
+  const attack = new THREE.AnimationClip("attack", 0.8, [
+    rotationTrack("rightArm", [0, 0.24, 0.46, 0.62, 0.8], [
+      [rightRest, 0, 0],
+      [rightRest + 1.2, 0, 0],
+      [rightRest - 1.6, 0, 0],
+      [rightRest - 0.5, 0, 0],
+      [rightRest, 0, 0],
+    ]),
+    rotationTrack("torso", [0, 0.24, 0.46, 0.62, 0.8], [
+      [0, 0, 0],
+      [0, 0.32, 0],
+      [0, -0.42, 0],
+      [0, -0.2, 0],
+      [0, 0, 0],
+    ]),
+    rotationTrack("leftArm", [0, 0.46, 0.8], [[leftRest, 0, 0], [leftRest - 0.5, 0, 0], [leftRest, 0, 0]]),
+    rotationTrack("head", [0, 0.46, 0.8], [[0, 0, 0], [0, -0.18, 0], [0, 0, 0]]),
+  ]);
+  const death = new THREE.AnimationClip("death", 1.15, [
+    rotationTrack(rig.root.name, [0, 0.25, 1.15], [[0, 0, 0], [-0.3, 0, 0], [-1.5, 0, 0]]),
+    new THREE.VectorKeyframeTrack(
+      rig.root.name + ".position",
+      [0, 0.25, 1.15],
+      [0, 0, 0, 0, 0.02, 0, 0, -0.42, 0],
+    ),
+  ]);
   if (rig.mount) {
     const mountTimes = [0, 0.25, 0.5, 0.75, 1];
     for (let index = 0; index < rig.mountLegs.length; index += 1) {
@@ -147,7 +173,7 @@ function unitClips(rig: ReturnType<typeof buildUnit>): THREE.AnimationClip[] {
       );
     }
   }
-  return [idle, walk];
+  return [idle, walk, attack, death];
 }
 
 function buildRiggedDemo(): { object: THREE.Group; animations: THREE.AnimationClip[] } {

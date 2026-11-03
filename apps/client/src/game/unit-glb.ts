@@ -2,6 +2,8 @@ import * as THREE from "three";
 
 export interface UnitActorView {
   setMoving(moving: boolean): void;
+  /** 播放一次挥击动作，动作结束后回到行走或待机循环。 */
+  playAttack(): void;
   update(deltaMs: number): void;
   dispose(): void;
 }
@@ -19,6 +21,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
   private readonly mixer: THREE.AnimationMixer | null;
   private readonly actions = new Map<string, THREE.AnimationAction>();
   private current: THREE.AnimationAction | null = null;
+  private attackAction: THREE.AnimationAction | null = null;
   private moving = false;
 
   constructor(object: THREE.Object3D, animations: THREE.AnimationClip[]) {
@@ -60,8 +63,34 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
     this.current = next;
   }
 
+  playAttack(): void {
+    if (!this.mixer) return;
+    const action = this.actions.get("attack");
+    if (!action || action === this.attackAction) return;
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.setEffectiveWeight(1);
+    action.play();
+    if (this.current) this.current.fadeOut(0.12);
+    this.attackAction = action;
+  }
+
   update(deltaMs: number): void {
-    this.mixer?.update(Math.min(100, Math.max(0, deltaMs)) / 1000);
+    if (!this.mixer) return;
+    this.mixer.update(Math.min(100, Math.max(0, deltaMs)) / 1000);
+    const attack = this.attackAction;
+    if (!attack) return;
+    if (attack.time < attack.getClip().duration - 0.02) return;
+    this.attackAction = null;
+    attack.fadeOut(0.16);
+    const next = this.pickClip(this.moving) ?? this.current;
+    if (!next || next === attack) return;
+    next.reset();
+    next.setEffectiveWeight(1);
+    next.fadeIn(0.16);
+    next.play();
+    this.current = next;
   }
 
   dispose(): void {

@@ -20,6 +20,25 @@
 
 程序化生成的内容：地面纹理、白灰墙与木梁、屋顶瓦片、石板、旗帜与单位、UI。
 
+## 单位动作
+
+单位模型与动作由仓库内代码生成，随项目许可发布，不引入外部授权素材：
+
+- 近战武器握在右手，手臂旋转带动刀身，攻击剪辑因此有真实的挥砍弧线。
+- 单位 GLB 固定导出四个剪辑：`idle`、`walk`、`attack`、`death`。
+- 运行时：抵达敌方据点结算战斗时播放一次 `attack`，随后销毁该部队。
+- 重新生成资产包：`pnpm --filter @marchlands/client dev` 后执行 `node tools/asset-convert/run.mjs`。
+
+## 未采用：Unity Asset Store
+
+Asset Store 资源含免费包受 Standard Unity Asset Store EULA 限制，只授权用于 Unity 构建的产品。Marchlands 是 Three.js + Electron 产品，且 `.mlpack` 允许玩家解压，两条都不满足，因此不引入，包括 Human Melee Animations FREE。
+
+需要现成动作时优先取 CC0 或明确允许非 Unity 引擎的来源：
+
+- KayKit Character Pack: Adventurers，CC0，glTF 骨骼动画，含 Idle / Walk / Run / Attack / Death
+- Quaternius Ultimate Animated Character Pack，CC0
+- Kenney Animated Characters，CC0
+
 ## 未使用
 
 Quaternius Medieval Village MegaKit 仅用于视觉参考，模型未引入。

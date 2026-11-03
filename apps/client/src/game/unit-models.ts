@@ -584,6 +584,16 @@ function makeArm(kind: UnitKind, palette: TeamPalette): THREE.Group {
   });
 }
 
+/**
+ * 把近战武器放进右手：握把落在手掌位置，刃口朝前。
+ * 武器挂在手臂组下，手臂旋转时武器跟随，攻击剪辑因此能带出挥砍弧线。
+ */
+function holdWeapon(weapon: THREE.Group, lean = 0): void {
+  weapon.name = "weapon";
+  weapon.position.set(0, -0.2, 0.04);
+  weapon.rotation.set(-Math.PI / 3.2, 0, lean);
+}
+
 function makeLeg(kind: UnitKind): THREE.Group {
   return part((b) => {
     capsule(b, 0.078, 0.05, kind === "shield" || kind === "elite" ? ARMOR : DARK_LEATHER, 0, -0.075, 0);
@@ -718,18 +728,16 @@ function makeHumanoid(kind: UnitKind, palette: TeamPalette, variant: number): Un
     root.add(weapon);
   } else if (kind === "shield") {
     const weapon = sword();
-    weapon.position.set(0.3, 0.08, 0.16);
-    weapon.rotation.set(0.05, 0.35, -0.3);
-    root.add(weapon);
+    holdWeapon(weapon);
+    rightArm.add(weapon);
     const shield = roundShield(palette);
     shield.position.set(-0.12, 0.08, 0.12);
     shield.rotation.set(0.05, -0.12, 0.05);
     leftArm.add(shield);
   } else if (kind === "elite") {
     const weapon = sword(true);
-    weapon.position.set(0.3, 0.08, 0.16);
-    weapon.rotation.set(0.05, 0.35, -0.3);
-    root.add(weapon);
+    holdWeapon(weapon);
+    rightArm.add(weapon);
   } else if (kind === "cavalry") {
     const weapon = lance(palette);
     weapon.position.set(0.3, 0.38, 0.06);
@@ -740,9 +748,8 @@ function makeHumanoid(kind: UnitKind, palette: TeamPalette, variant: number): Un
     leftArm.add(shield);
   } else {
     const weapon = machete();
-    weapon.position.set(0.3, 0.08, 0.18);
-    weapon.rotation.set(0.05, 0.5, -0.35);
-    root.add(weapon);
+    holdWeapon(weapon, 0.05);
+    rightArm.add(weapon);
   }
 
   return {

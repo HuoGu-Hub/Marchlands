@@ -71,6 +71,10 @@ interface SquadView {
   texture: THREE.CanvasTexture;
   labelText: string;
   disposed: boolean;
+  owner: Owner;
+  target: string;
+  /** 抵达敌方据点后先挥击再销毁的时间点；未进入收尾阶段为 0。 */
+  strikeUntil: number;
 }
 
 export class BattleScene {
@@ -434,6 +438,20 @@ export class BattleScene {
     }
     for (const [id, view] of this.squadViews) {
       if (seen.has(id)) continue;
+      if (view.strikeUntil === 0) {
+        const target = state.cities.find((city) => city.id === view.target);
+        if (target !== undefined && target.owner !== view.owner) {
+          view.strikeUntil = now + 700;
+          for (const unit of view.units) {
+            unit.playAttack();
+            unit.update(delta);
+          }
+          continue;
+        }
+      } else if (now < view.strikeUntil) {
+        for (const unit of view.units) unit.update(delta);
+        continue;
+      }
       view.disposed = true;
       for (const unit of view.units) unit.dispose();
       view.label.material.dispose();
@@ -637,6 +655,9 @@ export class BattleScene {
       texture,
       labelText: String(squad.count),
       disposed: false,
+      owner: squad.owner,
+      target: squad.to,
+      strikeUntil: 0,
     };
 
     const unitAssetId = this.visual?.units?.[squad.owner === 1 ? "player1" : "player2"];
