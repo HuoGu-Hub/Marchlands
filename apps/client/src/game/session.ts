@@ -15,7 +15,7 @@ import { isProductionSiteKind, reachableGridCells, reachableGridCities, sendReac
 import { audio } from "../audio";
 import { RouteOverlay } from "./route-overlay";
 import { synthesizeGrid } from "./nav-synthesis";
-import type { DragArrowTarget, PlannedAssignment } from "./route-overlay";
+import type { DragArrowView, PlannedAssignment } from "./route-overlay";
 import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
@@ -805,8 +805,7 @@ export class GameSession {
       }
       this.dragMoved = true;
       if (this.dispatchSource) {
-        const target = this.dragArrowTarget(event.clientX, event.clientY);
-        this.routeOverlay.setDragArrow(this.dispatchSource, target, event.clientX, event.clientY);
+        this.routeOverlay.setDragArrow(this.dragArrowView(event.clientX, event.clientY));
       }
       return;
     }
@@ -944,30 +943,49 @@ export class GameSession {
     return null;
   }
 
-  /** 拖拽时把鼠标位置吸附到目标格/据点，供箭头与落点标记使用。 */
-  private dragArrowTarget(clientX: number, clientY: number): DragArrowTarget | null {
-    const target = this.dispatchTargetAt(clientX, clientY, this.dispatchSource);
-    if (!target) return null;
-    if (target.city) {
-      const city = this.getCity(target.city);
-      if (!city) return null;
-      return {
-        xCm: city.pos[0] * 10,
-        zCm: city.pos[1] * 10,
-        sizeCm: 0,
-        heightM: this.scene.groundHeight(city.pos[0], city.pos[1]),
-      };
+  /** 用当前相机投影出箭头起点和目标框，转动视角后仍然和鼠标对齐。 */
+  private dragArrowView(clientX: number, clientY: number): DragArrowView | null {
+    const source = this.dispatchSource;
+    if (!source) return null;
+    const city = this.getCity(source);
+    if (!city) return null;
+    const from = this.scene.projectGround(city.pos[0], city.pos[1], 3.6);
+    if (!from) return null;
+    const target = this.dispatchTargetAt(clientX, clientY, source);
+    if (target?.cell) {
+      const sizeCm = this.gridFocus?.nav.cellSizeCm ?? 100;
+      const half = sizeCm / 20;
+      const x = target.cell.xCm / 10;
+      const z = target.cell.zCm / 10;
+      const corners = [
+        [x - half, z - half],
+        [x + half, z - half],
+        [x + half, z + half],
+        [x - half, z + half],
+      ].map(([px, pz]) => this.scene.projectGround(px, pz, 0.08));
+      const center = this.scene.projectGround(x, z, 0.08);
+      if (center) {
+        const square = corners.every((point): point is { x: number; y: number } => point !== null)
+          ? corners
+          : undefined;
+        return {
+          fromX: from.x,
+          fromY: from.y,
+          toX: clientX,
+          toY: clientY,
+          ...(square ? { square } : {}),
+          ring: center,
+        };
+      }
     }
-    if (!target.cell) return null;
-    const nav = this.gridFocus?.nav;
-    return {
-      xCm: target.cell.xCm,
-      zCm: target.cell.zCm,
-      sizeCm: nav ? nav.cellSizeCm : 100,
-      heightM: nav
-        ? nav.heightCm(target.cell.index) / 100
-        : this.scene.groundHeight(target.cell.xCm / 10, target.cell.zCm / 10),
-    };
+    if (target?.city) {
+      const targetCity = this.getCity(target.city);
+      if (targetCity) {
+        const ring = this.scene.projectGround(targetCity.pos[0], targetCity.pos[1], 0.5);
+        if (ring) return { fromX: from.x, fromY: from.y, toX: ring.x, toY: ring.y, ring };
+      }
+    }
+    return { fromX: from.x, fromY: from.y, toX: clientX, toY: clientY };
   }
 
   private dispatchSingle(target: { city?: CityId; cell?: { index: number; xCm: number; zCm: number } }): void {
