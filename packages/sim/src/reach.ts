@@ -1,5 +1,5 @@
 import type { NavGrid } from "@marchlands/nav";
-import { GRID_CAPTURE_RADIUS_CM, GRID_UNIT_RADIUS_CM, createUnitNavGrid, planGridRoute } from "./grid";
+import { GRID_CAPTURE_RADIUS_CM, GRID_UNIT_RADIUS_CM, createUnitNavGrid } from "./grid";
 import { blockedTransit } from "./routes";
 import { isProductionSiteKind, siteUnitKind } from "./types";
 import type { CityId, CityState, SimState } from "./types";
@@ -119,16 +119,9 @@ export function sendReachableTargets(state: SimState, fromId: CityId): CityId[] 
   const targets: CityId[] = [];
 
   if (state.nav) {
-    const unitKind = siteUnitKind(from.kind) ?? "infantry";
-    const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
-    for (const city of state.cities) {
-      if (city.id === from.id) continue;
-      const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind, city.id);
-      if (!unitNav) continue;
-      const goal: [number, number] = [city.pos[0] * 10, city.pos[1] * 10];
-      if (planGridRoute(state.map, unitNav, start, goal, 40, unitKind)) targets.push(city.id);
-    }
-    return targets;
+    // 从出发点洪泛一次，判断哪些建筑可达；逐城 A* 会把一次点选拖成几百毫秒。
+    const reach = reachableGridCells(state, from.id);
+    return reach ? reachableGridCities(state, from.id, reach) : [];
   }
 
   const blocked = blockedTransit(state, from.owner);

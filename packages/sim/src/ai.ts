@@ -2,7 +2,6 @@ import { attackValue, defenseValue } from "./combat";
 import { granaryStrengthMilli, levelRule, sendPercent } from "./rules";
 import { blockedTransit } from "./routes";
 import { isProductionSiteKind } from "./types";
-import { planGridRoute } from "./grid";
 import type { CityState, Command, Owner, PlayerId, SimState } from "./types";
 
 export interface AiController {
@@ -35,17 +34,15 @@ function strengthFor(state: SimState, owner: Owner): number {
 }
 
 function routeDistance(state: SimState, origin: CityState, target: CityState): number | null {
+  // 目标评分优先用据点图：一次决策要比较几十个目标，逐目标跑网格 A* 会卡住一帧。
+  const graphRoute = state.graph.route(origin.id, target.id, blockedTransit(state, origin.owner, target.id));
+  if (graphRoute) return graphRoute.distance;
   if (state.nav) {
-    const route = planGridRoute(
-      state.map,
-      state.nav,
-      [origin.pos[0] * 10, origin.pos[1] * 10],
-      [target.pos[0] * 10, target.pos[1] * 10],
-    );
-    return route ? route.cost : null;
+    // 网格地图上逐目标跑 A* 会让一次决策卡住一帧；评分先用直线距离，
+    // 实际派兵时再由 step 计算带阻挡与地形的精确路线。
+    return Math.hypot(target.pos[0] - origin.pos[0], target.pos[1] - origin.pos[1]);
   }
-  const route = state.graph.route(origin.id, target.id, blockedTransit(state, origin.owner, target.id));
-  return route ? route.distance : null;
+  return null;
 }
 
 function pickTarget(
