@@ -638,19 +638,31 @@ export class GameSession {
         add(x0 + ((x1 - x0) * k) / steps, z0 + ((z1 - z0) * k) / steps);
       }
     };
-    add(squad.xCm, squad.zCm);
-    const next = Math.max(0, squad.gridIndex ?? 0);
-    if (next < squad.gridPath.length) {
-      sampleLine(squad.xCm, squad.zCm, squad.gridPath[next][0], squad.gridPath[next][1]);
-      for (let index = next; index < squad.gridPath.length - 1; index += 1) {
-        const [x0, z0] = squad.gridPath[index];
-        const [x1, z1] = squad.gridPath[index + 1];
-        sampleLine(x0, z0, x1, z1);
-      }
+    // 先把整段路线栅格化，再按兵团当前所在格切片，避免随移动反复抖动。
+    const start = Math.max(0, (squad.gridIndex ?? 0) - 1);
+    const [firstX, firstZ] = squad.gridPath[start];
+    add(firstX, firstZ);
+    for (let index = start; index < squad.gridPath.length - 1; index += 1) {
+      const [x0, z0] = squad.gridPath[index];
+      const [x1, z1] = squad.gridPath[index + 1];
+      sampleLine(x0, z0, x1, z1);
     }
-    // 兵团脚下这一格已经走过，只高亮前方还没走的路。
-    cells.shift();
-    return cells;
+    if (cells.length === 0) return cells;
+    const squadIndex = nav.cellFromWorld(squad.xCm + offsetX, squad.zCm + offsetZ);
+    let current = cells.findIndex(
+      ([xCm, zCm]) => nav.cellFromWorld(xCm + offsetX, zCm + offsetZ) === squadIndex,
+    );
+    if (current < 0) {
+      let best = Number.POSITIVE_INFINITY;
+      cells.forEach(([xCm, zCm], index) => {
+        const distance = (xCm - squad.xCm!) ** 2 + (zCm - squad.zCm!) ** 2;
+        if (distance < best) {
+          best = distance;
+          current = index;
+        }
+      });
+    }
+    return cells.slice(current + 1);
   }
 
   /** 场上每支己方兵团都显示剩余路线，选中那支更亮。 */
