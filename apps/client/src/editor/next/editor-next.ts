@@ -501,11 +501,12 @@ export class EditorNext {
     gizmo.addEventListener("objectChange", () => {
       this.gizmoDirty = true;
       if (this.selection?.kind === "site" && this.selectedProxy) {
+        const euler = new THREE.Euler().setFromQuaternion(this.selectedProxy.quaternion, "YXZ");
         this.scene?.previewSiteRotation(
           this.selection.id,
-          (this.selectedProxy.rotation.x * 180) / Math.PI,
-          (this.selectedProxy.rotation.y * 180) / Math.PI,
-          (this.selectedProxy.rotation.z * 180) / Math.PI,
+          (euler.x * 180) / Math.PI,
+          (euler.y * 180) / Math.PI,
+          (euler.z * 180) / Math.PI,
         );
       }
       this.updateViewInfo();
@@ -2019,9 +2020,10 @@ export class EditorNext {
       if (this.tool === "rotate") {
         const degrees = (radians: number): number =>
           ((Math.round((radians * 180) / Math.PI) % 360) + 360) % 360;
-        patch.visualRotation = degrees(proxy.rotation.y);
-        patch.visualRotationX = degrees(proxy.rotation.x);
-        patch.visualRotationZ = degrees(proxy.rotation.z);
+        const euler = new THREE.Euler().setFromQuaternion(proxy.quaternion, "YXZ");
+        patch.visualRotation = degrees(euler.y);
+        patch.visualRotationX = degrees(euler.x);
+        patch.visualRotationZ = degrees(euler.z);
       }
       this.commit(updateSite(this.doc, selection.id, patch), "已更新据点", { sites: true });
       return;
