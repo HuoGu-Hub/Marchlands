@@ -192,6 +192,11 @@ export class GameSession {
     else this.setSelection([...this.selected, id]);
   }
 
+  /** 兵团优先按模型命中；点不到模型时再退回路线层圆点。 */
+  private pickSquadAt(clientX: number, clientY: number): string | null {
+    return this.scene.pickSquad(clientX, clientY) ?? this.routeOverlay.pickSquad(this.state, clientX, clientY);
+  }
+
   selectSquad(id: string): void {
     const squad = this.getSquad(id);
     if (!squad || squad.owner !== 1) return;
@@ -716,6 +721,12 @@ export class GameSession {
       (window as unknown as Record<string, unknown>).__mlSquads = {
         total: this.state.squads.length,
         own: this.state.squads.filter((squad) => squad.owner === 1).length,
+        squads: this.state.squads.map((squad) => ({
+          id: squad.id,
+          owner: squad.owner,
+          xCm: squad.xCm,
+          zCm: squad.zCm,
+        })),
       };
     }
   }
@@ -1097,8 +1108,9 @@ export class GameSession {
       return;
     }
     if (this.selectedSquad) {
-      const otherId = this.routeOverlay.pickSquad(this.state, event.clientX, event.clientY);
-      if (otherId && otherId !== this.selectedSquad) {
+      const otherId = this.pickSquadAt(event.clientX, event.clientY);
+      if (otherId) {
+        if (otherId === this.selectedSquad) return;
         const other = this.getSquad(otherId);
         if (other?.owner === 1) {
           this.selectSquad(other.id);
@@ -1109,7 +1121,7 @@ export class GameSession {
       }
     }
     if (!this.selectedSquad) {
-      const squadId = this.routeOverlay.pickSquad(this.state, event.clientX, event.clientY);
+      const squadId = this.pickSquadAt(event.clientX, event.clientY);
       if (squadId) {
         const squad = this.getSquad(squadId);
         if (squad?.owner === 1) {

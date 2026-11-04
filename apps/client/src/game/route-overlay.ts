@@ -358,19 +358,22 @@ export class RouteOverlay {
   }
 
   private squadPoint(squad: SquadState, state: SimState): ScreenPoint | null {
+    let x: number;
+    let z: number;
     if (squad.xCm !== undefined && squad.zCm !== undefined) {
-      return this.projector.point(squad.xCm / 100, squad.zCm / 100, SQUAD_Y);
+      x = squad.xCm / 100;
+      z = squad.zCm / 100;
+    } else {
+      const from = this.sites.get(squad.path[squad.pathIndex]);
+      const to = this.sites.get(squad.path[squad.pathIndex + 1]);
+      if (!from || !to) return null;
+      const duration = squad.legEndTick - squad.legStartTick;
+      const t = duration <= 0 ? 1 : Math.max(0, Math.min(1, (state.tick - squad.legStartTick) / duration));
+      x = from.x + (to.x - from.x) * t;
+      z = from.z + (to.z - from.z) * t;
     }
-    const from = this.sites.get(squad.path[squad.pathIndex]);
-    const to = this.sites.get(squad.path[squad.pathIndex + 1]);
-    if (!from || !to) return null;
-    const duration = squad.legEndTick - squad.legStartTick;
-    const t = duration <= 0 ? 1 : Math.max(0, Math.min(1, (state.tick - squad.legStartTick) / duration));
-    return this.projector.point(
-      from.x + (to.x - from.x) * t,
-      from.z + (to.z - from.z) * t,
-      SQUAD_Y,
-    );
+    const point = this.scene.projectGround(x * 10, z * 10, SQUAD_Y);
+    return point ? { x: point.x - this.rect.left, y: point.y - this.rect.top } : null;
   }
 
   private drawOwnSquadDot(squad: SquadState, state: SimState): void {

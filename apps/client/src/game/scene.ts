@@ -593,6 +593,36 @@ export class BattleScene {
     return this.terrain.hasGround(xDm / 10, zDm / 10);
   }
 
+  /** 点击兵团模型选中兵团：优先命中模型本体，退化到模型屏幕位置附近。 */
+  pickSquad(clientX: number, clientY: number): string | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    let best: { id: string; distance: number } | null = null;
+    for (const [id, view] of this.squadViews) {
+      view.group.updateMatrixWorld(true);
+      const hit = raycaster.intersectObject(view.group, true)[0];
+      if (hit && (!best || hit.distance < best.distance)) best = { id, distance: hit.distance };
+    }
+    if (best) return best.id;
+    let fallback: { id: string; distance: number } | null = null;
+    for (const [id, view] of this.squadViews) {
+      const point = view.group.position.clone();
+      point.y += SQUAD_LABEL_HEIGHT * 0.5;
+      const projected = point.project(this.camera);
+      if (!Number.isFinite(projected.x) || !Number.isFinite(projected.y)) continue;
+      const x = rect.left + ((projected.x + 1) / 2) * rect.width;
+      const y = rect.top + ((1 - projected.y) / 2) * rect.height;
+      const distance = Math.hypot(clientX - x, clientY - y);
+      if (distance <= 26 && (!fallback || distance < fallback.distance)) fallback = { id, distance };
+    }
+    return fallback?.id ?? null;
+  }
+
   projectGround(x: number, z: number, height = 0): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
     const worldX = x / 10;
