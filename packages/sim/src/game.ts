@@ -84,6 +84,12 @@ function reject(rejected: CommandRejection[], command: Command, reason: string):
   rejected.push({ command, reason });
 }
 
+function addLoss(state: SimState, owner: Owner, loss: number): void {
+  if (owner === 0 || loss <= 0) return;
+  const player = state.players.find((entry) => entry.id === owner);
+  if (player) player.losses += loss;
+}
+
 function siteMaxPop(kind: SiteKind, level: Level, rules: Ruleset): number {
   if (kind === "granary") return rules.granary.capacity;
   if (kind === "outpost") return rules.outpost.capacity;
@@ -151,6 +157,8 @@ function resolveInterceptions(state: SimState, events: SimEvent[]): void {
         state.rules,
         strengthFor(state, outpost.owner),
       );
+      addLoss(state, squad.owner, outcome.squadLoss);
+      addLoss(state, outpostOwner, outcome.outpostLoss);
       events.push({
         type: "squadIntercepted",
         squadId: squad.id,
@@ -221,8 +229,15 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
     .sort(byId);
 
   const players: PlayerState[] = map.players
-    .map((player) => ({ id: player.id, gold: map.startGold ?? 0, goldCarry: 0 }))
+    .map((player) => ({ id: player.id, gold: map.startGold ?? 0, goldCarry: 0, losses: 0 }))
     .sort((a, b) => a.id - b.id);
+
+  const timeObjective = map.objectives.find((objective) => objective.type === "time_limit");
+  const maxTicks =
+    timeObjective && typeof timeObjective.ticks === "number" && timeObjective.ticks > 0
+      ? timeObjective.ticks
+      : rules.maxTicks;
+  const gameRules: Ruleset = maxTicks === rules.maxTicks ? rules : { ...rules, maxTicks };
 
   return {
     tick: 0,
@@ -235,7 +250,7 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
     cities,
     squads: [],
     events: [],
-    rules,
+    rules: gameRules,
     map,
     graph: new MapGraph(map),
     nav: createNavGrid(map),
@@ -439,7 +454,8 @@ function applyCommand(
 function growEconomy(state: SimState): void {
   const goldByPlayer: number[] = [0, 0, 0];
   for (const city of state.cities) {
-    growCity(city, state.tick, state.rules.tickHz);
+    const lost = growCity(city, state.tick, state.rules.tickHz);
+    addLoss(state, city.owner, lost);
     if (!isProductionSiteKind(city.kind)) continue;
     const rule = levelRule(state.rules, city.level);
     if (city.owner !== 0) goldByPlayer[city.owner] += rule.goldMilli;
@@ -498,6 +514,7 @@ function starveSquads(state: SimState, events: SimEvent[]): void {
 
     const loss = Math.min(squad.count, state.rules.supply.starveLoss);
     squad.count -= loss;
+    addLoss(state, squad.owner, loss);
     const destroyed = squad.count <= 0;
     events.push({
       type: "squadStarved",
@@ -539,6 +556,8 @@ function resolveSquad(state: SimState, squad: SquadState, events: SimEvent[]): v
     attackerStrengthMilli: squad.strengthMilli,
     defenderStrengthMilli: strengthFor(state, fromOwner),
   });
+  addLoss(state, squad.owner, outcome.attackerLoss);
+  addLoss(state, fromOwner, outcome.defenderLoss);
   events.push({
     type: "combatResolved",
     cityId: city.id,
@@ -569,6 +588,7 @@ function decayOutposts(state: SimState, events: SimEvent[]): void {
     if (state.tick < city.decayAtTick) continue;
     const loss = Math.min(city.pop, state.rules.outpost.decayPerInterval);
     city.pop -= loss;
+    addLoss(state, city.owner, loss);
     events.push({ type: "outpostDecayed", cityId: city.id, loss, pop: city.pop });
     if (city.pop === 0) {
       city.owner = 0;
@@ -592,23 +612,31 @@ function checkFinish(state: SimState, events: SimEvent[]): void {
   const total = towns.length;
   if (total === 0) return finish(state, 0, "draw", events);
   const counts: number[] = [0, 0, 0];
-  const population: number[] = [0, 0, 0];
-  for (const city of towns) {
-    counts[city.owner] += 1;
-    population[city.owner] += city.pop;
-  }
+  for (const city of towns) counts[city.owner] += 1;
 
+  // 1. 场上只剩一个玩家的势力，中立建筑可以继续存在。
   if (counts[1] === total) return finish(state, 1, "capture_all", events);
   if (counts[1] === 0) return finish(state, 2, "eliminated", events);
   if (counts[2] === 0) return finish(state, 1, "eliminated", events);
   if (state.tick + 1 < state.rules.maxTicks) return;
 
+  // 2-6. 时间耗尽后依次比较：总兵力、建筑数、总损耗、金币，全部相同则平局。
+  const troops: number[] = [0, 0, 0];
+  for (const city of state.cities) troops[city.owner] += city.pop;
+  for (const squad of state.squads) troops[squad.owner] += squad.count;
+  const buildings: number[] = [0, 0, 0];
+  for (const city of state.cities) buildings[city.owner] += 1;
+  const losses: number[] = [0, 0, 0];
   const gold: number[] = [0, 0, 0];
-  for (const player of state.players) gold[player.id] = player.gold;
+  for (const player of state.players) {
+    losses[player.id] = player.losses;
+    gold[player.id] = player.gold;
+  }
 
   let winner: SimState["winner"] = 0;
-  if (counts[1] !== counts[2]) winner = counts[1] > counts[2] ? 1 : 2;
-  else if (population[1] !== population[2]) winner = population[1] > population[2] ? 1 : 2;
+  if (troops[1] !== troops[2]) winner = troops[1] > troops[2] ? 1 : 2;
+  else if (buildings[1] !== buildings[2]) winner = buildings[1] > buildings[2] ? 1 : 2;
+  else if (losses[1] !== losses[2]) winner = losses[1] < losses[2] ? 1 : 2;
   else if (gold[1] !== gold[2]) winner = gold[1] > gold[2] ? 1 : 2;
 
   finish(state, winner, winner === 0 ? "draw" : "time_limit", events);
@@ -871,6 +899,8 @@ function advanceGridTransit(
     attackerStrengthMilli: squad.strengthMilli,
     defenderStrengthMilli: strengthFor(state, beforeOwner),
   });
+  addLoss(state, squad.owner, outcome.attackerLoss);
+  addLoss(state, beforeOwner, outcome.defenderLoss);
   events.push({
     type: "combatResolved",
     cityId: city.id,
@@ -968,6 +998,8 @@ function resolveGridOutposts(state: SimState, events: SimEvent[], removed: Set<s
         state.rules,
         strengthFor(state, outpost.owner),
       );
+      addLoss(state, squad.owner, outcome.squadLoss);
+      addLoss(state, outpostOwner, outcome.outpostLoss);
       events.push({
         type: "squadIntercepted",
         squadId: squad.id,
@@ -1064,6 +1096,8 @@ function resolveGridClashes(state: SimState, events: SimEvent[], removed: Set<st
       );
       attacker.count -= attackerLoss;
       defender.count -= defenderLoss;
+      addLoss(state, attacker.owner, attackerLoss);
+      addLoss(state, defender.owner, defenderLoss);
       if (attacker.count <= 0) {
         removed.add(attacker.id);
         delete defender.engagedWith;

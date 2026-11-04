@@ -252,6 +252,8 @@ export interface PlayerState {
   id: PlayerId;
   gold: number;
   goldCarry: number;
+  /** 累计兵力损耗，用于时间耗尽后的胜负判定。 */
+  losses: number;
 }
 
 export type SimEvent =

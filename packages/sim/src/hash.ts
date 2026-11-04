@@ -73,7 +73,7 @@ export function canonicalState(state: SimState): string {
   const supply = state.rules.supply;
   parts.push(`F,${supply.carryTicks},${supply.starveIntervalTicks},${supply.starveLoss}`);
   for (const player of state.players.slice().sort((a, b) => a.id - b.id)) {
-    parts.push(`P${player.id},${player.gold},${player.goldCarry}`);
+    parts.push(`P${player.id},${player.gold},${player.goldCarry},${player.losses}`);
   }
   for (const city of state.cities.slice().sort(byId)) {
     parts.push(

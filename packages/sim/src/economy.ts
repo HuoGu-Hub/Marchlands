@@ -23,29 +23,31 @@ const DECAY_MODIFIER: Record<SiteKind, number> = {
   outpost: 1,
 };
 
-export function growCity(city: CityState, tick: number, tickHz: number): void {
+export function growCity(city: CityState, tick: number, tickHz: number): number {
   if (city.pop > city.maxPop) {
     city.growthCarry = 0;
     city.overCapCarry += (DECAY_MODIFIER[city.kind] * 1000) / tickHz;
+    let lost = 0;
     while (city.overCapCarry >= 1000 && city.pop > city.maxPop) {
       city.pop -= 1;
       city.overCapCarry -= 1000;
+      lost += 1;
     }
     if (city.pop <= city.maxPop) city.overCapCarry = 0;
-    return;
+    return lost;
   }
   city.overCapCarry = 0;
   if (!isProductionSiteKind(city.kind)) {
     city.growthCarry = 0;
-    return;
+    return 0;
   }
   if (tick < city.growthLockUntil) {
     city.growthCarry = 0;
-    return;
+    return 0;
   }
   if (city.pop >= city.maxPop) {
     city.growthCarry = 0;
-    return;
+    return 0;
   }
   const base = city.owner === 0 ? NEUTRAL_GROWTH_PER_SECOND : PLAYER_GROWTH_PER_SECOND;
   const milliPerTick = (base * GROWTH_MODIFIER[city.kind] * 1000) / tickHz;
@@ -54,6 +56,7 @@ export function growCity(city: CityState, tick: number, tickHz: number): void {
   city.growthCarry = carry - gain * 1000;
   city.pop = Math.min(city.maxPop, city.pop + gain);
   if (city.pop >= city.maxPop) city.growthCarry = 0;
+  return 0;
 }
 
 export function growGold(player: PlayerState, milli: number): void {

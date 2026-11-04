@@ -143,6 +143,63 @@ describe("finish", () => {
     expect(state.finishReason).toBe("time_limit");
   });
 
+  it("ranks time limit by total troops first", () => {
+    const rules = rulesWith({ maxTicks: 1 });
+    const state = createGame(TWO_CITY_MAP, 1, rules);
+    city(state, "a").pop = 10;
+    city(state, "b").pop = 30;
+    let next = state;
+    while (next.status === "playing") next = step(next, []).state;
+    expect(next.winner).toBe(2);
+  });
+
+  it("breaks a troop tie by buildings owned", () => {
+    const rules = rulesWith({ maxTicks: 1 });
+    const state = createGame(THREE_CITY_MAP, 1, rules);
+    city(state, "a").pop = 5;
+    city(state, "b").owner = 1;
+    city(state, "b").pop = 5;
+    city(state, "c").pop = 10;
+    let next = state;
+    while (next.status === "playing") next = step(next, []).state;
+    expect(next.winner).toBe(1);
+  });
+
+  it("breaks a building tie by lower total losses", () => {
+    const rules = rulesWith({ maxTicks: 1 });
+    const state = createGame(TWO_CITY_MAP, 1, rules);
+    city(state, "a").pop = 10;
+    city(state, "b").pop = 10;
+    state.players[0].losses = 4;
+    state.players[1].losses = 1;
+    let next = state;
+    while (next.status === "playing") next = step(next, []).state;
+    expect(next.winner).toBe(2);
+  });
+
+  it("breaks a loss tie by gold", () => {
+    const rules = rulesWith({ maxTicks: 1 });
+    const state = createGame(TWO_CITY_MAP, 1, rules);
+    city(state, "a").pop = 10;
+    city(state, "b").pop = 10;
+    state.players[0].gold = 5;
+    state.players[1].gold = 1;
+    let next = state;
+    while (next.status === "playing") next = step(next, []).state;
+    expect(next.winner).toBe(1);
+  });
+
+  it("draws when every tie-breaker matches", () => {
+    const rules = rulesWith({ maxTicks: 1 });
+    const state = createGame(TWO_CITY_MAP, 1, rules);
+    city(state, "a").pop = 10;
+    city(state, "b").pop = 10;
+    let next = state;
+    while (next.status === "playing") next = step(next, []).state;
+    expect(next.winner).toBe(0);
+    expect(next.finishReason).toBe("draw");
+  });
+
   it("rejects commands after the match ends", () => {
     const rules = rulesWith({ maxTicks: 1 });
     const finished = step(createGame(TWO_CITY_MAP, 1, rules), []).state;

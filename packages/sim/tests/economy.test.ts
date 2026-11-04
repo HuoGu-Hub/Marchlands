@@ -65,7 +65,7 @@ describe("economy", () => {
   });
 
   it("accumulates gold in milli units", () => {
-    const player = { id: 1 as const, gold: 0, goldCarry: 0 };
+    const player = { id: 1 as const, gold: 0, goldCarry: 0, losses: 0 };
     for (let tick = 0; tick < 20; tick += 1) growGold(player, 100);
     expect(player.gold).toBe(2);
     expect(player.goldCarry).toBe(0);
