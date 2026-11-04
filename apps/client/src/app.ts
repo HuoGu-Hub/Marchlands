@@ -213,9 +213,15 @@ const TEMPLATE = `
     </header>
     <div class="skin-tab-row">
       <div class="skin-tabs" id="skin-tabs" role="tablist" aria-label="兵种"></div>
-      <button class="btn ghost skin-reset" id="btn-skin-reset">恢复默认</button>
+      <div class="skin-tab-actions">
+        <button class="skin-arrow" id="btn-skin-prev" aria-label="向左滑动">‹</button>
+        <button class="skin-arrow" id="btn-skin-next" aria-label="向右滑动">›</button>
+        <button class="btn ghost skin-reset" id="btn-skin-reset">恢复默认</button>
+      </div>
     </div>
-    <div class="skin-grid" id="skin-grid"></div>
+    <div class="skin-carousel" id="skin-carousel">
+      <div class="skin-grid" id="skin-grid"></div>
+    </div>
   </div>
 </section>
 
@@ -415,6 +421,9 @@ export class App {
     this.on("btn-skins", "click", () => this.openSkins());
     this.on("btn-skins-back", "click", () => this.show("menu"));
     this.on("btn-skin-reset", "click", () => this.resetSkin());
+    this.on("btn-skin-prev", "click", () => this.scrollSkins(-1));
+    this.on("btn-skin-next", "click", () => this.scrollSkins(1));
+    this.bindSkinCarousel();
     this.on("btn-exit", "click", () => this.showOverlay("exit-overlay"));
     this.on("btn-campaign-back", "click", () => this.show("menu"));
     this.on("btn-series-back", "click", () => this.show("campaign"));
@@ -1054,11 +1063,11 @@ export class App {
   }
 
   private openSkins(): void {
-    this.renderSkins();
+    this.renderSkins(true);
     this.show("skins");
   }
 
-  private renderSkins(): void {
+  private renderSkins(resetScroll = false): void {
     const tabs = this.el("skin-tabs");
     tabs.replaceChildren(
       ...UNIT_KINDS.map((kind) => {
@@ -1071,7 +1080,7 @@ export class App {
         button.textContent = UNIT_NAMES[kind];
         button.addEventListener("click", () => {
           this.skinKind = kind;
-          this.renderSkins();
+          this.renderSkins(true);
         });
         return button;
       }),
@@ -1080,9 +1089,89 @@ export class App {
     const skins = skinsForKind(this.skinKind);
     this.el("skin-count").textContent = `${UNIT_NAMES[this.skinKind]} · ${skins.length} 套可选`;
     const current = this.settings.unitSkins[this.skinKind];
-    this.el("skin-grid").replaceChildren(
+    const grid = this.el("skin-grid");
+    const offset = resetScroll ? 0 : grid.scrollLeft;
+    grid.replaceChildren(
       ...skins.map((skin) => this.buildSkinCard(skin, current === unitSkinAssetId(skin.key))),
     );
+    grid.scrollLeft = offset;
+    requestAnimationFrame(() => this.updateSkinScrollState());
+  }
+
+  private bindSkinCarousel(): void {
+    const grid = this.el("skin-grid");
+    grid.addEventListener("scroll", () => this.updateSkinScrollState(), { passive: true });
+    grid.addEventListener(
+      "wheel",
+      (event) => {
+        if (event.deltaY === 0 || grid.scrollWidth <= grid.clientWidth + 1) return;
+        event.preventDefault();
+        grid.scrollLeft += event.deltaY;
+      },
+      { passive: false },
+    );
+
+    let down = false;
+    let startX = 0;
+    let startLeft = 0;
+    let moved = false;
+    grid.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "mouse" || event.button !== 0) return;
+      down = true;
+      moved = false;
+      startX = event.clientX;
+      startLeft = grid.scrollLeft;
+    });
+    grid.addEventListener("pointermove", (event) => {
+      if (!down) return;
+      const dx = event.clientX - startX;
+      if (!moved && Math.abs(dx) < 6) return;
+      if (!moved) {
+        moved = true;
+        // 只有真正拖动时才接管指针，普通点击仍交给卡片。
+        grid.setPointerCapture(event.pointerId);
+        grid.classList.add("dragging");
+      }
+      grid.scrollLeft = startLeft - dx;
+    });
+    const end = (event: PointerEvent): void => {
+      if (!down) return;
+      down = false;
+      grid.classList.remove("dragging");
+      if (grid.hasPointerCapture(event.pointerId)) grid.releasePointerCapture(event.pointerId);
+    };
+    grid.addEventListener("pointerup", end);
+    grid.addEventListener("pointercancel", end);
+    grid.addEventListener(
+      "click",
+      (event) => {
+        if (!moved) return;
+        event.preventDefault();
+        event.stopPropagation();
+        moved = false;
+      },
+      true,
+    );
+    window.addEventListener("resize", () => this.updateSkinScrollState());
+  }
+
+  private scrollSkins(direction: -1 | 1): void {
+    const grid = this.el("skin-grid");
+    const amount = Math.max(240, grid.clientWidth * 0.72);
+    grid.scrollBy({ left: direction * amount, behavior: "smooth" });
+  }
+
+  private updateSkinScrollState(): void {
+    const grid = this.el("skin-grid");
+    const carousel = this.el("skin-carousel");
+    if (!grid || !carousel) return;
+    const max = grid.scrollWidth - grid.clientWidth;
+    carousel.classList.toggle("can-prev", grid.scrollLeft > 4);
+    carousel.classList.toggle("can-next", max > 4 && grid.scrollLeft < max - 4);
+    const prev = this.el("btn-skin-prev") as HTMLButtonElement;
+    const next = this.el("btn-skin-next") as HTMLButtonElement;
+    prev.disabled = grid.scrollLeft <= 4;
+    next.disabled = max <= 4 || grid.scrollLeft >= max - 4;
   }
 
   private buildSkinCard(skin: UnitSkinDef, selected: boolean): HTMLElement {
@@ -1098,6 +1187,7 @@ export class App {
     image.src = `${import.meta.env.BASE_URL}skins/${skin.key}.png`;
     image.alt = `${skin.label}正面照`;
     image.loading = "lazy";
+    image.draggable = false;
     const check = document.createElement("span");
     check.className = "skin-card-check";
     check.textContent = "✓";
@@ -1127,7 +1217,7 @@ export class App {
     };
     saveSettings(this.settings);
     this.toast(`已选择 ${skin.label}`);
-    this.renderSkins();
+    this.renderSkins(false);
   }
 
   private resetSkin(): void {
@@ -1138,7 +1228,7 @@ export class App {
     this.settings = { ...this.settings, unitSkins: next };
     saveSettings(this.settings);
     this.toast(`${UNIT_NAMES[this.skinKind]}已恢复默认皮肤`);
-    this.renderSkins();
+    this.renderSkins(false);
   }
 
   private openSettings(): void {
