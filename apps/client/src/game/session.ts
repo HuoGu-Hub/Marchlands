@@ -361,6 +361,7 @@ export class GameSession {
     }
     if (sent < sources.length && problem) this.options.onToast(`${sent} 座发兵 · ${problem}`);
     else if (sent > 1) this.options.onToast(`${sent} 座据点同时发兵`);
+    this.setSelection([]);
   }
 
   /** Ctrl 单击切换单/多选模式。 */
@@ -401,7 +402,8 @@ export class GameSession {
     this.lastPlanClick = null;
     this.routeOverlay.setPlan([]);
     this.updatePlanUi();
-    this.dispatchPlan(plan, true);
+    const sent = this.dispatchPlan(plan, true);
+    if (sent > 0) this.setSelection([]);
   }
 
   /** 双击箭头取消一组任务。 */
@@ -495,8 +497,8 @@ export class GameSession {
   }
 
   /** 所有编组的发兵命令在同一 tick 入队，抵达时序与多选同时发兵一致。 */
-  private dispatchPlan(plan: PlannedAssignment[], announce = false): void {
-    if (plan.length === 0) return;
+  private dispatchPlan(plan: PlannedAssignment[], announce = false): number {
+    if (plan.length === 0) return 0;
     let sent = 0;
     let problem = "";
     for (const group of plan) {
@@ -533,11 +535,12 @@ export class GameSession {
     }
     if (sent === 0) {
       this.options.onToast(problem || "无法派兵");
-      return;
+      return 0;
     }
     if (problem) this.options.onToast(`${sent} 座发兵 · ${problem}`);
     else if (sent > 1) this.options.onToast(`${sent} 座据点同时发兵`);
     else if (announce) this.options.onToast("1 座据点已派遣");
+    return sent;
   }
 
   private updatePlanUi(): void {
@@ -609,6 +612,39 @@ export class GameSession {
     this.scene.dispose();
   }
 
+  /** 把兵团实际行走折线栅格化成格心，交给场景画浅绿网格。 */
+  private updateSquadPath(): void {
+    const squad = this.selectedSquad ? this.getSquad(this.selectedSquad) : null;
+    const nav = this.state.nav;
+    if (!squad?.gridPath || squad.gridPath.length === 0 || squad.xCm === undefined || squad.zCm === undefined || !nav) {
+      this.scene.setSquadPath(null);
+      return;
+    }
+    const offsetX = this.state.map.size[0] * 5;
+    const offsetZ = this.state.map.size[1] * 5;
+    const cells: Array<[number, number]> = [];
+    const seen = new Set<number>();
+    const add = (xCm: number, zCm: number): void => {
+      const index = nav.cellFromWorld(xCm + offsetX, zCm + offsetZ);
+      if (index < 0 || seen.has(index)) return;
+      seen.add(index);
+      const center = nav.centerOf(index);
+      cells.push([center.xCm - offsetX, center.zCm - offsetZ]);
+    };
+    const step = Math.max(1, nav.cellSizeCm * 0.5);
+    add(squad.xCm, squad.zCm);
+    const start = Math.max(0, (squad.gridIndex ?? 0) - 1);
+    for (let index = start; index < squad.gridPath.length - 1; index += 1) {
+      const [x0, z0] = squad.gridPath[index];
+      const [x1, z1] = squad.gridPath[index + 1];
+      const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / step));
+      for (let k = 1; k <= steps; k += 1) {
+        add(x0 + ((x1 - x0) * k) / steps, z0 + ((z1 - z0) * k) / steps);
+      }
+    }
+    this.scene.setSquadPath(cells, nav.cellSizeCm);
+  }
+
   private readonly frame = (now: number): void => {
     if (this.disposed) return;
     const delta = Math.min(250, Math.max(0, now - this.lastTime));
@@ -626,6 +662,7 @@ export class GameSession {
       if (steps === 32) this.accumulator = 0;
     }
 
+    this.updateSquadPath();
     this.scene.update(this.state, delta);
     this.routeOverlay.render(this.state, this.selectedSquad);
     this.raf = requestAnimationFrame(this.frame);
@@ -1051,6 +1088,7 @@ export class GameSession {
     }
     if (sent < sources.length && problem) this.options.onToast(`${sent} 座发兵 · ${problem}`);
     else if (sent > 1) this.options.onToast(`${sent} 座据点同时发兵`);
+    this.setSelection([]);
   }
 
   private clickCity(cityId: CityId): void {

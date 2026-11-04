@@ -394,19 +394,14 @@ export class RouteOverlay {
   private drawRoutes(squad: SquadState, state: SimState): void {
     const context = this.context;
     const start = this.squadPoint(squad, state);
-    if (squad.gridPath && squad.xCm !== undefined && squad.zCm !== undefined) {
-      const points: ScreenPoint[] = [];
-      if (start) points.push(start);
-      for (let index = squad.gridIndex ?? 0; index < squad.gridPath.length; index += 1) {
-        const target = squad.gridPath[index];
-        const projected = this.projector.point(target[0] / 100, target[1] / 100, GROUND_Y);
-        if (projected) points.push(projected);
-      }
-      if (points.length >= 2) {
-        this.stroke(points, "rgba(8,12,9,.72)", 7, []);
-        this.stroke(points, "rgba(133,226,157,.95)", 3.2, []);
-        const end = points[points.length - 1];
-        this.diamond(end, "rgba(133,226,157,.95)");
+    if (squad.gridPath && squad.gridPath.length > 0 && squad.xCm !== undefined && squad.zCm !== undefined) {
+      const last = squad.gridPath[squad.gridPath.length - 1];
+      const point = this.scene.projectGround(last[0] / 10, last[1] / 10, GROUND_Y);
+      if (point) {
+        this.diamond(
+          { x: point.x - this.rect.left, y: point.y - this.rect.top },
+          "rgba(133,226,157,.95)",
+        );
       }
       return;
     }

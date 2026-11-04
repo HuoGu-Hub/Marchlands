@@ -199,6 +199,10 @@ export class BattleScene {
   });
   private readonly reachGroup = new THREE.Group();
   private readonly reachCellGroup = new THREE.Group();
+  private readonly squadPathGroup = new THREE.Group();
+  private squadPathMesh: THREE.Mesh | null = null;
+  private squadPathEdges: THREE.LineSegments | null = null;
+  private squadPathKey = "";
   private reachCellMesh: THREE.Mesh | null = null;
   private reachCorners: Float32Array | null = null;
   private reachCornersKey = "";
@@ -299,6 +303,7 @@ export class BattleScene {
     this.scene.add(this.sceneryGroup);
     this.scene.add(this.reachGroup);
     this.scene.add(this.reachCellGroup);
+    this.scene.add(this.squadPathGroup);
     this.buildGround();
     this.applyFoundations();
     this.zoom = Math.max(this.fitZoom(), GAMEPLAY_ZOOM);
@@ -323,6 +328,90 @@ export class BattleScene {
   setSelected(cityIds: readonly CityId[] | CityId | null): void {
     this.selectedIds = cityIds === null ? [] : typeof cityIds === "string" ? [cityIds] : cityIds.slice();
     this.updateRings();
+  }
+
+  /** 选中兵团时用浅绿格子显示剩余行走路线；cells 为地图坐标厘米的格心，传 null 清除。 */
+  setSquadPath(cells: ReadonlyArray<readonly [number, number]> | null, cellSizeCm = 100): void {
+    const key =
+      cells && cells.length > 0
+        ? `${cellSizeCm}:${cells.map(([x, z]) => `${x},${z}`).join(";")}`
+        : "";
+    if (key === this.squadPathKey) return;
+    this.squadPathKey = key;
+    if (this.squadPathMesh) {
+      this.squadPathGroup.remove(this.squadPathMesh);
+      this.squadPathMesh.geometry.dispose();
+      (this.squadPathMesh.material as THREE.Material).dispose();
+      this.squadPathMesh = null;
+    }
+    if (this.squadPathEdges) {
+      this.squadPathGroup.remove(this.squadPathEdges);
+      this.squadPathEdges.geometry.dispose();
+      (this.squadPathEdges.material as THREE.Material).dispose();
+      this.squadPathEdges = null;
+    }
+    if (!cells || cells.length === 0) return;
+    const half = cellSizeCm / 200;
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const edgePositions: number[] = [];
+    for (const [xCm, zCm] of cells) {
+      const x = xCm / 100;
+      const z = zCm / 100;
+      const corners: Array<[number, number]> = [
+        [x - half, z - half],
+        [x + half, z - half],
+        [x + half, z + half],
+        [x - half, z + half],
+      ];
+      const base = positions.length / 3;
+      const lifted = corners.map(([px, pz]): [number, number, number] => [
+        px,
+        this.terrain.heightAt(px, pz) + 0.09,
+        pz,
+      ]);
+      for (const point of lifted) positions.push(...point);
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      for (let index = 0; index < 4; index += 1) {
+        const a = lifted[index];
+        const b = lifted[(index + 1) % 4];
+        edgePositions.push(...a, ...b);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x9cffb8,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.squadPathMesh = new THREE.Mesh(geometry, material);
+    this.squadPathMesh.renderOrder = 3;
+    this.squadPathGroup.add(this.squadPathMesh);
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__mlPath = {
+        count: cells.length,
+        first: cells[0],
+        last: cells[cells.length - 1],
+        inScene: this.squadPathGroup.children.length,
+      };
+    }
+    const edgeGeometry = new THREE.BufferGeometry();
+    edgeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
+    const edgeMaterial = new THREE.LineBasicMaterial({
+      color: 0xeafff1,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.squadPathEdges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    this.squadPathEdges.renderOrder = 4;
+    this.squadPathGroup.add(this.squadPathEdges);
   }
 
   /** 开局预采样地形格角高度，避免第一次点建筑时才算两万多个点。 */
