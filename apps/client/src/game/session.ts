@@ -632,16 +632,24 @@ export class GameSession {
       cells.push([center.xCm - offsetX, center.zCm - offsetZ]);
     };
     const step = Math.max(1, nav.cellSizeCm * 0.5);
-    add(squad.xCm, squad.zCm);
-    const start = Math.max(0, (squad.gridIndex ?? 0) - 1);
-    for (let index = start; index < squad.gridPath.length - 1; index += 1) {
-      const [x0, z0] = squad.gridPath[index];
-      const [x1, z1] = squad.gridPath[index + 1];
+    const sampleLine = (x0: number, z0: number, x1: number, z1: number): void => {
       const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / step));
       for (let k = 1; k <= steps; k += 1) {
         add(x0 + ((x1 - x0) * k) / steps, z0 + ((z1 - z0) * k) / steps);
       }
+    };
+    add(squad.xCm, squad.zCm);
+    const next = Math.max(0, squad.gridIndex ?? 0);
+    if (next < squad.gridPath.length) {
+      sampleLine(squad.xCm, squad.zCm, squad.gridPath[next][0], squad.gridPath[next][1]);
+      for (let index = next; index < squad.gridPath.length - 1; index += 1) {
+        const [x0, z0] = squad.gridPath[index];
+        const [x1, z1] = squad.gridPath[index + 1];
+        sampleLine(x0, z0, x1, z1);
+      }
     }
+    // 兵团脚下这一格已经走过，只高亮前方还没走的路。
+    cells.shift();
     return cells;
   }
 
