@@ -1,0 +1,172 @@
+{
+  "name": "heavy-shield-knight",
+  "image": "heavy-shield-knight-atlas.png",
+  "tile": 512,
+  "columns": 4,
+  "rows": 2,
+  "directions": 8,
+  "frames": 1,
+  "index_order": "counter-clockwise",
+  "cells": [
+    {
+      "index": 0,
+      "label": "front",
+      "column": 0,
+      "row": 0,
+      "rect": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "pivot": [
+        249,
+        481
+      ],
+      "pivot_in_tile": [
+        249,
+        481
+      ]
+    },
+    {
+      "index": 1,
+      "label": "front-right-45",
+      "column": 1,
+      "row": 0,
+      "rect": [
+        512,
+        0,
+        512,
+        512
+      ],
+      "pivot": [
+        762,
+        481
+      ],
+      "pivot_in_tile": [
+        250,
+        481
+      ]
+    },
+    {
+      "index": 2,
+      "label": "right-profile",
+      "column": 2,
+      "row": 0,
+      "rect": [
+        1024,
+        0,
+        512,
+        512
+      ],
+      "pivot": [
+        1249,
+        481
+      ],
+      "pivot_in_tile": [
+        225,
+        481
+      ]
+    },
+    {
+      "index": 3,
+      "label": "back-right-135",
+      "column": 3,
+      "row": 0,
+      "rect": [
+        1536,
+        0,
+        512,
+        512
+      ],
+      "pivot": [
+        1795,
+        481
+      ],
+      "pivot_in_tile": [
+        259,
+        481
+      ]
+    },
+    {
+      "index": 4,
+      "label": "back",
+      "column": 0,
+      "row": 1,
+      "rect": [
+        0,
+        512,
+        512,
+        512
+      ],
+      "pivot": [
+        273,
+        993
+      ],
+      "pivot_in_tile": [
+        273,
+        481
+      ]
+    },
+    {
+      "index": 5,
+      "label": "back-left-225",
+      "column": 1,
+      "row": 1,
+      "rect": [
+        512,
+        512,
+        512,
+        512
+      ],
+      "pivot": [
+        773,
+        993
+      ],
+      "pivot_in_tile": [
+        261,
+        481
+      ]
+    },
+    {
+      "index": 6,
+      "label": "left-profile",
+      "column": 2,
+      "row": 1,
+      "rect": [
+        1024,
+        512,
+        512,
+        512
+      ],
+      "pivot": [
+        1270,
+        993
+      ],
+      "pivot_in_tile": [
+        246,
+        481
+      ]
+    },
+    {
+      "index": 7,
+      "label": "front-left-315",
+      "column": 3,
+      "row": 1,
+      "rect": [
+        1536,
+        512,
+        512,
+        512
+      ],
+      "pivot": [
+        1797,
+        993
+      ],
+      "pivot_in_tile": [
+        261,
+        481
+      ]
+    }
+  ]
+}
