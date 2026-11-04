@@ -47,7 +47,7 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
     return hook ? hook.projectCity("c4") : null;
   });
   if (!target) throw new Error("c4 has no screen position");
-  await page.mouse.click(target.x, target.y);
+  await page.mouse.dblclick(target.x, target.y);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 20_000 });
   await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
 });
@@ -863,7 +863,7 @@ test("assigns groups in multi-select mode and dispatches with the button", async
 
   const c2 = await project("c2");
   if (!c2) throw new Error("c2 has no screen position");
-  await page.mouse.click(c2.x, c2.y);
+  await page.mouse.dblclick(c2.x, c2.y);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 40_000 });
 
   await page.mouse.click(c2.x, c2.y);
@@ -941,7 +941,7 @@ test("dispatches one multi-select group from several towns", async ({ page }) =>
   await expect(page.locator("#city-panel")).toHaveClass(/on/);
   const c2 = await project("c2");
   if (!c2) throw new Error("c2 has no screen position");
-  await page.mouse.click(c2.x, c2.y);
+  await page.mouse.dblclick(c2.x, c2.y);
   await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 40_000 });
 
   await page.mouse.click(c2.x, c2.y);
@@ -1058,7 +1058,11 @@ test("dispatches troops to any reachable grid cell", async ({ page }) => {
   // 单选状态下直接点浅绿网格派兵。
   const ground = await projectGround(0, 0);
   if (!ground) throw new Error("grid cell has no screen position");
+  // 单击只选择，不派兵。
   await page.mouse.click(ground.x, ground.y);
+  await page.waitForTimeout(300);
+  expect(await ownSquads()).toBe(0);
+  await page.mouse.dblclick(ground.x, ground.y);
   await expect.poll(ownSquads).toBeGreaterThan(0);
 
   // 多选状态下把编组指定到另一个网格，再点“派遣”。
@@ -1077,4 +1081,39 @@ test("dispatches troops to any reachable grid cell", async ({ page }) => {
     .not.toBeNull();
   await page.click("#btn-dispatch");
   await expect(page.locator("#toast")).toContainText("已派遣");
+});
+
+test("drags an arched arrow from a building to dispatch", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openClassicEditor(page);
+  await page.click("#ml-ed-new-grid");
+  await page.waitForTimeout(500);
+  await page.click("#ml-ed-play");
+  await expect(page.locator("#page-game")).toBeVisible();
+
+  const c1 = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCityBase(id: string): { x: number; y: number } | null } })
+        .__mlDebug?.projectCityBase("c1"),
+  );
+  if (!c1) throw new Error("c1 has no screen position");
+  await page.mouse.click(c1.x, c1.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
+
+  const cell = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectGround(x: number, z: number): { x: number; y: number } | null } })
+        .__mlDebug?.projectGround(0, 0),
+  );
+  if (!cell) throw new Error("target cell has no screen position");
+
+  await page.mouse.move(c1.x, c1.y);
+  await page.mouse.down();
+  await page.mouse.move(cell.x, cell.y, { steps: 12 });
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __mlSquads?: { own: number } }).__mlSquads?.own ?? 0),
+    )
+    .toBeGreaterThan(0);
 });

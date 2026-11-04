@@ -142,7 +142,7 @@ const TEMPLATE = `
     <button class="btn primary dispatch-btn" id="btn-dispatch" disabled>派遣</button>
     <div class="toast" id="toast"></div>
     <div class="plan-hint" id="plan-hint"></div>
-    <div class="hint">拖动地图 · 左键选择与派兵 · 浅绿网格可派兵 · Ctrl 切换多选 · 点“派遣”发兵 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
+    <div class="hint">拖动地图 · 左键选择 · 双击或拖拽派兵 · Ctrl 切换多选 · 点“派遣”发兵 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
   </div>
 
   <div class="overlay" id="pause-overlay">

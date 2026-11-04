@@ -142,6 +142,7 @@ export class RouteOverlay {
   private readonly projector = new ScreenProjector();
   private readonly panelRefs: Record<string, HTMLElement> = {};
   private plan: PlannedAssignment[] = [];
+  private dragArrow: { from: CityId; x: number; y: number } | null = null;
   private width = 0;
   private height = 0;
   private pixelRatio = 0;
@@ -202,6 +203,11 @@ export class RouteOverlay {
     this.resize();
   }
 
+  /** 单选后从建筑拖拽派兵时显示的拱形箭头；传 null 清除。 */
+  setDragArrow(from: CityId | null, clientX = 0, clientY = 0): void {
+    this.dragArrow = from ? { from, x: clientX, y: clientY } : null;
+  }
+
   setPlan(assignments: readonly PlannedAssignment[]): void {
     this.plan = assignments.map((group) => ({
       sources: group.sources.slice(),
@@ -243,6 +249,7 @@ export class RouteOverlay {
     if (!selected) {
       this.setPanel(null, state);
       this.drawPlan();
+      this.drawDragArrow();
       return;
     }
 
@@ -250,6 +257,7 @@ export class RouteOverlay {
     this.drawOwnSquadDot(selected, state);
     this.setPanel(selected, state);
     this.drawPlan();
+    this.drawDragArrow();
   }
 
   pickSquad(state: SimState, clientX: number, clientY: number): string | null {
@@ -467,6 +475,26 @@ export class RouteOverlay {
         context.fill();
       });
     }
+  }
+
+  /** 拖拽派兵的拱形箭头：起点为发兵建筑，终点跟随鼠标。 */
+  private drawDragArrow(): void {
+    if (!this.dragArrow) return;
+    const source = this.sitePoint(this.dragArrow.from, GROUND_Y);
+    if (!source) return;
+    const target = {
+      x: this.dragArrow.x - this.rect.left,
+      y: this.dragArrow.y - this.rect.top,
+    };
+    const points = this.planArc(source, target, 0);
+    this.stroke(points, PLAN_SHADOW, 5, []);
+    this.stroke(points, PLAN_COLOR, 2.2, []);
+    this.arrowHead(points);
+    const context = this.context;
+    context.beginPath();
+    context.arc(source.x, source.y, 3, 0, Math.PI * 2);
+    context.fillStyle = PLAN_COLOR;
+    context.fill();
   }
 
   /** 拱形控制点位于连线中点的上方，多个出发据点按序号抬高避免重叠。 */

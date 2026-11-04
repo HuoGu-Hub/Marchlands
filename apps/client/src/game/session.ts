@@ -78,6 +78,8 @@ export class GameSession {
   private disposed = false;
   private dragging = false;
   private dragMoved = false;
+  private dispatchDrag = false;
+  private dispatchSource: CityId | null = null;
   private suppressClick = false;
   private dragX = 0;
   private dragY = 0;
@@ -590,6 +592,7 @@ export class GameSession {
     this.syncDispatchButton();
     window.removeEventListener("keydown", this.onKeyDown);
     this.options.canvas.removeEventListener("click", this.onClick);
+    this.options.canvas.removeEventListener("dblclick", this.onDoubleClick);
     this.options.canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.options.canvas.removeEventListener("wheel", this.onWheel);
     this.options.canvas.removeEventListener("pointerdown", this.onPointerDown);
@@ -743,6 +746,7 @@ export class GameSession {
   private bindInput(): void {
     this.options.canvas.style.cursor = "grab";
     this.options.canvas.addEventListener("click", this.onClick);
+    this.options.canvas.addEventListener("dblclick", this.onDoubleClick);
     this.options.canvas.addEventListener("contextmenu", this.onContextMenu);
     this.options.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.options.canvas.addEventListener("pointerdown", this.onPointerDown);
@@ -766,16 +770,44 @@ export class GameSession {
 
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
-    this.dragging = true;
     this.dragMoved = false;
     this.dragStartX = event.clientX;
     this.dragStartY = event.clientY;
     this.dragX = event.clientX;
     this.dragY = event.clientY;
+    // 单选状态下从当前建筑本体拖出，直接拉出派兵箭头，不进入平移。
+    if (!this.multiSelect && !this.selectedSquad && this.selected.length > 0) {
+      const focus = this.primary;
+      const nearest = this.scene.nearestCity(event.clientX, event.clientY, this.state);
+      if (focus && nearest && nearest.id === focus && nearest.distance <= 72) {
+        this.dispatchDrag = true;
+        this.dispatchSource = focus;
+        this.options.canvas.style.cursor = "crosshair";
+        return;
+      }
+    }
+    this.dragging = true;
     this.options.canvas.style.cursor = "grabbing";
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
+    if (this.dispatchDrag) {
+      if ((event.buttons & 1) === 0) {
+        this.cancelDispatchDrag();
+        return;
+      }
+      if (
+        !this.dragMoved &&
+        Math.hypot(event.clientX - this.dragStartX, event.clientY - this.dragStartY) < 10
+      ) {
+        return;
+      }
+      this.dragMoved = true;
+      if (this.dispatchSource) {
+        this.routeOverlay.setDragArrow(this.dispatchSource, event.clientX, event.clientY);
+      }
+      return;
+    }
     if (!this.dragging) return;
     // 松开鼠标时没收到 pointerup（例如在窗口外松开）时，这里兜底退出拖拽。
     if ((event.buttons & 1) === 0) {
@@ -794,7 +826,23 @@ export class GameSession {
     this.scene.panBy(dx, dy);
   };
 
-  private readonly onPointerUp = (): void => {
+  private readonly onPointerUp = (event: PointerEvent): void => {
+    if (this.dispatchDrag) {
+      const moved = this.dragMoved;
+      const source = this.dispatchSource;
+      this.dispatchDrag = false;
+      this.dispatchSource = null;
+      this.routeOverlay.setDragArrow(null);
+      this.options.canvas.style.cursor = "grab";
+      if (moved) {
+        this.suppressClick = true;
+        window.setTimeout(() => { this.suppressClick = false; }, 0);
+        const target = this.dispatchTargetAt(event.clientX, event.clientY, source);
+        if (target) this.dispatchSingle(target);
+        else this.options.onToast("拖到可抵达的据点或网格");
+      }
+      return;
+    }
     if (!this.dragging) return;
     this.dragging = false;
     this.options.canvas.style.cursor = "grab";
@@ -805,11 +853,21 @@ export class GameSession {
   };
 
   private readonly onWindowBlur = (): void => {
+    this.cancelDispatchDrag();
     this.dragging = false;
     this.dragMoved = false;
     this.suppressClick = false;
     this.options.canvas.style.cursor = "grab";
   };
+
+  private cancelDispatchDrag(): void {
+    if (!this.dispatchDrag) return;
+    this.dispatchDrag = false;
+    this.dispatchSource = null;
+    this.dragMoved = false;
+    this.routeOverlay.setDragArrow(null);
+    this.options.canvas.style.cursor = "grab";
+  }
 
   private clickDuringMultiSelect(cityId: CityId): void {
     const city = this.getCity(cityId);
@@ -850,6 +908,46 @@ export class GameSession {
       if (Math.hypot(city.pos[0] * 10 - xCm, city.pos[1] * 10 - zCm) <= radius) return id;
     }
     return null;
+  }
+
+  private cellTargetAt(
+    clientX: number,
+    clientY: number,
+  ): { city?: CityId; cell?: { index: number; xCm: number; zCm: number } } | null {
+    const cell = this.gridCellAt(clientX, clientY);
+    if (!cell) return null;
+    const cityId = this.cellCityAt(cell.xCm, cell.zCm);
+    return cityId ? { city: cityId } : { cell };
+  }
+
+  /** 双击/拖拽释放的位置解析成据点或网格目标。 */
+  private dispatchTargetAt(
+    clientX: number,
+    clientY: number,
+    dragSource: CityId | null = null,
+  ): { city?: CityId; cell?: { index: number; xCm: number; zCm: number } } | null {
+    const nearest = this.scene.nearestCity(clientX, clientY, this.state);
+    const nearCity = nearest ? this.getCity(nearest.id) : undefined;
+    if (nearest && nearCity?.owner === 1 && nearest.distance <= 72) {
+      // 从建筑拖出时，落在建筑附近的格子仍可作为目标；落在建筑本体上则不算。
+      if (dragSource && nearest.id === dragSource && nearest.distance > 28) {
+        return this.cellTargetAt(clientX, clientY);
+      }
+      return null;
+    }
+    if (nearest && nearCity && nearest.distance <= 72) return { city: nearest.id };
+    const cell = this.cellTargetAt(clientX, clientY);
+    if (cell) return cell;
+    if (nearest && nearCity && nearCity.owner !== 1) return { city: nearest.id };
+    return null;
+  }
+
+  private dispatchSingle(target: { city?: CityId; cell?: { index: number; xCm: number; zCm: number } }): void {
+    if (target.city) {
+      this.sendTo(target.city);
+      return;
+    }
+    if (target.cell) this.sendToCell(target.cell);
   }
 
   private clickCellDuringMultiSelect(cell: { index: number; xCm: number; zCm: number }): void {
@@ -1009,32 +1107,25 @@ export class GameSession {
     }
 
     const nearCity = nearest ? this.getCity(nearest.id) : undefined;
-    if (nearest && nearCity && (nearCity.owner === 1 ? nearest.distance <= 72 : nearest.distance <= 36)) {
+    if (nearest && nearCity && nearCity.owner === 1 && nearest.distance <= 72) {
       this.clickCity(nearest.id);
       return;
     }
 
+    // 单击只用于选择；敌方据点和网格都要双击，或从建筑拖拽箭头才派兵。
     const cell = this.gridCellAt(event.clientX, event.clientY);
-    if (cell) {
-      const cellCity = this.cellCityAt(cell.xCm, cell.zCm);
-      if (cellCity) {
-        this.clickCity(cellCity);
-        return;
-      }
-      if (this.selected.length > 0) {
-        this.sendToCell(cell);
-        return;
-      }
-      this.clearSelection();
-      return;
-    }
-
-    if (cityId) {
-      this.clickCity(cityId);
-      return;
-    }
+    if (cell) return;
+    if (cityId) return;
 
     this.clearSelection();
+  };
+
+  private readonly onDoubleClick = (event: MouseEvent): void => {
+    if (this.suppressClick) return;
+    if (this.paused || this.finished || this.multiSelect || this.selectedSquad) return;
+    if (this.selected.length === 0) return;
+    const target = this.dispatchTargetAt(event.clientX, event.clientY);
+    if (target) this.dispatchSingle(target);
   };
 
   private readonly onContextMenu = (event: MouseEvent): void => {
