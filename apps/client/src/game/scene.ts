@@ -48,6 +48,16 @@ const SQUAD_CAVALRY_SPACING = 0.78;
  * 兵团编队：按人数生成每个士兵的站位，行优先、以队形中心为原点。
  * 兵种来自出发据点——城镇按 id 稳定对应一种兵营，驻兵点是弓箭塔，粮仓出步兵。
  */
+/** 单兵团最多渲染的小兵数；数值本身仍以兵团实时兵力显示在头顶。 */
+const MAX_SQUAD_UNITS = 20;
+
+/** 每个小兵的确定性随机量，保证编队有松散感但不会每帧抖动。 */
+function unitJitter(id: string, index: number, salt: number): number {
+  const seed = hashId(id) + index * 97 + salt * 131;
+  const value = Math.sin(seed) * 43758.5453;
+  return value - Math.floor(value);
+}
+
 function squadFormation(count: number, spacingX: number, spacingZ: number): Array<[number, number]> {
   const total = Math.max(1, Math.floor(count));
   const rows = Math.ceil(total / SQUAD_COLUMNS);
@@ -165,9 +175,11 @@ export interface SceneViewState {
   yawIndex: number;
 }
 
+type SquadUnit = UnitActor | GlbUnitActor;
+
 interface SquadView {
   group: THREE.Group;
-  units: UnitActorView[];
+  units: SquadUnit[];
   label: THREE.Sprite;
   canvas: HTMLCanvasElement;
   texture: THREE.CanvasTexture;
@@ -175,6 +187,8 @@ interface SquadView {
   disposed: boolean;
   owner: Owner;
   target: string;
+  loading: boolean;
+  shadow: THREE.Mesh;
   /** 抵达敌方据点后先挥击再销毁的时间点；未进入收尾阶段为 0。 */
   strikeUntil: number;
 }
@@ -188,6 +202,8 @@ export class BattleScene {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly cityViews = new Map<CityId, CityView>();
   private readonly squadViews = new Map<string, SquadView>();
+  private readonly frustum = new THREE.Frustum();
+  private readonly squadSphere = new THREE.Sphere();
   private readonly rings = new Map<CityId, THREE.Mesh>();
   private readonly selectedMarkers = new Map<CityId, THREE.Mesh>();
   private readonly ringGeometry = new THREE.RingGeometry(2.55, 2.85, 48);
@@ -909,6 +925,10 @@ export class BattleScene {
     const now = performance.now();
     const delta = Math.min(50, now - this.lastSquadUpdate || 16);
     this.lastSquadUpdate = now;
+    this.camera.updateMatrixWorld();
+    this.frustum.setFromProjectionMatrix(
+      new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse),
+    );
     const seen = new Set<string>();
     for (const squad of state.squads) {
       seen.add(squad.id);
@@ -940,10 +960,19 @@ export class BattleScene {
       const moving = squad.gridPath
         ? (squad.gridIndex ?? 0) < squad.gridPath.length
         : squad.pathIndex < squad.path.length - 1;
+      this.syncSquadUnits(view, squad);
+      this.squadSphere.center.set(point.x, view.group.position.y + 1, point.z);
+      this.squadSphere.radius = 4.5;
+      const visible = this.frustum.intersectsSphere(this.squadSphere);
       for (const unit of view.units) {
         unit.setMoving(moving);
-        unit.update(delta);
+        if (visible) unit.update(delta);
       }
+    }
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__mlSquadModels = [...this.squadViews.entries()].map(
+        ([id, view]) => ({ id, units: view.units.length, loading: view.loading }),
+      );
     }
     for (const [id, view] of this.squadViews) {
       if (seen.has(id)) continue;
@@ -965,6 +994,8 @@ export class BattleScene {
       for (const unit of view.units) unit.dispose();
       view.label.material.dispose();
       view.texture.dispose();
+      view.shadow.geometry.dispose();
+      (view.shadow.material as THREE.Material).dispose();
       this.scene.remove(view.group);
       this.squadViews.delete(id);
     }
@@ -1131,7 +1162,8 @@ export class BattleScene {
     const group = new THREE.Group();
     const kind = this.unitKindFor(squad.from);
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
-    const offsets = squadFormation(squad.count, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
+    const renderCount = Math.min(squad.count, MAX_SQUAD_UNITS);
+    const offsets = squadFormation(renderCount, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
 
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -1146,6 +1178,16 @@ export class BattleScene {
     label.position.y = SQUAD_LABEL_HEIGHT;
     group.add(label);
 
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 24),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false }),
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.02;
+    shadow.scale.set(1.5, 1.1, 1);
+    shadow.renderOrder = 2;
+    group.add(shadow);
+
     this.scene.add(group);
     const view: SquadView = {
       group,
@@ -1157,6 +1199,8 @@ export class BattleScene {
       disposed: false,
       owner: squad.owner,
       target: squad.to,
+      loading: false,
+      shadow,
       strikeUntil: 0,
     };
 
@@ -1189,19 +1233,87 @@ export class BattleScene {
     kind: UnitKind,
   ): void {
     for (let index = 0; index < offsets.length; index += 1) {
-      const [x, z] = offsets[index];
       const unit = new UnitActor({
         kind,
         palette: paletteFor(squad.owner),
         variant: index % 3,
-        phase: (index % SQUAD_COLUMNS) * 0.9 + Math.floor(index / SQUAD_COLUMNS) * 1.7,
+        phase: unitJitter(squad.id, index, 4) * Math.PI * 2,
       });
-      unit.position.set(x, 0, z);
-      unit.scale.setScalar(kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE);
-      this.enableShadows(unit);
+      this.placeSquadUnit(unit, index, offsets, squad.id, kind);
+      this.prepareSquadUnit(unit);
       view.group.add(unit);
       view.units.push(unit);
     }
+  }
+
+  /** 站位带一点随机抖动和朝向偏差，避免整队像克隆人。 */
+  private placeSquadUnit(
+    unit: SquadUnit,
+    index: number,
+    offsets: ReadonlyArray<readonly [number, number]>,
+    squadId: string,
+    kind: UnitKind,
+  ): void {
+    const [x, z] = offsets[index] ?? [0, 0];
+    unit.position.set(
+      x + (unitJitter(squadId, index, 1) - 0.5) * 0.16,
+      0,
+      z + (unitJitter(squadId, index, 2) - 0.5) * 0.16,
+    );
+    unit.rotation.y = (unitJitter(squadId, index, 3) - 0.5) * 0.5;
+    unit.scale.setScalar(
+      (kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE) * (0.96 + unitJitter(squadId, index, 5) * 0.08),
+    );
+  }
+
+  /** 小兵不参与阴影投射，节省阴影贴图开销；整队用一张软圆影。 */
+  private prepareSquadUnit(unit: THREE.Object3D): void {
+    unit.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+    });
+  }
+
+  /** 兵团人数减少时同步撤掉模型，编队按当前人数重新收拢。 */
+  private syncSquadUnits(view: SquadView, squad: SquadState): void {
+    if (view.loading) return;
+    const kind = this.unitKindFor(squad.from);
+    const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
+    const spacingZ = kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z;
+    const target = Math.min(squad.count, MAX_SQUAD_UNITS);
+    const offsets = squadFormation(target, spacing, spacingZ);
+    let changed = false;
+    while (view.units.length > target) {
+      const unit = view.units.pop();
+      if (!unit) break;
+      view.group.remove(unit);
+      unit.dispose();
+      changed = true;
+    }
+    while (view.units.length < target) {
+      const index = view.units.length;
+      const unit = new UnitActor({
+        kind,
+        palette: paletteFor(squad.owner),
+        variant: index % 3,
+        phase: unitJitter(squad.id, index, 4) * Math.PI * 2,
+      });
+      this.prepareSquadUnit(unit);
+      view.group.add(unit);
+      view.units.push(unit);
+      changed = true;
+    }
+    if (changed) {
+      view.units.forEach((unit, index) => this.placeSquadUnit(unit, index, offsets, squad.id, kind));
+    }
+    if (view.labelText !== String(squad.count)) {
+      view.labelText = String(squad.count);
+      this.paintLabel(view.canvas, view.texture, [String(squad.count)], "#f2ead7");
+    }
+    const radius = Math.min(2.7, 0.9 + target * 0.08);
+    view.shadow.scale.set(radius, radius * 0.75, 1);
   }
 
   private async populateGlbUnits(
@@ -1211,6 +1323,7 @@ export class BattleScene {
     offsets: Array<[number, number]>,
     kind: UnitKind,
   ): Promise<void> {
+    view.loading = true;
     try {
       for (let index = 0; index < offsets.length; index += 1) {
         const built = await assetRegistry.buildAnimated(assetId, {
@@ -1221,20 +1334,25 @@ export class BattleScene {
           disposeObject(built.object);
           return;
         }
-        const [x, z] = offsets[index];
         const unit = new GlbUnitActor(built.object, built.animations);
-        unit.position.set(x, 0, z);
+        this.placeSquadUnit(unit, index, offsets, squad.id, kind);
         // 外部兵团资产尺寸不可控，统一按包围盒缩放到身高 1.55 m
         const box = new THREE.Box3().setFromObject(built.object);
         const height = box.max.y - box.min.y;
-        unit.scale.setScalar(height > 0.01 ? 1.55 / height : 1);
-        this.enableShadows(unit);
+        const baseScale = height > 0.01 ? 1.55 / height : 1;
+        unit.scale.setScalar(baseScale * (0.96 + unitJitter(squad.id, index, 5) * 0.08));
+        // 每名士兵错开行走相位，避免整队同步迈步。
+        unit.setMoving(true);
+        unit.update(unitJitter(squad.id, index, 6) * 1100);
+        this.prepareSquadUnit(unit);
         view.group.add(unit);
         view.units.push(unit);
       }
     } catch {
       if (this.disposed || view.disposed || view.units.length > 0) return;
       this.populateProceduralUnits(view, squad, offsets, kind);
+    } finally {
+      view.loading = false;
     }
   }
 

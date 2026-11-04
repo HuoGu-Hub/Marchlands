@@ -800,6 +800,7 @@ export class GameSession {
         squads: this.state.squads.map((squad) => ({
           id: squad.id,
           owner: squad.owner,
+          count: squad.count,
           xCm: squad.xCm,
           zCm: squad.zCm,
         })),
