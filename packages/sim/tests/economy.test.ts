@@ -1,31 +1,65 @@
 import { describe, expect, it } from "vitest";
 import { createGame } from "../src/game";
 import { growCity, growGold, applyUpgrade } from "../src/economy";
-import { levelRule } from "../src/rules";
 import { DEFAULT_RULESET } from "../src/rules";
 import { THREE_CITY_MAP, TIMED_RULES } from "./fixtures";
 
+function growthCity(): ReturnType<typeof createGame>["cities"][number] {
+  const city = createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0];
+  return {
+    ...city,
+    kind: "barracks",
+    owner: 1,
+    pop: 0,
+    maxPop: 30,
+    growthCarry: 0,
+    growthLockUntil: 0,
+    overCapCarry: 0,
+  };
+}
+
 describe("economy", () => {
-  it("grows one pop after twenty level-1 ticks", () => {
-    const city = { ...createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0], pop: 0, maxPop: 30, growthCarry: 0 };
-    const rule = levelRule(DEFAULT_RULESET, 1);
-    for (let tick = 0; tick < 20; tick += 1) growCity(city, rule);
+  it("grows a player city at 1.2 per second", () => {
+    const city = growthCity();
+    for (let tick = 0; tick < 16; tick += 1) growCity(city, tick, 20);
+    expect(city.pop).toBe(0);
+    growCity(city, 16, 20);
+    expect(city.pop).toBe(1);
+    expect(city.growthCarry).toBe(20);
+  });
+
+  it("grows a neutral city at 0.8 per second", () => {
+    const city = { ...growthCity(), owner: 0 as const };
+    for (let tick = 0; tick < 25; tick += 1) growCity(city, tick, 20);
     expect(city.pop).toBe(1);
     expect(city.growthCarry).toBe(0);
   });
 
-  it("carries level-2 remainder", () => {
-    const city = { ...createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0], pop: 0, maxPop: 45, growthCarry: 0 };
-    const rule = levelRule(DEFAULT_RULESET, 2);
-    for (let tick = 0; tick < 20; tick += 1) growCity(city, rule);
+  it("does not grow during the two second attack lock", () => {
+    const city = { ...growthCity(), growthLockUntil: 40 };
+    for (let tick = 0; tick < 40; tick += 1) growCity(city, tick, 20);
+    expect(city.pop).toBe(0);
+    for (let tick = 40; tick < 57; tick += 1) growCity(city, tick, 20);
     expect(city.pop).toBe(1);
-    expect(city.growthCarry).toBe(240);
+  });
+
+  it("decays over-cap population at one per second", () => {
+    const city = { ...growthCity(), pop: 33 };
+    for (let tick = 0; tick < 20; tick += 1) growCity(city, tick, 20);
+    expect(city.pop).toBe(32);
+    for (let tick = 20; tick < 60; tick += 1) growCity(city, tick, 20);
+    expect(city.pop).toBe(30);
+  });
+
+  it("slows over-cap decay for shield barracks", () => {
+    const city = { ...growthCity(), kind: "shieldBarracks" as const, pop: 33 };
+    for (let tick = 0; tick < 20; tick += 1) growCity(city, tick, 20);
+    expect(city.pop).toBe(33);
   });
 
   it("stops at max population and drops the carry", () => {
-    const city = { ...createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0], pop: 29, maxPop: 30, growthCarry: 900 };
-    const rule = levelRule(DEFAULT_RULESET, 1);
-    for (let tick = 0; tick < 40; tick += 1) growCity(city, rule);
+    const city = { ...growthCity(), pop: 29, growthCarry: 900 };
+    for (let tick = 0; tick < 40; tick += 1) growCity(city, tick, 20);
     expect(city.pop).toBe(30);
     expect(city.growthCarry).toBe(0);
   });

@@ -23,7 +23,7 @@ describe("properties", () => {
             state = step(state, schedule.get(tick) ?? []).state;
             for (const city of state.cities) {
               expect(city.pop).toBeGreaterThanOrEqual(0);
-              expect(city.pop).toBeLessThanOrEqual(city.maxPop);
+              expect(city.pop).toBeLessThanOrEqual(city.maxPop + 120);
               expect(city.owner).toBeGreaterThanOrEqual(0);
               expect(city.owner).toBeLessThanOrEqual(2);
             }

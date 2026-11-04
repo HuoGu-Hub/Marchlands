@@ -184,6 +184,8 @@ export interface MapDocument {
   /** 对局起始金币；缺省 0。 */
   startGold?: number;
   transit: "open" | "friendly";
+  /** 敌对兵团进入攻击范围后是否停下交战；缺省关闭。 */
+  squadCombat?: boolean;
   visual: VisualDraft;
 }
 

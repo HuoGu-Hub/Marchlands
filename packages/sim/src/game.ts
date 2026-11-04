@@ -142,6 +142,7 @@ function resolveInterceptions(state: SimState, events: SimEvent[]): void {
       if (interceptTick(state, squad, outpost) !== state.tick) continue;
 
       squad.intercepted.push(outpost.id);
+      outpost.growthLockUntil = state.tick + 2 * state.rules.tickHz;
       const outpostOwner = outpost.owner as PlayerId;
       const outcome = resolveFieldCombat(
         squad.count,
@@ -205,6 +206,8 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
         pop: city.pop,
         maxPop,
         growthCarry: 0,
+        growthLockUntil: 0,
+        overCapCarry: 0,
         pos: [city.pos[0], city.pos[1]] as [number, number],
         layer: city.layer,
         stance,
@@ -436,9 +439,9 @@ function applyCommand(
 function growEconomy(state: SimState): void {
   const goldByPlayer: number[] = [0, 0, 0];
   for (const city of state.cities) {
+    growCity(city, state.tick, state.rules.tickHz);
     if (!isProductionSiteKind(city.kind)) continue;
     const rule = levelRule(state.rules, city.level);
-    growCity(city, rule);
     if (city.owner !== 0) goldByPlayer[city.owner] += rule.goldMilli;
   }
   for (const player of state.players) growGold(player, goldByPlayer[player.id] ?? 0);
@@ -522,7 +525,8 @@ function resolveSquad(state: SimState, squad: SquadState, events: SimEvent[]): v
   if (!city) return;
 
   if (city.owner === squad.owner) {
-    city.pop = Math.min(city.maxPop, city.pop + squad.count);
+    // 增援兵力直接并入，允许短暂超过容量，之后按超编衰减。
+    city.pop += squad.count;
     if (city.kind === "outpost") {
       city.decayAtTick = state.tick + state.rules.outpost.graceTicks;
     }
@@ -530,6 +534,7 @@ function resolveSquad(state: SimState, squad: SquadState, events: SimEvent[]): v
   }
 
   const fromOwner = city.owner;
+  city.growthLockUntil = state.tick + 2 * state.rules.tickHz;
   const outcome = resolveAttack(city, squad.owner, squad.count, state.rules, {
     attackerStrengthMilli: squad.strengthMilli,
     defenderStrengthMilli: strengthFor(state, fromOwner),
@@ -888,6 +893,8 @@ function advanceGridSquads(state: SimState, events: SimEvent[]): void {
   const removed = new Set<string>();
   for (const squad of state.squads.slice().sort(byId)) {
     if (removed.has(squad.id)) continue;
+    // 交战中原地停下，由 resolveGridClashes 每 tick 结算。
+    if (squad.engagedWith) continue;
     if (squad.transit) {
       advanceGridTransit(state, squad, events, removed);
       continue;
@@ -952,6 +959,7 @@ function resolveGridOutposts(state: SimState, events: SimEvent[], removed: Set<s
       if (gridDistance([squad.xCm, squad.zCm], center) > radius) continue;
 
       squad.intercepted.push(outpost.id);
+      outpost.growthLockUntil = state.tick + 2 * state.rules.tickHz;
       const outpostOwner = outpost.owner as PlayerId;
       const outcome = resolveFieldCombat(
         squad.count,
@@ -985,29 +993,85 @@ function resolveGridOutposts(state: SimState, events: SimEvent[], removed: Set<s
   }
 }
 
+const SQUAD_COMBAT_COLUMNS = 3;
+const SQUAD_COMBAT_ROW_CM = 68;
+const SOLDIER_ATTACK_RANGE_CM = 120;
+const SQUAD_DISENGAGE_CM = 480;
+
+/** 编队纵深：行数越多，后排越晚进入攻击距离。 */
+function squadDepthCm(count: number): number {
+  return (Math.ceil(Math.max(1, count) / SQUAD_COMBAT_COLUMNS) - 1) * SQUAD_COMBAT_ROW_CM;
+}
+
+/** 距离对方前排 gap 厘米时，己方能在攻击范围内的士兵数。 */
+function engagedSoldiers(count: number, gapCm: number): number {
+  if (count <= 0) return 0;
+  const rows = Math.ceil(count / SQUAD_COMBAT_COLUMNS);
+  const reachableRows =
+    Math.floor((SOLDIER_ATTACK_RANGE_CM - Math.max(0, gapCm)) / SQUAD_COMBAT_ROW_CM) + 1;
+  return Math.min(count, Math.max(0, Math.min(rows, reachableRows)) * SQUAD_COMBAT_COLUMNS);
+}
+
+/**
+ * 地图设置开启时，敌对兵团进入攻击范围后原地交战；
+ * 只有靠前、攻击距离覆盖到对方的士兵参与输出，后排随前排倒下逐排压上。
+ */
 function resolveGridClashes(state: SimState, events: SimEvent[], removed: Set<string>): void {
+  if (!state.map.squadCombat) return;
   const squads = state.squads.filter((squad) => !removed.has(squad.id)).sort(byId);
+  for (const squad of squads) {
+    if (!squad.engagedWith) continue;
+    const other = squads.find((entry) => entry.id === squad.engagedWith);
+    if (
+      !other ||
+      squad.xCm === undefined ||
+      squad.zCm === undefined ||
+      other.xCm === undefined ||
+      other.zCm === undefined ||
+      gridDistance([squad.xCm, squad.zCm], [other.xCm, other.zCm]) > SQUAD_DISENGAGE_CM
+    ) {
+      delete squad.engagedWith;
+    }
+  }
   for (let a = 0; a < squads.length; a += 1) {
     const attacker = squads[a];
-    if (removed.has(attacker.id)) continue;
+    if (removed.has(attacker.id) || attacker.engagedWith) continue;
     for (let b = a + 1; b < squads.length; b += 1) {
       const defender = squads[b];
-      if (removed.has(defender.id) || attacker.owner === defender.owner) continue;
+      if (removed.has(defender.id) || defender.engagedWith || attacker.owner === defender.owner) continue;
       if (attacker.xCm === undefined || attacker.zCm === undefined) continue;
       if (defender.xCm === undefined || defender.zCm === undefined) continue;
-      if (gridDistance([attacker.xCm, attacker.zCm], [defender.xCm, defender.zCm]) > 300) continue;
+      const distance = gridDistance([attacker.xCm, attacker.zCm], [defender.xCm, defender.zCm]);
+      if (distance > SQUAD_DISENGAGE_CM) continue;
 
-      const attack = attackValue(attacker.count, attacker.strengthMilli);
-      const defense = attackValue(defender.count, defender.strengthMilli);
-      const attackerWins = attack >= defense;
-      const attackerLoss = attackerWins
-        ? Math.min(attacker.count, Math.floor(defender.count / 2))
-        : attacker.count;
-      const defenderLoss = attackerWins ? defender.count : Math.min(defender.count, Math.floor(attacker.count / 2));
+      const halfDepth = (squadDepthCm(attacker.count) + squadDepthCm(defender.count)) / 2;
+      const gap = Math.max(0, distance - halfDepth);
+      const engagedAttack = engagedSoldiers(attacker.count, gap);
+      const engagedDefense = engagedSoldiers(defender.count, gap);
+      if (engagedAttack === 0 && engagedDefense === 0) continue;
+
+      attacker.engagedWith = defender.id;
+      defender.engagedWith = attacker.id;
+      const damageAttack = attackValue(engagedAttack, attacker.strengthMilli);
+      const damageDefense = attackValue(engagedDefense, defender.strengthMilli);
+      const attackerLoss = Math.min(
+        attacker.count,
+        damageDefense > 0 ? Math.max(1, Math.floor(damageDefense / 30)) : 0,
+      );
+      const defenderLoss = Math.min(
+        defender.count,
+        damageAttack > 0 ? Math.max(1, Math.floor(damageAttack / 30)) : 0,
+      );
       attacker.count -= attackerLoss;
       defender.count -= defenderLoss;
-      if (attacker.count <= 0) removed.add(attacker.id);
-      if (defender.count <= 0) removed.add(defender.id);
+      if (attacker.count <= 0) {
+        removed.add(attacker.id);
+        delete defender.engagedWith;
+      }
+      if (defender.count <= 0) {
+        removed.add(defender.id);
+        delete attacker.engagedWith;
+      }
       events.push({
         type: "squadClashed",
         attacker: attacker.id,

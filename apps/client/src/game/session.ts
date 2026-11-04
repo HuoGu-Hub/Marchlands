@@ -87,6 +87,7 @@ export class GameSession {
   private dragMoved = false;
   private dispatchDrag = false;
   private dispatchSource: CityId | null = null;
+  private planDragSources: CityId[] = [];
   private suppressClick = false;
   private dragX = 0;
   private dragY = 0;
@@ -513,6 +514,7 @@ export class GameSession {
     const sources: CityId[] = [];
     const left: CityId[] = [];
     for (const id of this.selected) {
+      if (id === to) continue;
       if (this.reachCities(id).includes(to)) sources.push(id);
       else left.push(id);
     }
@@ -975,6 +977,15 @@ export class GameSession {
     this.dragStartY = event.clientY;
     this.dragX = event.clientX;
     this.dragY = event.clientY;
+    // 多选状态下从已编组建筑本体拖出，整组箭头指向目的地。
+    if (this.multiSelect && !this.selectedSquad && this.selected.length > 0) {
+      const nearest = this.scene.nearestCity(event.clientX, event.clientY, this.state);
+      if (nearest && nearest.distance <= 72 && this.selected.includes(nearest.id)) {
+        this.planDragSources = this.selected.slice();
+        this.options.canvas.style.cursor = "crosshair";
+        return;
+      }
+    }
     // 单选状态下从当前建筑本体拖出，直接拉出派兵箭头，不进入平移。
     if (!this.multiSelect && !this.selectedSquad && this.selected.length > 0) {
       const focus = this.primary;
@@ -991,6 +1002,21 @@ export class GameSession {
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
+    if (this.planDragSources.length > 0) {
+      if ((event.buttons & 1) === 0) {
+        this.cancelPlanDrag();
+        return;
+      }
+      if (
+        !this.dragMoved &&
+        Math.hypot(event.clientX - this.dragStartX, event.clientY - this.dragStartY) < 10
+      ) {
+        return;
+      }
+      this.dragMoved = true;
+      this.routeOverlay.setDragArrows(this.planDragViews(event.clientX, event.clientY));
+      return;
+    }
     if (this.dispatchDrag) {
       if ((event.buttons & 1) === 0) {
         this.cancelDispatchDrag();
@@ -1027,6 +1053,21 @@ export class GameSession {
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
+    if (this.planDragSources.length > 0) {
+      const moved = this.dragMoved;
+      this.planDragSources = [];
+      this.routeOverlay.setDragArrows(null);
+      this.options.canvas.style.cursor = "grab";
+      if (moved) {
+        this.suppressClick = true;
+        window.setTimeout(() => { this.suppressClick = false; }, 0);
+        const target = this.planTargetAt(event.clientX, event.clientY);
+        if (target?.city) this.assignPlanCity(target.city);
+        else if (target?.cell) this.assignPlanCell(target.cell.xCm, target.cell.zCm, target.cell.index);
+        else this.options.onToast("拖到可抵达的据点或网格");
+      }
+      return;
+    }
     if (this.dispatchDrag) {
       const moved = this.dragMoved;
       const source = this.dispatchSource;
@@ -1053,12 +1094,21 @@ export class GameSession {
   };
 
   private readonly onWindowBlur = (): void => {
+    this.cancelPlanDrag();
     this.cancelDispatchDrag();
     this.dragging = false;
     this.dragMoved = false;
     this.suppressClick = false;
     this.options.canvas.style.cursor = "grab";
   };
+
+  private cancelPlanDrag(): void {
+    if (this.planDragSources.length === 0) return;
+    this.planDragSources = [];
+    this.dragMoved = false;
+    this.routeOverlay.setDragArrows(null);
+    this.options.canvas.style.cursor = "grab";
+  }
 
   private cancelDispatchDrag(): void {
     if (!this.dispatchDrag) return;
@@ -1120,6 +1170,61 @@ export class GameSession {
     return cityId ? { city: cityId } : { cell };
   }
 
+  /** 多选拖拽时目标也可以是友方建筑。 */
+  private planTargetAt(
+    clientX: number,
+    clientY: number,
+  ): { city?: CityId; cell?: { index: number; xCm: number; zCm: number } } | null {
+    const nearest = this.scene.nearestCity(clientX, clientY, this.state);
+    if (nearest && nearest.distance <= 72) return { city: nearest.id };
+    return this.cellTargetAt(clientX, clientY);
+  }
+
+  /** 同一批选中的每座建筑各一条箭头，目标只画一次标记。 */
+  private planDragViews(clientX: number, clientY: number): DragArrowView[] {
+    const target = this.planTargetAt(clientX, clientY);
+    if (!target) return [];
+    let to: { x: number; y: number } | null = null;
+    let marker: { ring?: { x: number; y: number }; square?: Array<{ x: number; y: number }> } = {};
+    if (target.city) {
+      const city = this.getCity(target.city);
+      if (!city) return [];
+      const ring = this.scene.projectGround(city.pos[0], city.pos[1], 0.5);
+      if (!ring) return [];
+      to = ring;
+      marker = { ring };
+    } else if (target.cell) {
+      const sizeCm = this.gridFocus?.nav.cellSizeCm ?? 100;
+      const half = sizeCm / 20;
+      const x = target.cell.xCm / 10;
+      const z = target.cell.zCm / 10;
+      const corners = [
+        [x - half, z - half],
+        [x + half, z - half],
+        [x + half, z + half],
+        [x - half, z + half],
+      ].map(([px, pz]) => this.scene.projectGround(px, pz, 0.08));
+      const center = this.scene.projectGround(x, z, 0.9);
+      if (!center) return [];
+      to = center;
+      const square = corners.every((point): point is { x: number; y: number } => point !== null)
+        ? corners
+        : undefined;
+      marker = { ...(square ? { square } : {}), ring: center };
+    }
+    if (!to) return [];
+    const views: DragArrowView[] = [];
+    for (const id of this.planDragSources) {
+      const city = this.getCity(id);
+      if (!city) continue;
+      const from = this.scene.projectGround(city.pos[0], city.pos[1], 3.6);
+      if (!from) continue;
+      views.push({ fromX: from.x, fromY: from.y, toX: to.x, toY: to.y });
+    }
+    if (views.length > 0) Object.assign(views[0], marker);
+    return views;
+  }
+
   /** 双击/拖拽释放的位置解析成据点或网格目标。 */
   private dispatchTargetAt(
     clientX: number,
@@ -1133,6 +1238,8 @@ export class GameSession {
       if (dragSource && nearest.id === dragSource && nearest.distance > 28) {
         return this.cellTargetAt(clientX, clientY);
       }
+      // 拖到自己以外的友方建筑表示增援。
+      if (dragSource && nearest.id !== dragSource) return { city: nearest.id };
       return null;
     }
     if (nearest && nearCity && nearest.distance <= 72) return { city: nearest.id };

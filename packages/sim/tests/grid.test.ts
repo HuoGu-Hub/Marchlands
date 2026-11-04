@@ -75,6 +75,8 @@ describe("grid simulation", () => {
   it("sends a squad along the grid and captures the target", () => {
     let state = createGame(gridMap(), 1, TIMED_RULES);
     expect(state.nav).not.toBeNull();
+    const target = state.cities.find((city) => city.id === "b");
+    if (target) target.pop = 1;
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     expect(state.squads).toHaveLength(1);
     const squad = state.squads[0];

@@ -12,6 +12,8 @@ function city(level: CityState["level"], pop: number): CityState {
     pop,
     maxPop: 65,
     growthCarry: 123,
+    growthLockUntil: 0,
+    overCapCarry: 0,
     pos: [0, 0],
     layer: 0,
     stance: "evade",

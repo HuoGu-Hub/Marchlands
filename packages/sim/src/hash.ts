@@ -77,7 +77,7 @@ export function canonicalState(state: SimState): string {
   }
   for (const city of state.cities.slice().sort(byId)) {
     parts.push(
-      `C${city.id},${city.kind},${city.owner},${city.level},${city.pop},${city.maxPop},${city.growthCarry},${city.layer},${city.pos[0]},${city.pos[1]},${city.stance},${city.decayAtTick},${city.watch ? city.watch.join(">") : "-"},T${city.transit ?? "-"}`,
+      `C${city.id},${city.kind},${city.owner},${city.level},${city.pop},${city.maxPop},${city.growthCarry},${city.growthLockUntil},${city.overCapCarry},${city.layer},${city.pos[0]},${city.pos[1]},${city.stance},${city.decayAtTick},${city.watch ? city.watch.join(">") : "-"},T${city.transit ?? "-"}`,
     );
   }
   for (const squad of state.squads.slice().sort(byId)) {

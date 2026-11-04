@@ -153,7 +153,7 @@ export class RouteOverlay {
   private readonly projector = new ScreenProjector();
   private readonly panelRefs: Record<string, HTMLElement> = {};
   private plan: PlannedAssignment[] = [];
-  private dragArrow: DragArrowView | null = null;
+  private dragArrows: DragArrowView[] = [];
   private width = 0;
   private height = 0;
   private pixelRatio = 0;
@@ -216,7 +216,12 @@ export class RouteOverlay {
 
   /** 单选后从建筑拖拽派兵时显示的拱形箭头；传 null 清除。 */
   setDragArrow(view: DragArrowView | null): void {
-    this.dragArrow = view;
+    this.dragArrows = view ? [view] : [];
+  }
+
+  /** 多选拖拽时同一批选中的每座建筑各画一条箭头。 */
+  setDragArrows(views: readonly DragArrowView[] | null): void {
+    this.dragArrows = views ? views.slice() : [];
   }
 
   setPlan(assignments: readonly PlannedAssignment[]): void {
@@ -572,26 +577,28 @@ export class RouteOverlay {
     context.fill();
   }
 
-  /** 拖拽派兵的拱形箭头：根在建筑顶部，箭头终点就是鼠标，目标格单独画框。 */
+  /** 拖拽派兵的拱形箭头：根在建筑顶部，箭头终点就是鼠标或目标中心。 */
   private drawDragArrow(): void {
-    const view = this.dragArrow;
-    if (!view) return;
+    if (this.dragArrows.length === 0) return;
     const rect = this.rect;
-    const source = { x: view.fromX - rect.left, y: view.fromY - rect.top };
-    const end = { x: view.toX - rect.left, y: view.toY - rect.top };
-    this.drawDragTarget(view);
-    const points = this.planArc(source, end, 0);
-    this.stroke(points, PLAN_SHADOW, 7, []);
-    this.stroke(points, PLAN_COLOR, 3.2, []);
-    this.arrowHead(points, 13);
+    const marker = this.dragArrows.find((view) => view.square || view.ring);
+    if (marker) this.drawDragTarget(marker);
     const context = this.context;
-    context.beginPath();
-    context.arc(source.x, source.y, 4.5, 0, Math.PI * 2);
-    context.fillStyle = PLAN_COLOR;
-    context.fill();
-    context.strokeStyle = PLAN_SHADOW;
-    context.lineWidth = 2;
-    context.stroke();
+    this.dragArrows.forEach((view, index) => {
+      const source = { x: view.fromX - rect.left, y: view.fromY - rect.top };
+      const end = { x: view.toX - rect.left, y: view.toY - rect.top };
+      const points = this.planArc(source, end, index);
+      this.stroke(points, PLAN_SHADOW, 7, []);
+      this.stroke(points, PLAN_COLOR, 3.2, []);
+      this.arrowHead(points, 13);
+      context.beginPath();
+      context.arc(source.x, source.y, 4.5, 0, Math.PI * 2);
+      context.fillStyle = PLAN_COLOR;
+      context.fill();
+      context.strokeStyle = PLAN_SHADOW;
+      context.lineWidth = 2;
+      context.stroke();
+    });
   }
 
   /** 目标标记：网格画方框，据点画圆环，确保能看清落点。 */

@@ -94,6 +94,7 @@ export function createStarterDocument(): MapDocument {
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
     startGold: 0,
     transit: "friendly",
+    squadCombat: false,
     visual: createDefaultVisual(),
   };
   document.visual = createStarterVisual(document);
@@ -121,6 +122,7 @@ export function createGridDocument(): MapDocument {
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
     startGold: 0,
     transit: "open",
+    squadCombat: false,
     visual: createDefaultVisual(),
   };
   document.visual = createStarterVisual(document);
@@ -594,6 +596,7 @@ export function fromMapDef(map: MapDef): MapDocument {
     objectives: map.objectives.map((objective) => ({ ...objective })),
     startGold: map.startGold ?? 0,
     transit: map.transit ?? "open",
+    squadCombat: map.squadCombat ?? false,
     visual,
   };
 }
@@ -687,6 +690,7 @@ export function parseDocument(input: unknown): ParsedDocument {
           ? Math.max(0, Math.round(input.startGold))
           : 0,
       transit: input.transit === "open" ? "open" : "friendly",
+      squadCombat: input.squadCombat === true,
       visual: visualFromUnknown(
         input.visual,
         20261102,
@@ -1022,6 +1026,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
     objectives: document.objectives.map((objective) => ({ ...objective })),
     startGold: document.startGold ?? 0,
     transit: document.transit,
+    ...(document.squadCombat ? { squadCombat: true } : {}),
   };
   map.mapHash = mapHashOf(map);
 

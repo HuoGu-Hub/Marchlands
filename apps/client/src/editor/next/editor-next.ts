@@ -1375,6 +1375,13 @@ export class EditorNext {
       (value) => this.commit(updateDocument(this.doc, { startGold: Math.max(0, Math.round(value)) }), "已修改起始金币"),
       { min: 0, max: 99999, step: 1, precision: 0 },
     );
+    this.addButton(`敌对兵团交战：${this.doc.squadCombat ? "开" : "关"}`, () => {
+      this.commit(
+        updateDocument(this.doc, { squadCombat: !this.doc.squadCombat }),
+        "已切换敌对兵团交战",
+      );
+      this.renderInspector();
+    });
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const warnings = this.compiled.diagnostics.filter((entry) => entry.severity === "warning").length;
     const diagnostics = document.createElement("div");

@@ -41,10 +41,10 @@ const UNIT_SCALE = 1.15;
 const CAVALRY_SCALE = 0.95;
 const SQUAD_LABEL_HEIGHT = 1.55;
 /** 兵团按实际人数铺开，每行站位与行列间距，单位：米。 */
-const SQUAD_COLUMNS = 5;
-const SQUAD_SPACING_X = 0.44;
-const SQUAD_SPACING_Z = 0.5;
-const SQUAD_CAVALRY_SPACING = 0.78;
+const SQUAD_COLUMNS = 3;
+const SQUAD_SPACING_X = 0.62;
+const SQUAD_SPACING_Z = 0.68;
+const SQUAD_CAVALRY_SPACING = 0.9;
 
 /**
  * 兵团编队：按人数生成每个士兵的站位，行优先、以队形中心为原点。

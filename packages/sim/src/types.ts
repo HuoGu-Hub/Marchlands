@@ -126,6 +126,8 @@ export interface MapDef {
   startGold?: number;
   /** undefined: 旧地图不限制；open/friendly: 中立建筑默认开放/关闭；被占领后均为友方通行。 */
   transit?: "open" | "friendly";
+  /** 开启后敌对兵团进入攻击范围会停下交战；缺省关闭。 */
+  squadCombat?: boolean;
 }
 
 export interface LevelRule {
@@ -182,6 +184,10 @@ export interface CityState {
   pop: number;
   maxPop: number;
   growthCarry: number;
+  /** 被攻击后的禁增长截止 tick。 */
+  growthLockUntil: number;
+  /** 超过容量后的衰减进位。 */
+  overCapCarry: number;
   pos: [number, number];
   layer: number;
   stance: Stance;
@@ -231,6 +237,8 @@ export interface SquadState {
   gridIndex?: number;
   /** 网格模式下每 tick 前进的厘米数。 */
   gridSpeedCmPerTick?: number;
+  /** 正在交战的敌对兵团；设置关闭时为空。 */
+  engagedWith?: string;
   /** 正在通过的建筑；passed 是已经无损通过的士兵数。 */
   transit?: {
     cityId: CityId;

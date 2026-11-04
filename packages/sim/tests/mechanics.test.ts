@@ -249,6 +249,8 @@ describe("outpost", () => {
 
   it("does not count as a town for victory", () => {
     let state = createGame(VICTORY_MAP, 1, TIMED_RULES);
+    const target = state.cities.find((city) => city.id === "b");
+    if (target) target.pop = 1;
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     state = runUntil(state, 68);
     expect(state.status).toBe("finished");
