@@ -612,12 +612,13 @@ export class GameSession {
     if (!this.paused) {
       this.accumulator += delta * this.timeScale;
       let steps = 0;
-      while (this.accumulator >= FIXED_STEP && steps < 8) {
+      // 高倍速下帧率低时允许多补几步，避免 15:00 的对局拖到超时。
+      while (this.accumulator >= FIXED_STEP && steps < 32) {
         this.tick();
         this.accumulator -= FIXED_STEP;
         steps += 1;
       }
-      if (steps === 8) this.accumulator = 0;
+      if (steps === 32) this.accumulator = 0;
     }
 
     this.scene.update(this.state, delta);
