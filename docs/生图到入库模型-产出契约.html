@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Marchlands · 生图模型产出契约</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 48px 24px 80px;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: #1d2320; background: #f6f5f1; line-height: 1.72;
+  }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: .5px; }
+  .meta { color: #6b7069; font-size: 13px; margin: 0 0 26px; }
+  h2 { font-size: 17px; margin: 40px 0 12px; padding-bottom: 7px; border-bottom: 1px solid #d9d6cc; }
+  h3 { font-size: 14px; margin: 22px 0 8px; color: #35403a; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: #fff; margin: 6px 0 4px; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid #e6e3da; vertical-align: top; }
+  th { background: #efece3; font-weight: 600; white-space: nowrap; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.4px; background: #eceae2; padding: 1px 5px; border-radius: 3px; }
+  pre {
+    margin: 8px 0 12px; padding: 14px 16px; overflow-x: auto;
+    background: #11181a; color: #d9dee0; border-radius: 4px;
+    font: 12.6px/1.66 "Cascadia Mono", Consolas, monospace;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  pre .c { color: #7f8f8a; }
+  ul, ol { padding-left: 22px; margin: 8px 0; }
+  li { margin: 5px 0; }
+  .lede { font-size: 15px; background: #fff; border-left: 3px solid #7b8f6a; padding: 14px 18px; margin: 0 0 8px; }
+  .warn { color: #8a3b32; font-weight: 600; }
+  .ok { color: #2f6b3a; font-weight: 600; }
+  .sheet { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 6px; }
+  .sheet div {
+    border: 1px dashed #b9b3a4; background: #fff; border-radius: 3px;
+    min-height: 74px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #6b7069; letter-spacing: .08em;
+  }
+  .sheet .top { grid-column: 2; }
+  .ruler { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 2px solid #b9b3a4; margin: 4px 0 2px; }
+  .ruler span { border-left: 1px solid #cbc5b6; height: 17px; padding: 4px 0 0 3px; font-size: 10.5px; color: #8a8579; letter-spacing: .06em; }
+  .note { font-size: 13px; color: #5d6360; margin: 4px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>生图模型产出契约</h1>
+  <p class="meta">Marchlands · 建筑资产 · 与现有 GLB 管线对齐</p>
+
+  <p class="lede">不要向模型要"一张好看的图"，也不要只要"一个随手导出的 GLB"。要它按合同交付四件套：正交设定表、规格单、自包含 GLB、同机位验收图。图负责表达形体，规格单负责让机器判得对错，GLB 负责能进运行时，验收图负责不开 Blender 也能比对。</p>
+
+  <h2>四件产出物</h2>
+  <table>
+    <thead><tr><th>产出</th><th>作用</th><th>判据</th></tr></thead>
+    <tbody>
+      <tr><td>正交设定表</td><td>告诉三维端"形"到底是什么，同时约束比例</td><td>五视图同缩放同基线，无透视，顶视有完整屋顶轮廓</td></tr>
+      <tr><td>规格单 JSON</td><td>把美术意图变成可校验字段，直接喂给 <code>pack.json</code></td><td>字段齐全，占地与高度以米为单位，面数与贴图声明落在预算内</td></tr>
+      <tr><td>GLB</td><td>运行时真正加载的东西</td><td>单文件自包含，米制，底面落 Y=0，正面朝 +Z，平直着色</td></tr>
+      <tr><td>验收图</td><td>证明生成结果没有背离设定表</td><td>与设定表同机位的五视图加三视角，白底，无后期</td></tr>
+    </tbody>
+  </table>
+
+  <h2>为什么不能只要一张图</h2>
+  <p>现有提示词走的是三分之四视角、暖光、单主体。这套写法是为了"好看"，重建出来会踩三个坑，而且三个坑在本项目里都会立刻穿帮。</p>
+  <table>
+    <thead><tr><th>坑</th><th>后果</th><th>本项目的暴露点</th></tr></thead>
+    <tbody>
+      <tr><td>只给一个视角</td><td>背面、屋顶由模型自由发挥，往往糊成一块或长成圆顶</td><td>客户端四向镜头加自由旋转，四个面天天被看到</td></tr>
+      <tr><td>透视 + 戏剧光</td><td>重建端把阴影当成形体，屋檐与墙面的分界被焊死</td><td>法线重建后出现斜面台阶，平直着色下极其明显</td></tr>
+      <tr><td>无尺度参照</td><td>所有资产被归一化到同一尺寸</td><td>弓箭塔和粮仓一样高，占地预览与寻路半径全错</td></tr>
+    </tbody>
+  </table>
+  <p class="note">低模平涂风格反而是图生三维的甜点区，面少、色块平、结构简单，这类算法最擅长。问题不在"能不能生"，在"有没有把约束交给它"。</p>
+
+  <h2>为什么不能只要 GLB</h2>
+  <p>三维服务默认导出的是"展示用模型"，不是"入库模型"。默认输出会同时违反下面几条硬约束，而这些约束全部来自现有代码，不是偏好。</p>
+
+  <h3>格式</h3>
+  <table>
+    <thead><tr><th>项</th><th>要求</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td>容器</td><td>glTF 2.0 二进制 <code>.glb</code> 单文件</td><td>资产包只收 GLB，其它格式要走一次转换</td></tr>
+      <tr><td>纹理</td><td>内嵌 bufferView，不引用外部 <code>.png</code> 或 <code>.bin</code></td><td>加载用 <code>parseAsync(buffer, "")</code>，外部相对路径解析失败</td></tr>
+      <tr><td>压缩</td><td>禁 Draco、meshopt、KTX2</td><td>客户端只有裸 <code>GLTFLoader</code>，没有挂解码器</td></tr>
+      <tr><td>体积</td><td>单模型不超过 32 MB，整包不超过 64 MB</td><td>资产包校验硬上限</td></tr>
+      <tr><td>附加物</td><td>无动画、无相机、无灯光、无地面底座</td><td>建筑是静态实例，底座会压坏地形贴合</td></tr>
+    </tbody>
+  </table>
+
+  <h3>几何</h3>
+  <table>
+    <thead><tr><th>项</th><th>要求</th><th>现状参考</th></tr></thead>
+    <tbody>
+      <tr><td>单位</td><td>米制，Y 轴向上</td><td>全项目统一</td></tr>
+      <tr><td>原点</td><td>底面中心，落地 Y=0</td><td>资产直接落在放置点</td></tr>
+      <tr><td>朝向</td><td>正面 +Z，门与入口在 +Z 面</td><td>程序化建筑的门在 <code>depth / 2</code></td></tr>
+      <tr><td>建筑体量</td><td>占地 1.7–2.3 m，高 3.8–4.7 m，塔 5.8 m</td><td>现有八类建筑</td></tr>
+      <tr><td>三角面</td><td>建筑上限 6000，目标 2000–3500</td><td>现状 533–1614</td></tr>
+      <tr><td>着色</td><td>平直着色，法线按面，关闭平滑与自动平滑</td><td>平涂风格的前提</td></tr>
+    </tbody>
+  </table>
+  <p class="note">朝向这一条仓库里有两份说法。<code>docs/Marchlands-资产包.md</code> 写"默认面向 -Z"，而执行门朝向的代码与提示词文档都是 +Z。以 +Z 为准，那份文档该改。</p>
+
+  <h3>材质</h3>
+  <table>
+    <thead><tr><th>项</th><th>要求</th></tr></thead>
+    <tbody>
+      <tr><td>贴图</td><td>512 到 1024 见方，仅 albedo，PNG 或 JPEG</td></tr>
+      <tr><td>禁烘焙</td><td>无光影、无 AO、无高光、无法线贴图、无金属度贴图</td></tr>
+      <tr><td>队伍色角色</td><td>材质名 <code>team_roof</code>、<code>team_edge</code>、<code>team_cloth</code></td></tr>
+      <tr><td>队伍色底</td><td>这三类面的 albedo 必须是纯白或纯灰</td></tr>
+      <tr><td>固定色</td><td>灰泥 <code>#D9CAAB</code>，石 <code>#8D8676</code>，木 <code>#4A3626</code>，草秸 <code>#C6A55E</code>，草 <code>#58743C</code></td></tr>
+    </tbody>
+  </table>
+  <p class="note">队伍色是拿 <code>material.color</code> 直接覆盖再与贴图相乘。队伍色面只要带一点烘焙阴影，换绿换红就会发脏，这是最常见的入库失败原因。</p>
+
+  <h2>正交设定表的版式</h2>
+  <p>直接把下面这个版式写进要求，比任何形容词都管用。五个视图同缩放、同基线、同背景，底边留一条米制刻度。</p>
+  <div class="sheet">
+    <div>左侧</div><div>正面</div><div>右侧</div><div>背面</div>
+    <div class="top">顶视</div>
+  </div>
+  <div class="ruler"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5 m</span></div>
+  <p class="note">顶视图对齐正面视图那一列，这样屋檐挑出的进深能直接量。背面必须单独画，四向镜头下它不是"看不见的那一面"。</p>
+
+  <h2>可直接粘贴的指令块</h2>
+  <pre>你是技术美术，不是概念插画师。任务是为 Marchlands 交付可直接入库的低模建筑资产。
+
+项目约束
+- Three.js 运行时，米制，Y 轴向上，模型正面朝 +Z，原点在底面中心，落地 Y = 0
+- 建筑占地 1.7 到 2.3 米，高 3.8 到 4.7 米，塔楼 5.8 米
+- 三角面上限 6000，目标 2000 到 3500
+- 贴图只允许 albedo，1024 见方，无烘焙光影，无 AO，无高光，无法线贴图
+- 平直着色，法线按面，不启用平滑
+- 单一自包含 GLB，纹理内嵌，不引用外部文件
+- 禁止 Draco、meshopt、KTX2、动画、相机、灯光、地面底座、文字
+
+交付四件
+1 正交设定表
+   五视图：正面、背面、左侧、右侧、顶视
+   正交投影，无透视，无景深，无投影，均匀平光，中性灰背景
+   五视图同缩放同基线，画布底部标注总高与占地米数
+   顶视图给出完整屋顶轮廓与挑檐进深
+2 规格单 JSON，字段按给定模板
+3 模型 GLB
+4 验收图：模型五视图加三视角，机位与设定表一致，白底
+
+风格
+低模、平涂、面切分明、体块手作感，配色只用灰泥、石、胡桃木、草秸、草绿
+暖光只出现在验收图，不出现在贴图里
+
+禁止
+透视夸张、英雄机位、戏剧光、地面与天空、多物体、写实材质、金属度、文字水印、任何后期</pre>
+
+  <h2>规格单模板</h2>
+  <pre>{
+  "id": "com.marchlands:barracks-L2",
+  "kind": "building",
+  "label": "步兵营 · 驻所",
+  "family": "barracks",
+  "tier": 2,
+  "file": "models/barracks-L2.glb",
+  "footprint": 2.0,
+  "height": 4.4,
+  "triangles": 3200,
+  "texture": { "size": 1024, "maps": ["albedo"] },
+  "materials": {
+    "team_roof": "#FFFFFF",
+    "team_cloth": "#FFFFFF",
+    "plaster": "#D9CAAB",
+    "stone": "#8D8676",
+    "timber": "#4A3626",
+    "straw": "#C6A55E"
+  },
+  "units": "meter",
+  "up": "+Y",
+  "front": "+Z"
+}</pre>
+  <p class="note">前九个字段可以直接映射到 <code>pack.json</code> 的资产条目，<code>id</code> 换成包命名空间即可。<code>triangles</code> 与 <code>texture</code> 不进入格式，但它们是验收时的比对基准。</p>
+
+  <h2>按家族生成，不要逐件生成</h2>
+  <p>八类建筑每类三级，共二十四件。逐件生成会得到二十四套互不相干的语言，拼在同一张图上立刻露馅。正确做法是一次生成一族，让三级同框。</p>
+  <pre>同一座步兵营的三个等级，左到右并排，同一张正交正面图。
+三级共用同一墙体材质、同一门窗母题、同一屋面瓦型、同一配色。
+差异只体现在高度、体块数量、屋顶形态、道具密度四项里，至少三项不同。
+L1 单坡木棚加栅栏，L2 主屋加侧翼加望楼，L3 石基双层加角楼。
+三件轮廓高度递增但风格同源，可并排展示，无文字标注。</pre>
+  <p class="note">验收标准本来就是"四项里至少三项不同"，把这句话原样交给模型，比事后返工便宜得多。同一族的贴图共用一张，也省掉一半图集。</p>
+
+  <h2>入库前的六项校验</h2>
+  <table>
+    <thead><tr><th>检查</th><th>失败意味着</th></tr></thead>
+    <tbody>
+      <tr><td>包围盒最低点 Y 约为 0，水平中心约为 0</td><td>悬空或陷地，放置点偏移</td></tr>
+      <tr><td>包围盒高度与规格单相差不超过 5%</td><td>尺度漂移，塔与粮仓同高</td></tr>
+      <tr><td>三角面数在预算内</td><td>移动端掉帧，实例化后放大</td></tr>
+      <tr><td>材质名包含声明的队伍色角色</td><td>换阵营不生效，绿方红方同色</td></tr>
+      <tr><td>队伍色角色贴图接近纯白</td><td>染色发脏，这是最常见的返工项</td></tr>
+      <tr><td><code>extensionsRequired</code> 为空或只含已知安全项</td><td>运行时报解析失败，直接白模</td></tr>
+    </tbody>
+  </table>
+  <p class="note">这六项不需要打开 Blender，读 GLB 的 JSON chunk 与 POSITION 的 min/max 就能算。仓库里加一个 <code>tools/asset-check</code> 大约百来行，可以接进 <code>pnpm</code> 脚本，也可以直接跑在生成回来的批次上。</p>
+
+  <h2>现实的取舍</h2>
+  <ul>
+    <li>图生三维给的是不可编辑的三角面，没有干净的四边面拓扑。做静态据点建筑、装饰、地形块够用，做需要 LOD、破坏、骨骼动画的东西不够。</li>
+    <li>建筑是本项目最合适的切入点。它们静态、体量固定、永远四向可见、从不形变，正好避开图生三维的全部短板。</li>
+    <li>兵种不建议走这条路。四头身角色要骨骼、要四个动作剪辑、要轮廓在 0.9 米高度上可读，重拓扑的成本高于直接买 CC0 套件。</li>
+    <li>生成回来的模型即便过了六项校验，法线朝向与三角面绕序仍可能反。渲染时若出现黑面，先在三维端统一重算法线再入库。</li>
+  </ul>
+</main>
+</body>
+</html>
