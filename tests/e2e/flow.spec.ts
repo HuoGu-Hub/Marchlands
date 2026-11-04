@@ -839,8 +839,15 @@ test("assigns groups in multi-select mode and dispatches with the button", async
         }).__mlPlan,
     );
 
-  // frontier01 的中立据点阻断道路：c1 只能直达相邻的五座据点。
-  await expect.poll(reach).toEqual(["c17", "c2", "c3", "c9", "g1"]);
+  // 网格通行下平原据点都能抵达；至少包含原来的五座相邻据点。
+  await expect.poll(reach).toEqual(expect.arrayContaining(["c17", "c2", "c3", "c9", "g1"]));
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () => (window as unknown as { __mlReach?: { gridCells: number } }).__mlReach?.gridCells ?? 0,
+      ),
+    )
+    .toBeGreaterThan(10_000);
 
   const c2 = await project("c2");
   if (!c2) throw new Error("c2 has no screen position");
@@ -868,7 +875,7 @@ test("assigns groups in multi-select mode and dispatches with the button", async
   await page.mouse.click(c2.x, c2.y);
   await page.mouse.click(c1.x, c1.y);
   await expect(page.locator("#plan-hint")).toContainText("已编组 2 座");
-  await expect.poll(reach).toEqual(["c10", "c17", "c3", "c9", "g1"]);
+  await expect.poll(reach).toEqual(expect.arrayContaining(["c10", "c17", "c3", "c9", "g1"]));
   await page.mouse.click(c3.x, c3.y);
   await expect(page.locator("#toast")).toContainText("2 座据点 → c3");
   await expect.poll(async () => (await plan())?.groups).toEqual([

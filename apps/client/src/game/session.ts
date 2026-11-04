@@ -14,6 +14,7 @@ import type {
 import { isProductionSiteKind, reachableGridCells, sendReachableTargets } from "@marchlands/sim";
 import { audio } from "../audio";
 import { RouteOverlay } from "./route-overlay";
+import { synthesizeGrid } from "./nav-synthesis";
 import type { PlannedAssignment } from "./route-overlay";
 import { BattleScene } from "./scene";
 
@@ -58,6 +59,7 @@ export class GameSession {
   private scene: BattleScene;
   private routeOverlay: RouteOverlay;
   private state: SimState;
+  private simMap: MapDef;
   private selected: CityId[] = [];
   private selectedSquad: string | null = null;
   private gridReach = new Map<CityId, GridReach>();
@@ -85,15 +87,19 @@ export class GameSession {
     const requested = Number(new URLSearchParams(window.location.search).get("speed") ?? "1");
     this.timeScale = import.meta.env.DEV ? Math.max(1, Math.min(20, Number.isFinite(requested) ? requested : 1)) : 1;
     this.ai = createAi(2);
-    this.state = createGame(options.map, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
     this.scene = new BattleScene(options.canvas, options.map, options.visual ?? null, options.unitSkins ?? {});
+    this.simMap = synthesizeGrid(options.map, this.scene);
+    this.state = createGame(this.simMap, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
     this.routeOverlay = new RouteOverlay({
       canvas: options.canvas,
       scene: this.scene,
       map: options.map,
     });
     this.bindInput();
-    this.select("c1");
+    const start =
+      this.state.cities.find((city) => city.owner === 1 && isProductionSiteKind(city.kind)) ??
+      this.state.cities.find((city) => city.owner === 1);
+    if (start) this.select(start.id);
     this.updateHud();
   }
 
@@ -128,8 +134,9 @@ export class GameSession {
   restart(): void {
     this.routeOverlay.dispose();
     this.scene.dispose();
-    this.state = createGame(this.options.map, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
     this.scene = new BattleScene(this.options.canvas, this.options.map, this.options.visual ?? null, this.options.unitSkins ?? {});
+    this.simMap = synthesizeGrid(this.options.map, this.scene);
+    this.state = createGame(this.simMap, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
     this.routeOverlay = new RouteOverlay({
       canvas: this.options.canvas,
       scene: this.scene,

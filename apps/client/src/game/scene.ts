@@ -354,23 +354,37 @@ export class BattleScene {
       }
     }
 
+    // 取每个格角的实际地形高度，避免起伏地面把贴地高亮切碎。
+    const stride = nav.width + 1;
+    const corners = new Float32Array(stride * (nav.height + 1));
+    for (let z = 0; z <= nav.height; z += 1) {
+      const wz = z * cellM - halfZ;
+      for (let x = 0; x <= nav.width; x += 1) {
+        corners[z * stride + x] = this.terrain.heightAt(x * cellM - halfX, wz);
+      }
+    }
+
     const positions: number[] = [];
     const colors: number[] = [];
     const indices: number[] = [];
-    const light = new THREE.Color(0x9fe8a8);
-    const heavy = new THREE.Color(0x2f7d3e);
+    const light = new THREE.Color(0x4fd985);
+    const heavy = new THREE.Color(0x1f7a35);
+    const lift = 0.1;
     const addCell = (index: number, color: THREE.Color): void => {
       const x = nav.cellX(index);
       const z = nav.cellZ(index);
       const cx = (x + 0.5) * cellM - halfX;
       const cz = (z + 0.5) * cellM - halfZ;
-      const y = nav.heightCm(index) / 100 + 0.07;
       const half = cellM * 0.42;
+      const y00 = corners[z * stride + x] + lift;
+      const y10 = corners[z * stride + x + 1] + lift;
+      const y11 = corners[(z + 1) * stride + x + 1] + lift;
+      const y01 = corners[(z + 1) * stride + x] + lift;
       const base = positions.length / 3;
-      positions.push(cx - half, y, cz - half);
-      positions.push(cx + half, y, cz - half);
-      positions.push(cx + half, y, cz + half);
-      positions.push(cx - half, y, cz + half);
+      positions.push(cx - half, y00, cz - half);
+      positions.push(cx + half, y10, cz - half);
+      positions.push(cx + half, y11, cz + half);
+      positions.push(cx - half, y01, cz + half);
       for (let vertex = 0; vertex < 4; vertex += 1) colors.push(color.r, color.g, color.b);
       indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
     };
@@ -391,7 +405,7 @@ export class BattleScene {
     const material = new THREE.MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.55,
       depthWrite: false,
       toneMapped: false,
       polygonOffset: true,

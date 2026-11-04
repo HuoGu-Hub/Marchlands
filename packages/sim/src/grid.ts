@@ -15,7 +15,7 @@ export const GRID_UNIT_RADIUS_CM = 40;
 export const GRID_CAPTURE_RADIUS_CM = 400;
 
 export function createNavGrid(map: MapDef): NavGrid | null {
-  if (map.navigation !== "grid" || !map.grid) return null;
+  if (!map.grid) return null;
   const grid = map.grid;
   const cells = grid.width * grid.height;
   return new NavGrid({
@@ -45,7 +45,7 @@ export function createUnitNavGrid(
   kind: UnitKind,
   destination?: string,
 ): NavGrid | null {
-  if (map.navigation !== "grid" || !map.grid) return null;
+  if (!map.grid) return null;
   const grid = map.grid;
   const count = grid.width * grid.height;
   const profile = unitProfile(kind);
