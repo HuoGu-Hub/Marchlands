@@ -923,7 +923,7 @@ export class BattleScene {
       fromZoom: fit,
       toX: x,
       toZ: z,
-      toZoom: Math.max(fit, 1.55),
+      toZoom: Math.max(fit, 1.2),
       elapsed: 0,
       duration: Math.max(1, durationMs),
     };

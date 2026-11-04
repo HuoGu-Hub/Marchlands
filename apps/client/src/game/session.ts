@@ -55,6 +55,8 @@ export interface GameSessionOptions {
   onFinish: (state: SimState) => void;
   onToast: (text: string) => void;
   onSelect: (cityId: CityId | null, count: number) => void;
+  /** 第一帧真正画到屏幕上之后再开局，用来隐藏建场与首次编译的停顿。 */
+  onReady?: () => void;
 }
 
 export class GameSession {
@@ -91,6 +93,7 @@ export class GameSession {
   private dragStartX = 0;
   private dragStartY = 0;
   private readonly introDisabled: boolean;
+  private ready = false;
   private introActive = false;
   private introElapsed = 0;
   private introHideTimer = 0;
@@ -108,7 +111,6 @@ export class GameSession {
     this.scene = new BattleScene(options.canvas, options.map, options.visual ?? null, options.unitSkins ?? {});
     this.simMap = synthesizeGrid(options.map, this.scene);
     this.state = createGame(this.simMap, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
-    this.scene.prepareReachableCells(this.state.map);
     this.routeOverlay = new RouteOverlay({
       canvas: options.canvas,
       scene: this.scene,
@@ -131,7 +133,8 @@ export class GameSession {
   }
 
   start(): void {
-    this.beginIntro();
+    this.ready = this.introDisabled;
+    if (this.introDisabled) this.beginIntro();
     this.lastTime = performance.now();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -156,6 +159,15 @@ export class GameSession {
     return this.introActive;
   }
 
+  private scheduleReachPreparation(): void {
+    const run = (): void => {
+      if (!this.disposed) this.scene.prepareReachableCells(this.state.map);
+    };
+    const idle = window.requestIdleCallback;
+    if (idle) idle(run, { timeout: 2500 });
+    else window.setTimeout(run, 400);
+  }
+
   private beginIntro(): void {
     if (this.introDisabled) return;
     const home = this.state.cities.find((city) => city.owner === 1);
@@ -166,7 +178,7 @@ export class GameSession {
     if (!this.introRoot) return;
     window.clearTimeout(this.introHideTimer);
     this.introRoot.hidden = false;
-    this.introRoot.classList.remove("done");
+    this.introRoot.classList.remove("done", "preparing");
     requestAnimationFrame(() => {
       if (this.introActive) this.introRoot?.classList.add("on");
     });
@@ -671,7 +683,7 @@ export class GameSession {
     window.clearTimeout(this.introHideTimer);
     if (this.introRoot) {
       this.introRoot.hidden = true;
-      this.introRoot.classList.remove("on", "done");
+      this.introRoot.classList.remove("on", "done", "preparing");
     }
     this.multiSelect = false;
     this.plan = [];
@@ -766,6 +778,18 @@ export class GameSession {
 
   private readonly frame = (now: number): void => {
     if (this.disposed) return;
+    if (!this.ready) {
+      // 第一帧把地形、建筑与材质真正画出来；这期间的停顿由准备画面盖住。
+      this.scene.update(this.state, 0);
+      this.routeOverlay.render(this.state, this.selectedSquad);
+      this.ready = true;
+      this.options.onReady?.();
+      this.beginIntro();
+      this.scheduleReachPreparation();
+      this.lastTime = now;
+      this.raf = requestAnimationFrame(this.frame);
+      return;
+    }
     const delta = Math.min(250, Math.max(0, now - this.lastTime));
     this.lastTime = now;
 

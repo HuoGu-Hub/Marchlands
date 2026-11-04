@@ -876,6 +876,21 @@ body.preview-mode #preview-canvas {
   background: radial-gradient(circle at 50% 46%, rgba(6, 10, 7, 0) 34%, rgba(6, 10, 7, 0.42) 100%);
 }
 
+.match-intro-cover {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  opacity: 0;
+  filter: saturate(0.72) brightness(0.34) blur(1px);
+  transform: scale(1.02);
+  transition: opacity 320ms ease;
+}
+
+.match-intro.preparing .match-intro-cover {
+  opacity: 1;
+}
+
 .match-intro::before {
   content: "";
   position: absolute;
@@ -891,6 +906,24 @@ body.preview-mode #preview-canvas {
 
 .match-intro.done {
   opacity: 0;
+}
+
+.match-intro.preparing .match-intro-count {
+  font-size: clamp(28px, 3vw, 40px);
+  letter-spacing: 0.24em;
+  text-indent: 0.24em;
+  will-change: opacity;
+  animation: intro-wait 1.3s ease-in-out infinite;
+}
+
+@keyframes intro-wait {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .match-intro-count {

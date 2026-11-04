@@ -141,6 +141,7 @@ const TEMPLATE = `
     <div class="plan-hint" id="plan-hint"></div>
     <div class="hint">拖动地图 · 左键选择 · 双击或拖拽派兵 · Ctrl 切换多选 · 点“派遣”发兵 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
     <div class="match-intro" id="match-intro" hidden>
+      <div class="match-intro-cover" id="match-intro-cover"></div>
       <div class="match-intro-count" id="match-intro-count">3</div>
       <div class="match-intro-label" id="match-intro-label">部署</div>
     </div>
@@ -879,19 +880,46 @@ export class App {
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
     const canvas = this.el("game-canvas") as HTMLCanvasElement;
-    this.session = new GameSession({
-      canvas,
-      hud: this.root,
-      map: entry.content.map,
-      visual: entry.visual,
-      unitSkins: this.settings.unitSkins,
-      aiTuning: difficultyDef(config.difficulty).ai,
-      rules: entry.content.rules,
-      onFinish: (state) => this.finish(state),
-      onToast: (text) => this.toast(text),
-      onSelect: (cityId, count) => this.updateCityPanel(cityId, count),
-    });
-    this.session.start();
+    const boot = (): void => {
+      if (this.activeRun !== config) return;
+      this.session = new GameSession({
+        canvas,
+        hud: this.root,
+        map: entry.content.map,
+        visual: entry.visual,
+        unitSkins: this.settings.unitSkins,
+        aiTuning: difficultyDef(config.difficulty).ai,
+        rules: entry.content.rules,
+        onFinish: (state) => this.finish(state),
+        onToast: (text) => this.toast(text),
+        onSelect: (cityId, count) => this.updateCityPanel(cityId, count),
+        onReady: () => this.clearMatchPreparing(),
+      });
+      this.session.start();
+    };
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("intro") === "0") {
+      boot();
+      return;
+    }
+    // 先让准备画面真正画一帧，再同步建场景，避免点击后立刻定住。
+    this.showMatchPreparing(config.mapId);
+    requestAnimationFrame(() => requestAnimationFrame(boot));
+  }
+
+  private showMatchPreparing(mapId: string): void {
+    const intro = this.el("match-intro");
+    intro.hidden = false;
+    intro.classList.remove("done");
+    intro.classList.add("on", "preparing");
+    const cover = this.levelCover(mapId);
+    const layer = this.el("match-intro-cover");
+    layer.style.backgroundImage = cover ? `url("${cover}")` : "none";
+    (this.el("match-intro-count") as HTMLElement).textContent = "布阵";
+    (this.el("match-intro-label") as HTMLElement).textContent = "";
+  }
+
+  private clearMatchPreparing(): void {
+    this.el("match-intro").classList.remove("preparing");
   }
 
   private finish(state: SimState): void {
