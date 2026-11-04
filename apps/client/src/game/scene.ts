@@ -189,6 +189,7 @@ export class BattleScene {
   private readonly cityViews = new Map<CityId, CityView>();
   private readonly squadViews = new Map<string, SquadView>();
   private readonly rings = new Map<CityId, THREE.Mesh>();
+  private readonly selectedMarkers = new Map<CityId, THREE.Mesh>();
   private readonly ringGeometry = new THREE.RingGeometry(2.55, 2.85, 48);
   private readonly ringMaterial = new THREE.MeshBasicMaterial({
     color: 0xe8c883,
@@ -1900,6 +1901,13 @@ export class BattleScene {
     for (const [id, ring] of this.rings) {
       if (!active.has(id)) ring.visible = false;
     }
+    for (const [id, marker] of this.selectedMarkers) {
+      if (active.has(id)) continue;
+      this.scene.remove(marker);
+      marker.geometry.dispose();
+      (marker.material as THREE.Material).dispose();
+      this.selectedMarkers.delete(id);
+    }
     for (const id of this.selectedIds) {
       const position = this.positions.get(id);
       if (!position) continue;
@@ -1914,6 +1922,27 @@ export class BattleScene {
       ring.visible = true;
       ring.scale.setScalar(radius / 2.7);
       ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
+      let marker = this.selectedMarkers.get(id);
+      if (!marker) {
+        const geometry = new THREE.ConeGeometry(3.4, 5.2, 4);
+        geometry.rotateX(Math.PI);
+        const material = new THREE.MeshBasicMaterial({
+          color: 0xffc83a,
+          transparent: true,
+          opacity: 0.98,
+          depthTest: false,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        marker = new THREE.Mesh(geometry, material);
+        marker.renderOrder = 20;
+        this.scene.add(marker);
+        this.selectedMarkers.set(id, marker);
+      }
+      const labelHeight = this.cityViews.get(id)?.labelHeight ?? CITY_LABEL_HEIGHT;
+      const baseY = this.terrain.heightAt(position.x, position.z) + labelHeight + 3;
+      marker.position.set(position.x, baseY + Math.sin(this.elapsed / 300) * 0.16, position.z);
+      marker.rotation.y = this.elapsed / 1400;
     }
     this.ringMaterial.opacity = 0.5 + Math.sin(this.elapsed / 260) * 0.18;
   }
