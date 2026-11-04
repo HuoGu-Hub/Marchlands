@@ -31,6 +31,13 @@ test("result screen appears at the time limit", async ({ page }) => {
 test("starts a match and captures an adjacent town", async ({ page }) => {
   await openGame(page);
   await expect(page.locator("#hud-cities")).toHaveText("1");
+  const start = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c1") : null;
+  });
+  if (!start) throw new Error("c1 has no screen position");
+  await page.mouse.click(start.x, start.y);
   await expect(page.locator("#city-panel")).toHaveClass(/on/);
 
   await page.waitForTimeout(400);
@@ -839,6 +846,11 @@ test("assigns groups in multi-select mode and dispatches with the button", async
         }).__mlPlan,
     );
 
+  const start = await project("c1");
+  if (!start) throw new Error("c1 has no screen position");
+  await page.mouse.click(start.x, start.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
+
   // 网格通行下平原据点都能抵达；至少包含原来的五座相邻据点。
   await expect.poll(reach).toEqual(expect.arrayContaining(["c17", "c2", "c3", "c9", "g1"]));
   await expect
@@ -923,6 +935,10 @@ test("dispatches one multi-select group from several towns", async ({ page }) =>
           .__mlDebug?.projectCity(cityId),
       id,
     );
+  const start = await project("c1");
+  if (!start) throw new Error("c1 has no screen position");
+  await page.mouse.click(start.x, start.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
   const c2 = await project("c2");
   if (!c2) throw new Error("c2 has no screen position");
   await page.mouse.click(c2.x, c2.y);
@@ -1014,6 +1030,17 @@ test("dispatches troops to any reachable grid cell", async ({ page }) => {
       () =>
         (window as unknown as { __mlReach?: { gridCells: number } }).__mlReach?.gridCells ?? 0,
     );
+  const projectCity = (id: string) =>
+    page.evaluate(
+      (cityId) =>
+        (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+          .__mlDebug?.projectCity(cityId),
+      id,
+    );
+  const c1 = await projectCity("c1");
+  if (!c1) throw new Error("c1 has no screen position");
+  await page.mouse.click(c1.x, c1.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
   await expect.poll(reach).toBeGreaterThan(4000);
 
   const projectGround = (x: number, z: number) =>
@@ -1036,12 +1063,6 @@ test("dispatches troops to any reachable grid cell", async ({ page }) => {
 
   // 多选状态下把编组指定到另一个网格，再点“派遣”。
   await page.keyboard.press("Control");
-  const c1 = await page.evaluate(
-    () =>
-      (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
-        .__mlDebug?.projectCity("c1"),
-  );
-  if (!c1) throw new Error("c1 has no screen position");
   await page.mouse.click(c1.x, c1.y);
   const cell = await projectGround(-100, 100);
   if (!cell) throw new Error("target cell has no screen position");

@@ -63,7 +63,7 @@ export class GameSession {
   private selected: CityId[] = [];
   private selectedSquad: string | null = null;
   private gridReach = new Map<CityId, GridReach>();
-  private gridUnion: GridReach | null = null;
+  private gridFocus: GridReach | null = null;
   private multiSelect = false;
   private plan: PlannedAssignment[] = [];
   private lastPlanClick: { index: number; at: number } | null = null;
@@ -81,6 +81,8 @@ export class GameSession {
   private suppressClick = false;
   private dragX = 0;
   private dragY = 0;
+  private dragStartX = 0;
+  private dragStartY = 0;
 
   constructor(options: GameSessionOptions) {
     this.options = options;
@@ -96,10 +98,6 @@ export class GameSession {
       map: options.map,
     });
     this.bindInput();
-    const start =
-      this.state.cities.find((city) => city.owner === 1 && isProductionSiteKind(city.kind)) ??
-      this.state.cities.find((city) => city.owner === 1);
-    if (start) this.select(start.id);
     this.updateHud();
   }
 
@@ -275,9 +273,11 @@ export class GameSession {
     if (!force && signature === this.reachKey) return;
     this.reachKey = signature;
     const selected = new Set(this.selected);
+    // 只显示最后点选的那座建筑的可达范围，避免多选时把几座城的范围混在一起。
+    const focus = this.primary;
     const targets = new Set<CityId>();
-    for (const id of this.selected) {
-      for (const target of sendReachableTargets(this.state, id)) {
+    if (focus) {
+      for (const target of sendReachableTargets(this.state, focus)) {
         if (!selected.has(target)) targets.add(target);
       }
     }
@@ -285,26 +285,16 @@ export class GameSession {
 
     if (this.state.nav) {
       this.gridReach.clear();
-      let unionNav: GridReach["nav"] | null = null;
-      let union: Uint8Array | null = null;
       for (const id of this.selected) {
         const reach = reachableGridCells(this.state, id);
-        if (!reach) continue;
-        this.gridReach.set(id, reach);
-        if (!union) {
-          unionNav = reach.nav;
-          union = new Uint8Array(reach.nav.cellCount);
-        }
-        for (let index = 0; index < reach.cells.length; index += 1) {
-          if (reach.cells[index] === 1) union[index] = 1;
-        }
+        if (reach) this.gridReach.set(id, reach);
       }
-      this.gridUnion = union && unionNav ? { nav: unionNav, cells: union } : null;
+      this.gridFocus = focus ? this.gridReach.get(focus) ?? null : null;
       this.scene.setReachable([]);
-      this.scene.setReachableCells(this.gridUnion, this.reachTargets);
+      this.scene.setReachableCells(this.gridFocus, this.reachTargets);
     } else {
       this.gridReach.clear();
-      this.gridUnion = null;
+      this.gridFocus = null;
       this.scene.setReachableCells(null, []);
       this.scene.setReachable(this.reachTargets);
     }
@@ -312,9 +302,10 @@ export class GameSession {
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__mlReach = {
         selected: this.selected.slice(),
+        focus,
         targets: this.reachTargets.slice(),
-        gridCells: this.gridUnion
-          ? this.gridUnion.cells.reduce((sum, value) => sum + value, 0)
+        gridCells: this.gridFocus
+          ? this.gridFocus.cells.reduce((sum, value) => sum + value, 0)
           : 0,
       };
     }
@@ -549,10 +540,11 @@ export class GameSession {
     }
     const pending = this.selected.length;
     const groups = this.plan.length;
+    const focus = this.primary;
     if (pending > 0 && groups > 0) {
-      this.setPlanHint(`多选模式 · 待指定 ${pending} 座 · 已指定 ${groups} 组 · 点击“派遣”发兵`);
+      this.setPlanHint(`多选模式 · 当前 ${focus} · 待指定 ${pending} 座 · 已指定 ${groups} 组 · 点击“派遣”发兵`);
     } else if (pending > 0) {
-      this.setPlanHint(`多选模式 · 已编组 ${pending} 座 · 点击敌方据点或浅绿网格指定目标`);
+      this.setPlanHint(`多选模式 · 当前 ${focus} · 已编组 ${pending} 座 · 点击敌方据点或浅绿网格指定目标`);
     } else if (groups > 0) {
       this.setPlanHint(`多选模式 · 已指定 ${groups} 组 · 点击“派遣”发兵`);
     } else {
@@ -591,6 +583,7 @@ export class GameSession {
     window.removeEventListener("pointermove", this.onPointerMove);
     window.removeEventListener("pointerup", this.onPointerUp);
     window.removeEventListener("pointercancel", this.onPointerUp);
+    window.removeEventListener("blur", this.onWindowBlur);
     this.routeOverlay.dispose();
     this.scene.dispose();
   }
@@ -743,6 +736,7 @@ export class GameSession {
     window.addEventListener("pointermove", this.onPointerMove);
     window.addEventListener("pointerup", this.onPointerUp);
     window.addEventListener("pointercancel", this.onPointerUp);
+    window.addEventListener("blur", this.onWindowBlur);
     window.addEventListener("keydown", this.onKeyDown);
   }
 
@@ -761,16 +755,26 @@ export class GameSession {
     if (event.button !== 0) return;
     this.dragging = true;
     this.dragMoved = false;
+    this.dragStartX = event.clientX;
+    this.dragStartY = event.clientY;
     this.dragX = event.clientX;
     this.dragY = event.clientY;
     this.options.canvas.style.cursor = "grabbing";
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    if (!this.dragging || (event.buttons & 1) === 0) return;
+    if (!this.dragging) return;
+    // 松开鼠标时没收到 pointerup（例如在窗口外松开）时，这里兜底退出拖拽。
+    if ((event.buttons & 1) === 0) {
+      this.dragging = false;
+      this.options.canvas.style.cursor = "grab";
+      return;
+    }
     const dx = event.clientX - this.dragX;
     const dy = event.clientY - this.dragY;
-    if (!this.dragMoved && Math.hypot(dx, dy) < 5) return;
+    if (!this.dragMoved && Math.hypot(event.clientX - this.dragStartX, event.clientY - this.dragStartY) < 10) {
+      return;
+    }
     this.dragMoved = true;
     this.dragX = event.clientX;
     this.dragY = event.clientY;
@@ -785,6 +789,13 @@ export class GameSession {
       this.suppressClick = true;
       window.setTimeout(() => { this.suppressClick = false; }, 0);
     }
+  };
+
+  private readonly onWindowBlur = (): void => {
+    this.dragging = false;
+    this.dragMoved = false;
+    this.suppressClick = false;
+    this.options.canvas.style.cursor = "grab";
   };
 
   private clickDuringMultiSelect(cityId: CityId): void {
@@ -834,7 +845,7 @@ export class GameSession {
       this.clickDuringMultiSelect(cityId);
       return;
     }
-    if (this.gridUnion && this.gridUnion.cells[cell.index] === 1) {
+    if (this.gridFocus && this.gridFocus.cells[cell.index] === 1) {
       this.assignPlanCell(cell.xCm, cell.zCm, cell.index);
       return;
     }
@@ -914,8 +925,9 @@ export class GameSession {
         return;
       }
       this.lastPlanClick = null;
-      // 箭头优先于 20~36px 的据点判定，保证贴着建筑的箭头也能双击取消。
-      if (nearest && nearest.distance <= 36) {
+      // 箭头优先；己方建筑用较宽的命中范围，避免点标签时落到格子上。
+      const nearCity = nearest ? this.getCity(nearest.id) : undefined;
+      if (nearest && nearCity && (nearCity.owner === 1 ? nearest.distance <= 72 : nearest.distance <= 36)) {
         this.clickDuringMultiSelect(nearest.id);
         return;
       }
@@ -983,8 +995,9 @@ export class GameSession {
       return;
     }
 
-    if (nearest && nearest.distance <= 36 && cityId) {
-      this.clickCity(cityId);
+    const nearCity = nearest ? this.getCity(nearest.id) : undefined;
+    if (nearest && nearCity && (nearCity.owner === 1 ? nearest.distance <= 72 : nearest.distance <= 36)) {
+      this.clickCity(nearest.id);
       return;
     }
 
