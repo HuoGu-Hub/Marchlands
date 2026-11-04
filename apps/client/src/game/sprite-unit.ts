@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { UnitActorView } from "./unit-glb";
 
 /** 图集里单个方向格子的描述，来自 sprite-atlas 工具导出的 JSON。 */
 export interface SpriteCell {
@@ -105,13 +106,60 @@ export class SpriteUnit extends THREE.Object3D {
     );
   }
 
-  /** 按单位朝向与镜头方位选择方向，并让平面正对镜头。 */
-  setPose(facing: number, cameraYaw: number): void {
+  /**
+   * 按单位朝向与镜头方位选择方向，并让平面正对镜头。
+   * parentYaw 是自身之上所有父级累计的偏航，用于把世界朝向换算成局部旋转。
+   */
+  setPose(facing: number, cameraYaw: number, parentYaw = 0): void {
     const steps = Math.round((facing - cameraYaw) / QUARTER);
     const raw = ((-steps % 8) + 8) % 8;
     this.setDirection(this.flip ? (8 - raw) % 8 : raw);
-    this.mesh.rotation.y = cameraYaw;
+    this.mesh.rotation.y = cameraYaw - parentYaw;
   }
+}
+
+/** 把 SpriteUnit 包成兵团小兵，接口与 UnitActor / GlbUnitActor 一致。 */
+export class SpriteUnitActor extends THREE.Group implements UnitActorView {
+  private readonly sprite: SpriteUnit;
+  private readonly yawOfCamera: () => number;
+  private readonly forward = new THREE.Vector3();
+
+  constructor(sprite: SpriteUnit, cameraYaw: () => number) {
+    super();
+    this.sprite = sprite;
+    this.yawOfCamera = cameraYaw;
+    this.add(sprite);
+  }
+
+  setMoving(_moving: boolean): void {
+    // 立绘阶段没有行走帧，接口留空以便后续接入帧序列。
+  }
+
+  playAttack(): void {
+    // 同上。
+  }
+
+  update(): void {
+    const parentYaw = this.parent ? parentYawOf(this.parent) : 0;
+    const accumulated = parentYaw + this.rotation.y;
+    this.sprite.setPose(accumulated, this.yawOfCamera(), accumulated);
+    void this.forward;
+  }
+
+  dispose(): void {
+    this.remove(this.sprite);
+    this.sprite.mesh.geometry.dispose();
+  }
+}
+
+const yawEuler = new THREE.Euler();
+const yawMatrix = new THREE.Matrix4();
+
+function parentYawOf(object: THREE.Object3D): number {
+  object.updateWorldMatrix(true, false);
+  yawMatrix.extractRotation(object.matrixWorld);
+  yawEuler.setFromRotationMatrix(yawMatrix, "YXZ");
+  return yawEuler.y;
 }
 
 /** 读取一组图集描述与贴图，返回可直接构造 SpriteUnit 的原料。 */

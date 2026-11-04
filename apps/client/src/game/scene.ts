@@ -8,6 +8,9 @@ import { buildBuilding, paletteFor } from "./buildings";
 import { siteBuildingKind, siteDefaultAsset, producingUnitKind } from "./site-kind";
 import { GlbUnitActor } from "./unit-glb";
 import type { UnitActorView } from "./unit-glb";
+import { SpriteUnit, SpriteUnitActor } from "./sprite-unit";
+import { loadSpriteAssets, spriteAsset } from "./sprite-assets";
+import type { SpriteSkinAsset } from "./sprite-assets";
 import { UnitActor } from "./unit-actor";
 import { buildTerrain } from "./terrain";
 import type { Terrain } from "./terrain";
@@ -180,7 +183,7 @@ export interface SceneViewState {
   yawIndex: number;
 }
 
-type SquadUnit = UnitActor | GlbUnitActor;
+type SquadUnit = UnitActor | GlbUnitActor | SpriteUnitActor;
 
 interface SquadView {
   group: THREE.Group;
@@ -338,6 +341,7 @@ export class BattleScene {
     this.map = map;
     this.visual = visual;
     this.unitSkins = unitSkins;
+    void loadSpriteAssets();
     for (const material of [
       this.squadFillMaterial,
       this.squadFillSelectedMaterial,
@@ -969,8 +973,16 @@ export class BattleScene {
       temp.add(actor);
       actors.push(actor);
     }
+    await loadSpriteAssets();
     const seen = new Set<string>();
     for (const assetId of Object.values(unitSkins)) {
+      const sprite = spriteAsset(assetId);
+      if (sprite) {
+        const actor = this.createSpriteActor(sprite);
+        temp.add(actor);
+        actors.push(actor);
+        continue;
+      }
       if (!assetId || seen.has(assetId) || !assetRegistry.has(assetId)) continue;
       seen.add(assetId);
       try {
@@ -1355,7 +1367,9 @@ export class BattleScene {
     const kind = this.unitKindFor(squad.from);
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const unitAssetId = this.skinFor(kind, squad.owner);
-    const maxUnits = unitAssetId && assetRegistry.has(unitAssetId) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const sprite = spriteAsset(unitAssetId);
+    const maxUnits =
+      sprite || (unitAssetId && assetRegistry.has(unitAssetId)) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
     const renderCount = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(renderCount, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
 
@@ -1398,7 +1412,9 @@ export class BattleScene {
       strikeUntil: 0,
     };
 
-    if (unitAssetId && assetRegistry.has(unitAssetId)) {
+    if (sprite) {
+      this.populateSpriteUnits(view, sprite, squad, offsets, kind);
+    } else if (unitAssetId && assetRegistry.has(unitAssetId)) {
       void this.populateGlbUnits(view, unitAssetId, squad, offsets, kind);
     } else {
       this.populateProceduralUnits(view, squad, offsets, kind);
@@ -1417,6 +1433,29 @@ export class BattleScene {
     const site = this.map.cities.find((city) => city.id === siteId);
     if (!site) return "infantry";
     return producingUnitKind(site.kind) ?? "infantry";
+  }
+
+  private createSpriteActor(sprite: SpriteSkinAsset): SpriteUnitActor {
+    const inner = new SpriteUnit(sprite.atlas, sprite.texture, { height: sprite.height });
+    const actor = new SpriteUnitActor(inner, () => this.yaw);
+    actor.setMoving(true);
+    return actor;
+  }
+
+  private populateSpriteUnits(
+    view: SquadView,
+    sprite: SpriteSkinAsset,
+    squad: SquadState,
+    offsets: Array<[number, number]>,
+    kind: UnitKind,
+  ): void {
+    for (let index = 0; index < offsets.length; index += 1) {
+      const unit = this.createSpriteActor(sprite);
+      this.placeSquadUnit(unit, index, offsets, squad.id, kind);
+      this.prepareSquadUnit(unit);
+      view.group.add(unit);
+      view.units.push(unit);
+    }
   }
 
   private populateProceduralUnits(
@@ -1476,7 +1515,9 @@ export class BattleScene {
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const spacingZ = kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z;
     const skin = this.skinFor(kind, squad.owner);
-    const maxUnits = skin && assetRegistry.has(skin) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const sprite = spriteAsset(skin);
+    const maxUnits =
+      sprite || (skin && assetRegistry.has(skin)) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
     const target = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(target, spacing, spacingZ);
     let changed = false;
@@ -1489,12 +1530,14 @@ export class BattleScene {
     }
     while (view.units.length < target) {
       const index = view.units.length;
-      const unit = new UnitActor({
-        kind,
-        palette: paletteFor(squad.owner),
-        variant: index % 3,
-        phase: unitJitter(squad.id, index, 4) * Math.PI * 2,
-      });
+      const unit = sprite
+        ? this.createSpriteActor(sprite)
+        : new UnitActor({
+            kind,
+            palette: paletteFor(squad.owner),
+            variant: index % 3,
+            phase: unitJitter(squad.id, index, 4) * Math.PI * 2,
+          });
       this.prepareSquadUnit(unit);
       view.group.add(unit);
       view.units.push(unit);
