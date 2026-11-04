@@ -34,6 +34,7 @@ export const CLASSIC_UNIT_SKINS: UnitSkinDef[] = [
 /** 八方向序列帧皮肤。不注册为 GLB 资产，由场景直接构造 SpriteUnitActor。 */
 export const SPRITE_UNIT_SKINS: UnitSkinDef[] = [
   { key: "sprite-ranger", label: "游侠 · 序列帧", family: "sprite", kind: "infantry" },
+  { key: "sprite-knight", label: "重甲盾兵 · 序列帧", family: "sprite", kind: "shield" },
 ];
 
 export const ALL_UNIT_SKINS: UnitSkinDef[] = [
