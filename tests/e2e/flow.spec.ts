@@ -402,6 +402,13 @@ test("next editor rotates a selected site with the gizmo", async ({ page }) => {
       ),
     )
     .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { __mlnxSiteRotation: (id: string) => number }).__mlnxSiteRotation("c1"),
+      ),
+    )
+    .toBeGreaterThan(0);
 });
 
 test("next editor keeps map rules on the map and terrain on foundations", async ({ page }) => {

@@ -500,6 +500,12 @@ export class EditorNext {
     });
     gizmo.addEventListener("objectChange", () => {
       this.gizmoDirty = true;
+      if (this.selection?.kind === "site" && this.selectedProxy) {
+        this.scene?.previewSiteRotation(
+          this.selection.id,
+          (this.selectedProxy.rotation.y * 180) / Math.PI,
+        );
+      }
       this.updateViewInfo();
     });
     gizmo.addEventListener("mouseUp", () => {
@@ -550,6 +556,8 @@ export class EditorNext {
         return atmosphere ? atmosphere.uuid : null;
       };
       (window as unknown as Record<string, unknown>).__mlnxRoadMarker = () => this.roadSelectionRoot?.children.length ?? 0;
+      (window as unknown as Record<string, unknown>).__mlnxSiteRotation = (id: string) =>
+        this.scene?.siteModelRotation(id) ?? null;
       (window as unknown as Record<string, unknown>).__mlnxGizmo = () => {
         if (!this.gizmo) return null;
         const gizmo = this.gizmo as unknown as { mode?: string; axis?: string | null; visible?: boolean };

@@ -162,6 +162,7 @@ interface CityView {
   owner: Owner;
   level: number;
   kind: string;
+  visualKey: string;
   buildToken: number;
   labelHeight: number;
   baseRadius: number;
@@ -898,7 +899,17 @@ export class BattleScene {
       }
       const position = this.positions.get(city.id);
       if (position) view.group.position.set(position.x, this.terrain.heightAt(position.x, position.z), position.z);
-      if (view.owner !== city.owner || view.level !== city.level || view.kind !== city.kind) {
+      const siteVisual = this.visual?.sites[city.id];
+      const visualKey = siteVisual
+        ? [siteVisual.assetId ?? "", siteVisual.rotation ?? 0, siteVisual.scale ?? 1].join("|")
+        : "";
+      if (
+        view.owner !== city.owner ||
+        view.level !== city.level ||
+        view.kind !== city.kind ||
+        view.visualKey !== visualKey
+      ) {
+        view.visualKey = visualKey;
         this.rebuildCityModel(view, city);
       }
 
@@ -1078,6 +1089,7 @@ export class BattleScene {
       owner: 255 as Owner,
       level: 0,
       kind: "",
+      visualKey: "",
       buildToken: 0,
       labelHeight: CITY_LABEL_HEIGHT,
       baseRadius: CITY_BASE_RADIUS,
@@ -1096,6 +1108,9 @@ export class BattleScene {
       if (mesh.geometry) mesh.geometry.dispose();
     });
     view.model.clear();
+    const siteVisual = this.visual?.sites[city.id];
+    view.model.rotation.y = ((siteVisual?.rotation ?? 0) * Math.PI) / 180;
+    view.model.scale.setScalar(siteVisual?.scale ?? 1);
     const seed = hashId(city.id) + city.level * 17;
     const palette = paletteFor(city.owner);
     const fallback = buildBuilding(siteBuildingKind(city.kind), palette, city.level, seed);
@@ -1107,7 +1122,6 @@ export class BattleScene {
     view.level = city.level;
     view.kind = city.kind;
 
-    const siteVisual = this.visual?.sites[city.id];
     const defaultAssetId = siteDefaultAsset(city.kind);
     const assetId = siteVisual?.assetId ?? defaultAssetId;
     if (!assetRegistry.has(assetId)) {
@@ -1125,8 +1139,6 @@ export class BattleScene {
           disposeObject(child);
           view.model.remove(child);
         }
-        object.rotation.y = ((siteVisual?.rotation ?? 0) * Math.PI) / 180;
-        object.scale.multiplyScalar(siteVisual?.scale ?? 1);
         view.model.add(object);
         this.enableShadows(view.model);
         this.fitCityLabel(view);
@@ -1524,6 +1536,15 @@ export class BattleScene {
     this.scene.background = atmosphere.background;
     this.scene.fog = new THREE.Fog(atmosphere.fogColor, atmosphere.fogNear, atmosphere.fogFar);
     this.configureSunShadow();
+  }
+
+  siteModelRotation(cityId: CityId): number {
+    return this.cityViews.get(cityId)?.model.rotation.y ?? 0;
+  }
+
+  previewSiteRotation(cityId: CityId, degrees: number): void {
+    const view = this.cityViews.get(cityId);
+    if (view) view.model.rotation.y = (degrees * Math.PI) / 180;
   }
 
   updateSites(map: MapDef, visual: MapVisual | null, state: SimState): void {
