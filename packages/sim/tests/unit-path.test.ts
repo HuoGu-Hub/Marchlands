@@ -48,7 +48,7 @@ function center(map: MapDef, x: number, z: number): [number, number] {
 
 describe("unit grid routing", () => {
   it("rejects a height step above the unit profile", () => {
-    const map = gridMap(2, 1, [0, 1000], [Surface.Grass, Surface.Grass]);
+    const map = gridMap(2, 1, [0, 70], [Surface.Grass, Surface.Grass]);
     const infantry = createUnitNavGrid(map, [], 1, "infantry");
     const elite = createUnitNavGrid(map, [], 1, "elite");
     if (!infantry || !elite) throw new Error("missing nav");
