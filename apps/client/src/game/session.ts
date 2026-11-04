@@ -21,6 +21,8 @@ import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
 const PLAN_CANCEL_WINDOW = 500;
+/** 开局倒计时与镜头推进时长。 */
+const INTRO_MS = 3600;
 const REASONS: Record<string, string> = {
   unknown_city: "据点不存在",
   unknown_target: "目标不存在",
@@ -88,10 +90,19 @@ export class GameSession {
   private dragY = 0;
   private dragStartX = 0;
   private dragStartY = 0;
+  private readonly introDisabled: boolean;
+  private introActive = false;
+  private introElapsed = 0;
+  private introHideTimer = 0;
+  private readonly introRoot: HTMLElement | null;
+  private readonly introCount: HTMLElement | null;
+  private readonly introLabel: HTMLElement | null;
 
   constructor(options: GameSessionOptions) {
     this.options = options;
-    const requested = Number(new URLSearchParams(window.location.search).get("speed") ?? "1");
+    const params = new URLSearchParams(window.location.search);
+    this.introDisabled = import.meta.env.DEV && params.get("intro") === "0";
+    const requested = Number(params.get("speed") ?? "1");
     this.timeScale = import.meta.env.DEV ? Math.max(1, Math.min(20, Number.isFinite(requested) ? requested : 1)) : 1;
     this.ai = createAi(2, options.aiTuning);
     this.scene = new BattleScene(options.canvas, options.map, options.visual ?? null, options.unitSkins ?? {});
@@ -105,6 +116,10 @@ export class GameSession {
     });
     this.bindInput();
     this.updateHud();
+    this.introRoot = options.hud.querySelector<HTMLElement>("#match-intro");
+    this.introCount = options.hud.querySelector<HTMLElement>("#match-intro-count");
+    this.introLabel = options.hud.querySelector<HTMLElement>("#match-intro-label");
+    void this.scene.prewarmSquadModels(options.unitSkins ?? {});
   }
 
   private slowRules() {
@@ -116,6 +131,7 @@ export class GameSession {
   }
 
   start(): void {
+    this.beginIntro();
     this.lastTime = performance.now();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -133,6 +149,59 @@ export class GameSession {
 
   isPaused(): boolean {
     return this.paused;
+  }
+
+  /** 开局倒计时是否仍在进行。 */
+  isIntroActive(): boolean {
+    return this.introActive;
+  }
+
+  private beginIntro(): void {
+    if (this.introDisabled) return;
+    const home = this.state.cities.find((city) => city.owner === 1);
+    if (!home) return;
+    this.introActive = true;
+    this.introElapsed = 0;
+    this.scene.startIntro(home.pos[0] / 10, home.pos[1] / 10, INTRO_MS);
+    if (!this.introRoot) return;
+    window.clearTimeout(this.introHideTimer);
+    this.introRoot.hidden = false;
+    this.introRoot.classList.remove("done");
+    requestAnimationFrame(() => {
+      if (this.introActive) this.introRoot?.classList.add("on");
+    });
+    this.updateIntroUi(true);
+  }
+
+  private updateIntroUi(force = false): void {
+    if (!this.introCount) return;
+    const remaining = INTRO_MS - this.introElapsed;
+    const label = remaining > 2600 ? "3" : remaining > 1600 ? "2" : remaining > 600 ? "1" : "开始";
+    if (!force && this.introCount.textContent === label) return;
+    this.introCount.textContent = label;
+    if (this.introLabel) this.introLabel.textContent = label === "开始" ? "" : "部署";
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    this.introCount.animate(
+      [
+        { opacity: 0.25, transform: "scale(1.16)" },
+        { opacity: 1, transform: "scale(1)" },
+      ],
+      { duration: 240, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" },
+    );
+  }
+
+  /** 结束倒计时：镜头落位并开始模拟；click / wheel 可直接跳过。 */
+  private finishIntro(): void {
+    if (!this.introActive) return;
+    this.introActive = false;
+    this.scene.skipIntro();
+    this.accumulator = 0;
+    if (!this.introRoot) return;
+    this.introRoot.classList.remove("on");
+    this.introRoot.classList.add("done");
+    this.introHideTimer = window.setTimeout(() => {
+      if (this.introRoot && !this.introActive) this.introRoot.hidden = true;
+    }, 280);
   }
 
   restart(): void {
@@ -159,9 +228,12 @@ export class GameSession {
     this.lastTime = performance.now();
     this.paused = false;
     this.finished = false;
-    this.select("c1");
+    const home = this.state.cities.find((city) => city.owner === 1);
+    if (home) this.select(home.id);
     this.updateHud();
     this.updatePlanUi();
+    void this.scene.prewarmSquadModels(this.options.unitSkins ?? {});
+    this.beginIntro();
   }
 
   getCity(id: CityId): CityState | undefined {
@@ -596,6 +668,11 @@ export class GameSession {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    window.clearTimeout(this.introHideTimer);
+    if (this.introRoot) {
+      this.introRoot.hidden = true;
+      this.introRoot.classList.remove("on", "done");
+    }
     this.multiSelect = false;
     this.plan = [];
     this.lastPlanClick = null;
@@ -692,7 +769,13 @@ export class GameSession {
     const delta = Math.min(250, Math.max(0, now - this.lastTime));
     this.lastTime = now;
 
-    if (!this.paused) {
+    if (this.introActive) {
+      if (!this.paused) {
+        this.introElapsed += delta;
+        this.updateIntroUi();
+        if (this.introElapsed >= INTRO_MS) this.finishIntro();
+      }
+    } else if (!this.paused) {
       this.accumulator += delta * this.timeScale;
       let steps = 0;
       // 高倍速下帧率低时允许多补几步，避免 15:00 的对局拖到超时。
@@ -705,7 +788,7 @@ export class GameSession {
     }
 
     this.updateSquadPaths();
-    this.scene.update(this.state, delta);
+    this.scene.update(this.state, this.paused ? 0 : delta);
     this.routeOverlay.render(this.state, this.selectedSquad);
     this.raf = requestAnimationFrame(this.frame);
   };
@@ -862,6 +945,7 @@ export class GameSession {
 
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
+    if (this.introActive) this.finishIntro();
     this.dragMoved = false;
     this.dragStartX = event.clientX;
     this.dragStartY = event.clientY;
@@ -1283,6 +1367,10 @@ export class GameSession {
 
   private readonly onWheel = (event: WheelEvent): void => {
     event.preventDefault();
+    if (this.introActive) {
+      this.finishIntro();
+      return;
+    }
     this.scene.zoomBy(event.deltaY > 0 ? -0.06 : 0.06);
   };
 

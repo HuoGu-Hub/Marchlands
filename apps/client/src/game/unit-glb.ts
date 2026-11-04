@@ -12,6 +12,17 @@ function clipKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+/** 兵种 GLB 自带展示用的地面与背景板，进场前必须摘掉，否则会跟着单位一起缩放。 */
+const STAGE_NODE_NAMES = new Set(["ground", "backdrop"]);
+
+function stripStageNodes(object: THREE.Object3D): void {
+  const stage: THREE.Object3D[] = [];
+  object.traverse((node) => {
+    if (STAGE_NODE_NAMES.has(node.name.toLowerCase())) stage.push(node);
+  });
+  for (const node of stage) node.removeFromParent();
+}
+
 /**
  * 资产剪辑名可能是 act_U01-A_idle 这类带前缀的命名，
  * 精确名找不到时按结尾段匹配，保证 idle / walk / attack 仍能对上。
@@ -43,6 +54,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
 
   constructor(object: THREE.Object3D, animations: THREE.AnimationClip[]) {
     super();
+    stripStageNodes(object);
     this.object = object;
     this.add(object);
     if (animations.length === 0) {

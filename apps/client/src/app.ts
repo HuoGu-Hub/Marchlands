@@ -96,17 +96,19 @@ const TEMPLATE = `
   <div class="vignette"></div>
   <div class="hud">
     <div class="hud-left">
-      <div class="res-card">
-        <svg viewBox="0 0 24 24"><path d="M4 20V10l4-3 4 3v10M12 20V7l4-3 4 3v13M3 20h18" /></svg>
-        <div><span>产兵据点</span><b id="hud-cities">1</b></div>
-      </div>
-      <div class="res-card">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5" /></svg>
-        <div><span>人口</span><b id="hud-pop">30</b></div>
-      </div>
-      <div class="res-card">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" /><path d="M12 8v8M9.5 10.2c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.7-1 1.5-2.5 1.8-2.5.8-2.5 1.8 1.1 1.7 2.5 1.7 2.5-.7 2.5-1.7" /></svg>
-        <div><span>金币</span><b id="hud-gold">0</b></div>
+      <div class="res-bar">
+        <div class="res-stat">
+          <svg viewBox="0 0 24 24"><path d="M4 20V10l4-3 4 3v10M12 20V7l4-3 4 3v13M3 20h18" /></svg>
+          <span>据点</span><b id="hud-cities">1</b>
+        </div>
+        <div class="res-stat">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5" /></svg>
+          <span>人口</span><b id="hud-pop">30</b>
+        </div>
+        <div class="res-stat">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" /><path d="M12 8v8M9.5 10.2c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.7-1 1.5-2.5 1.8-2.5.8-2.5 1.8 1.1 1.7 2.5 1.7 2.5-.7 2.5-1.7" /></svg>
+          <span>金币</span><b id="hud-gold">0</b>
+        </div>
       </div>
     </div>
     <div class="hud-right">
@@ -138,6 +140,10 @@ const TEMPLATE = `
     <div class="toast" id="toast"></div>
     <div class="plan-hint" id="plan-hint"></div>
     <div class="hint">拖动地图 · 左键选择 · 双击或拖拽派兵 · Ctrl 切换多选 · 点“派遣”发兵 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
+    <div class="match-intro" id="match-intro" hidden>
+      <div class="match-intro-count" id="match-intro-count">3</div>
+      <div class="match-intro-label" id="match-intro-label">部署</div>
+    </div>
   </div>
 
   <div class="overlay" id="pause-overlay">
@@ -349,6 +355,8 @@ export class App {
   }
 
   start(): void {
+    // 音频上下文初始化较慢，放在启动画面里完成。
+    audio.prepare();
     const status = this.el("boot-status");
     const bar = this.el("boot-progress");
     status.textContent = "正在装载美术资源";

@@ -5,16 +5,30 @@ class GameAudio {
   private master: GainNode | null = null;
   private volume = 0.7;
 
-  unlock(): void {
-    if (!this.context) {
-      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) return;
+  /**
+   * 在启动画面阶段先建好 AudioContext。
+   * 浏览器第一次创建它会阻塞 200ms 左右，放在这里可以藏在加载画面后面。
+   */
+  prepare(): void {
+    if (this.context) return;
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    try {
       this.context = new Ctor();
       this.master = this.context.createGain();
       this.master.gain.value = this.volume * 0.32;
       this.master.connect(this.context.destination);
+    } catch {
+      this.context = null;
+      this.master = null;
     }
-    if (this.context.state === "suspended") void this.context.resume();
+  }
+
+  unlock(): void {
+    this.prepare();
+    if (this.context?.state === "suspended") void this.context.resume();
   }
 
   setVolume(volume: number): void {

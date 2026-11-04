@@ -35,6 +35,8 @@ const CITY_BASE_HEIGHT = 0.26;
 const REACH_CELL_SIZE = 12;
 const REACH_CELL_LIFT = 0.1;
 const CITY_LABEL_HEIGHT = 4.3;
+/** 兵团路线要压在道路面之上，否则与道路重叠时会被完全遮住。 */
+const SQUAD_PATH_LIFT = 0.3;
 const UNIT_SCALE = 1.15;
 const CAVALRY_SCALE = 0.95;
 const SQUAD_LABEL_HEIGHT = 1.55;
@@ -50,6 +52,8 @@ const SQUAD_CAVALRY_SPACING = 0.78;
  */
 /** 单兵团最多渲染的小兵数；数值本身仍以兵团实时兵力显示在头顶。 */
 const MAX_SQUAD_UNITS = 20;
+/** GLB 小兵每个有几十个部件，兵团里只摆前几个，避免一次出兵几百个网格。 */
+const MAX_GLB_SQUAD_UNITS = 8;
 
 /** 每个小兵的确定性随机量，保证编队有松散感但不会每帧抖动。 */
 function unitJitter(id: string, index: number, salt: number): number {
@@ -221,6 +225,36 @@ export class BattleScene {
   private reachCellMesh: THREE.Mesh | null = null;
   private reachCorners: Float32Array | null = null;
   private reachCornersKey = "";
+  private readonly squadFillMaterial = new THREE.MeshBasicMaterial({
+    color: 0x7fe89a,
+    transparent: true,
+    opacity: 0.46,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  private readonly squadFillSelectedMaterial = new THREE.MeshBasicMaterial({
+    color: 0x9cffb8,
+    transparent: true,
+    opacity: 0.62,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  private readonly squadEdgeMaterial = new THREE.LineBasicMaterial({
+    color: 0xc9ffdb,
+    transparent: true,
+    opacity: 0.62,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  private readonly squadEdgeSelectedMaterial = new THREE.LineBasicMaterial({
+    color: 0xeafff1,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    toneMapped: false,
+  });
   private readonly reachFillMaterial = new THREE.MeshBasicMaterial({
     color: 0x2f7d3e,
     transparent: true,
@@ -250,6 +284,16 @@ export class BattleScene {
   private targetYaw = BASE_YAW;
   private pitch = PITCH;
   private zoom = 1.12;
+  private intro: {
+    fromX: number;
+    fromZ: number;
+    fromZoom: number;
+    toX: number;
+    toZ: number;
+    toZoom: number;
+    elapsed: number;
+    duration: number;
+  } | null = null;
   private frameY = 0;
   private readonly focus = new THREE.Vector3();
   private bounds = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
@@ -294,6 +338,14 @@ export class BattleScene {
     this.map = map;
     this.visual = visual;
     this.unitSkins = unitSkins;
+    for (const material of [
+      this.squadFillMaterial,
+      this.squadFillSelectedMaterial,
+      this.squadEdgeMaterial,
+      this.squadEdgeSelectedMaterial,
+    ]) {
+      material.userData.shared = true;
+    }
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -359,9 +411,7 @@ export class BattleScene {
       this.squadPathGroup.remove(view.fill);
       this.squadPathGroup.remove(view.edges);
       view.fill.geometry.dispose();
-      (view.fill.material as THREE.Material).dispose();
       view.edges.geometry.dispose();
-      (view.edges.material as THREE.Material).dispose();
     };
     const active = new Set(paths.map((path) => path.id));
     for (const [id, view] of this.squadPathViews) {
@@ -393,7 +443,7 @@ export class BattleScene {
         const base = positions.length / 3;
         const lifted = corners.map(([px, pz]): [number, number, number] => [
           px,
-          this.terrain.heightAt(px, pz) + 0.09,
+          this.terrain.heightAt(px, pz) + SQUAD_PATH_LIFT,
           pz,
         ]);
         for (const point of lifted) positions.push(...point);
@@ -407,26 +457,13 @@ export class BattleScene {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       geometry.setIndex(indices);
-      const material = new THREE.MeshBasicMaterial({
-        color: path.selected ? 0x9cffb8 : 0x7fe89a,
-        transparent: true,
-        opacity: path.selected ? 0.62 : 0.46,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        toneMapped: false,
-      });
+      const material = path.selected ? this.squadFillSelectedMaterial : this.squadFillMaterial;
       const fill = new THREE.Mesh(geometry, material);
       fill.renderOrder = 3;
       this.squadPathGroup.add(fill);
       const edgeGeometry = new THREE.BufferGeometry();
       edgeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
-      const edgeMaterial = new THREE.LineBasicMaterial({
-        color: path.selected ? 0xeafff1 : 0xc9ffdb,
-        transparent: true,
-        opacity: path.selected ? 0.9 : 0.62,
-        depthWrite: false,
-        toneMapped: false,
-      });
+      const edgeMaterial = path.selected ? this.squadEdgeSelectedMaterial : this.squadEdgeMaterial;
       const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
       edges.renderOrder = 4;
       this.squadPathGroup.add(edges);
@@ -791,6 +828,7 @@ export class BattleScene {
 
   update(state: SimState, deltaMs: number): void {
     this.elapsed += deltaMs;
+    this.updateIntro(deltaMs);
     this.updateCamera(deltaMs);
     this.updateCities(state);
     this.updateSquads(state);
@@ -824,6 +862,10 @@ export class BattleScene {
     for (const view of this.cityViews.values()) view.texture.dispose();
     for (const view of this.squadViews.values()) view.texture.dispose();
     this.atmosphere?.dispose();
+    this.squadFillMaterial.dispose();
+    this.squadFillSelectedMaterial.dispose();
+    this.squadEdgeMaterial.dispose();
+    this.squadEdgeSelectedMaterial.dispose();
     this.renderer.dispose();
   }
 
@@ -866,6 +908,118 @@ export class BattleScene {
     this.targetYaw = BASE_YAW;
     this.zoom = THREE.MathUtils.clamp(this.fitZoom() * fill, ZOOM_MIN, ZOOM_MAX);
     this.resize();
+  }
+
+  /** 开局镜头：从整张地图推近到己方起始据点。 */
+  startIntro(x: number, z: number, durationMs = 3600): void {
+    const fit = this.fitZoom();
+    const center = {
+      x: (this.bounds.minX + this.bounds.maxX) / 2,
+      z: (this.bounds.minZ + this.bounds.maxZ) / 2,
+    };
+    this.intro = {
+      fromX: center.x,
+      fromZ: center.z,
+      fromZoom: fit,
+      toX: x,
+      toZ: z,
+      toZoom: Math.max(fit, 1.55),
+      elapsed: 0,
+      duration: Math.max(1, durationMs),
+    };
+    this.focus.set(center.x, 0, center.z);
+    this.zoom = fit;
+    this.updateCamera(0);
+  }
+
+  /** 跳过开局镜头，直接落到终点取景。 */
+  skipIntro(): void {
+    if (!this.intro) return;
+    this.applyIntro(1);
+    this.intro = null;
+    this.updateCamera(0);
+    this.camera.updateMatrixWorld();
+  }
+
+  private applyIntro(t: number): void {
+    if (!this.intro) return;
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    this.focus.x = THREE.MathUtils.lerp(this.intro.fromX, this.intro.toX, eased);
+    this.focus.z = THREE.MathUtils.lerp(this.intro.fromZ, this.intro.toZ, eased);
+    this.zoom = THREE.MathUtils.lerp(this.intro.fromZoom, this.intro.toZoom, eased);
+  }
+
+  private updateIntro(deltaMs: number): void {
+    if (!this.intro) return;
+    this.intro.elapsed = Math.min(this.intro.duration, this.intro.elapsed + deltaMs);
+    this.applyIntro(this.intro.elapsed / this.intro.duration);
+    if (this.intro.elapsed >= this.intro.duration) this.intro = null;
+  }
+
+  /** 预编译兵团皮肤与小兵的着色器，避免第一次出兵时现场编译造成卡顿。 */
+  async prewarmSquadModels(unitSkins: Record<string, string>): Promise<void> {
+    if (this.disposed) return;
+    const temp = new THREE.Group();
+    temp.position.set(0, -1000, 0);
+    const actors: UnitActorView[] = [];
+    const spare: THREE.Object3D[] = [];
+    const kinds: UnitKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
+    for (const kind of kinds) {
+      const actor = new UnitActor({ kind, palette: paletteFor(1), variant: 0, phase: 0 });
+      temp.add(actor);
+      actors.push(actor);
+    }
+    const seen = new Set<string>();
+    for (const assetId of Object.values(unitSkins)) {
+      if (!assetId || seen.has(assetId) || !assetRegistry.has(assetId)) continue;
+      seen.add(assetId);
+      try {
+        const built = await assetRegistry.buildAnimated(assetId, { owner: 1 });
+        const actor = new GlbUnitActor(built.object, built.animations);
+        temp.add(actor);
+        actors.push(actor);
+      } catch {
+        // 皮肤缺失时对局仍走程序化小兵
+      }
+    }
+    const routeFill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.squadFillMaterial);
+    temp.add(routeFill);
+    spare.push(routeFill);
+    const routeEdge = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, 0, 0), new THREE.Vector3(0.5, 0, 0)]),
+      this.squadEdgeMaterial,
+    );
+    temp.add(routeEdge);
+    spare.push(routeEdge);
+    const labelCanvas = document.createElement("canvas");
+    labelCanvas.width = 64;
+    labelCanvas.height = 64;
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture, transparent: true, depthTest: false }));
+    temp.add(label);
+    spare.push(label);
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 12),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false }),
+    );
+    temp.add(shadow);
+    spare.push(shadow);
+
+    temp.traverse((object) => {
+      object.frustumCulled = false;
+    });
+    this.scene.add(temp);
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+      // 编译只建程序；真正渲染一帧才会把共享几何与贴图传到 GPU。
+      this.renderer.render(this.scene, this.camera);
+    } catch {
+      // 并行编译失败时退回首次渲染编译
+    }
+    this.scene.remove(temp);
+    for (const actor of actors) actor.dispose();
+    for (const object of spare) disposeObject(object);
+    labelTexture.dispose();
   }
 
   /** 编辑器容器尺寸变化。 */
@@ -1200,7 +1354,9 @@ export class BattleScene {
     const group = new THREE.Group();
     const kind = this.unitKindFor(squad.from);
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
-    const renderCount = Math.min(squad.count, MAX_SQUAD_UNITS);
+    const unitAssetId = this.skinFor(kind, squad.owner);
+    const maxUnits = unitAssetId && assetRegistry.has(unitAssetId) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const renderCount = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(renderCount, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
 
     const canvas = document.createElement("canvas");
@@ -1242,7 +1398,6 @@ export class BattleScene {
       strikeUntil: 0,
     };
 
-    const unitAssetId = this.skinFor(kind, squad.owner);
     if (unitAssetId && assetRegistry.has(unitAssetId)) {
       void this.populateGlbUnits(view, unitAssetId, squad, offsets, kind);
     } else {
@@ -1320,7 +1475,9 @@ export class BattleScene {
     const kind = this.unitKindFor(squad.from);
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const spacingZ = kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z;
-    const target = Math.min(squad.count, MAX_SQUAD_UNITS);
+    const skin = this.skinFor(kind, squad.owner);
+    const maxUnits = skin && assetRegistry.has(skin) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const target = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(target, spacing, spacingZ);
     let changed = false;
     while (view.units.length > target) {
@@ -1364,6 +1521,10 @@ export class BattleScene {
     view.loading = true;
     try {
       for (let index = 0; index < offsets.length; index += 1) {
+        // 每两三个小兵让出一帧，避免一个兵团在同一帧里克隆完造成卡顿。
+        if (index > 0 && index % 3 === 0) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
         const built = await assetRegistry.buildAnimated(assetId, {
           owner: squad.owner,
           seed: index + 1,

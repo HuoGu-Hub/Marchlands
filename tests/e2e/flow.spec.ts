@@ -2,7 +2,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 async function openClassicEditor(page: import("@playwright/test").Page): Promise<void> {
-  await page.goto("/?editor=classic");
+  await page.goto("/?editor=classic&intro=0");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-editor");
   await expect(page.locator("#page-editor")).toBeVisible();
@@ -14,7 +14,7 @@ async function openGame(
   speed?: number,
 ): Promise<void> {
   const series = mapId === "autumnvale01" || mapId === "snowpass01" ? "north" : "frontier";
-  await page.goto(`/?map=${mapId}${speed ? `&speed=${speed}` : ""}`);
+  await page.goto(`/?map=${mapId}&intro=0${speed ? `&speed=${speed}` : ""}`);
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-start");
   await expect(page.locator("#page-campaign")).toBeVisible();

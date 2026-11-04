@@ -227,15 +227,22 @@ function teamColorFor(role: string, owner: Owner): number | null {
   return null;
 }
 
+/** 同一模板材质的阵营染色结果只克隆一次，多个兵团共享，避免出兵时批量建材质。 */
+const tintedMaterials = new Map<string, THREE.Material>();
+
 function tintMaterial(material: THREE.Material, owner: Owner): THREE.Material {
   const role = material.name.toLowerCase();
   const color = teamColorFor(role, owner);
   if (color === null) return material;
+  const key = `${material.uuid}:${owner}`;
+  const cached = tintedMaterials.get(key);
+  if (cached) return cached;
   const clone = material.clone();
   const tinted = clone as THREE.MeshStandardMaterial;
   if (tinted.color instanceof THREE.Color) tinted.color.setHex(color);
-  clone.userData.shared = false;
+  clone.userData.shared = true;
   clone.name = material.name;
+  tintedMaterials.set(key, clone);
   return clone;
 }
 
