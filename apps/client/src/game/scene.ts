@@ -1924,7 +1924,7 @@ export class BattleScene {
       ring.position.set(position.x, this.terrain.heightAt(position.x, position.z) + 0.09, position.z);
       let marker = this.selectedMarkers.get(id);
       if (!marker) {
-        const geometry = new THREE.ConeGeometry(3.4, 5.2, 4);
+        const geometry = new THREE.ConeGeometry(2.55, 3.9, 4);
         geometry.rotateX(Math.PI);
         const material = new THREE.MeshBasicMaterial({
           color: 0xffc83a,
