@@ -1591,7 +1591,7 @@ body.preview-mode #preview-canvas {
 .skin-grid {
   display: flex;
   flex-wrap: nowrap;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 16px;
   height: 100%;
   overflow-x: auto;
@@ -1642,7 +1642,8 @@ body.preview-mode #preview-canvas {
 .skin-card-media {
   position: relative;
   display: block;
-  aspect-ratio: 4 / 5;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   background: #10170f;
 }
@@ -1684,6 +1685,7 @@ body.preview-mode #preview-canvas {
 
 .skin-card-copy {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 3px;
   padding: 11px 13px 13px;
