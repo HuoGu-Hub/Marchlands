@@ -133,12 +133,15 @@ def find_panels(foreground: np.ndarray, min_gap: int) -> list[tuple[int, int]]:
     return [r for r in merged if r[1] - r[0] >= min_width]
 
 
-def place_on_canvas(panel: Image.Image, size: int, pad: float) -> tuple[Image.Image, dict]:
+def place_on_canvas(
+    panel: Image.Image, size: int, pad: float, scale: float | None = None
+) -> tuple[Image.Image, dict]:
     bbox = panel.getbbox()
     panel = panel.crop(bbox)
     w, h = panel.size
     target = max(1, int(size * (1 - 2 * pad)))
-    scale = min(target / w, target / h)
+    if scale is None:
+        scale = min(target / w, target / h)
     nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
     resized = panel.resize((nw, nh), Image.LANCZOS)
 
@@ -177,12 +180,16 @@ def build_preview(frames: list[Image.Image], size: int) -> Image.Image:
     return sheet
 
 
-def process(path: Path, out_dir: Path, size: int, pad: float, thresh: int, dehalo: int) -> dict:
+def process(path: Path, out_dir: Path, size: int, pad: float, thresh: int, dehalo: int, columns: int) -> dict:
     raw = Image.open(path)
     trimmed = trim_white_bands(raw)
     keyed, bg_color = key_background(trimmed, thresh=thresh, dehalo=dehalo)
     alpha = np.asarray(keyed)[..., 3] > 8
-    panels = find_panels(alpha, min_gap=max(12, keyed.width // 120))
+    if columns > 0:
+        step = keyed.width / columns
+        panels = [(round(i * step), round((i + 1) * step)) for i in range(columns)]
+    else:
+        panels = find_panels(alpha, min_gap=max(12, keyed.width // 120))
 
     # Drop short leftovers such as watermark glyphs that survived the trim.
     boxes = []
@@ -199,10 +206,21 @@ def process(path: Path, out_dir: Path, size: int, pad: float, thresh: int, dehal
     target = out_dir / stem
     target.mkdir(parents=True, exist_ok=True)
 
-    frames, entries = [], []
-    for index, (x0, x1) in enumerate(panels, start=1):
+    crops = []
+    for x0, x1 in panels:
         box = keyed.crop((x0, 0, x1, keyed.height))
-        frame, meta = place_on_canvas(box, size, pad)
+        bounds = box.getbbox()
+        crops.append(box.crop(bounds) if bounds else box)
+
+    # 按列切分时用同一个缩放系数，否则抬脚帧会被放大，播起来会一胀一缩。
+    common_scale = None
+    if columns > 0 and crops:
+        tallest = max(c.height for c in crops)
+        common_scale = (size * (1 - 2 * pad)) / tallest if tallest else None
+
+    frames, entries = [], []
+    for index, box in enumerate(crops, start=1):
+        frame, meta = place_on_canvas(box, size, pad, common_scale)
         name = f"{stem}-p{index:02d}.png"
         frame.save(target / name)
         frames.append(frame)
@@ -226,6 +244,8 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--size", type=int, default=512)
     parser.add_argument("--pad", type=float, default=0.06)
+    parser.add_argument("--columns", type=int, default=0,
+                        help="split into this many equal columns instead of detecting panels")
     parser.add_argument("--dehalo", type=int, default=2,
                         help="pixels of halo to drop around the opaque core; 0 disables")
     parser.add_argument("--thresh", type=int, default=0,
@@ -245,7 +265,7 @@ def main() -> int:
 
     report = []
     for path in files:
-        result = process(path, out_dir, args.size, args.pad, args.thresh, args.dehalo)
+        result = process(path, out_dir, args.size, args.pad, args.thresh, args.dehalo, args.columns)
         report.append(result)
         print(f"{path.name}: {result['panels']} panel(s), bg={result['background']}, "
               f"trimmed={result['trimmed_size']}")
