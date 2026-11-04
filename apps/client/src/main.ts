@@ -19,6 +19,9 @@ const scene = params.get("scene");
 const previewMap = params.get("map");
 if (scene === "map-preview" && previewMap) {
   void import("./game/map-preview").then((module) => module.runMapPreview(host, previewMap));
+} else if (scene === "unit-portrait") {
+  const skin = params.get("skin");
+  if (skin) void import("./game/unit-portrait").then((module) => module.runUnitPortrait(host, skin));
 } else if (scene === "height") {
   runHeightTest(host);
 } else if (scene === "lab") {

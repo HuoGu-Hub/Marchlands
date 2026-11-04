@@ -16,7 +16,8 @@
     "dev": "pnpm --filter @marchlands/client dev",
     "package:win": "pnpm --filter @marchlands/client package:win",
     "test:e2e": "playwright test",
-    "previews": "node tools/previews/capture-previews.mjs"
+    "previews": "node tools/previews/capture-previews.mjs",
+    "portraits": "node tools/portraits/capture-portraits.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

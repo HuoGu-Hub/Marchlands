@@ -302,7 +302,8 @@ input {
 
 /* campaign library */
 #page-campaign,
-#page-series {
+#page-series,
+#page-skins {
   overflow: hidden;
   background:
     radial-gradient(circle at 20% 12%, rgba(64, 96, 66, 0.3), transparent 46%),
@@ -311,7 +312,8 @@ input {
 }
 
 #page-campaign::before,
-#page-series::before {
+#page-series::before,
+#page-skins::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1480,35 +1482,147 @@ body.preview-mode #preview-canvas {
   letter-spacing: 0.04em;
 }
 
-.skin-rows {
-  display: grid;
-  grid-template-columns: 1fr;
+.skins-library {
+  max-width: 1360px;
 }
 
-.skin-row {
-  display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 14px;
+.skin-tab-row {
+  display: flex;
   align-items: center;
-  padding: 9px 0;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 2px 0 20px;
   border-bottom: 1px solid var(--line);
 }
 
-.skin-row > span {
-  color: var(--muted);
-  font-size: 13px;
-  letter-spacing: 0.08em;
+.skin-tabs {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
 }
 
-.skin-row select {
-  width: 100%;
-  min-width: 0;
-  height: 34px;
-  background: #10160f;
-  border: 1px solid var(--line);
+.skin-tab {
+  appearance: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 11px 16px 12px;
+  font: 12px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.skin-tab:hover {
   color: var(--ink);
-  padding: 0 8px;
-  font-size: 12px;
+}
+
+.skin-tab.on {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+.skin-reset {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  font-size: 11px;
+}
+
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  padding-bottom: 40px;
+}
+
+.skin-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid rgba(232, 215, 180, 0.16);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(22, 29, 22, 0.94), rgba(12, 17, 13, 0.98));
+  color: var(--ink);
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.skin-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(214, 178, 106, 0.45);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.3);
+}
+
+.skin-card.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(214, 178, 106, 0.4), 0 20px 38px rgba(0, 0, 0, 0.34);
+}
+
+.skin-card-media {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background: #10170f;
+}
+
+.skin-card-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 320ms ease;
+}
+
+.skin-card:hover .skin-card-media img {
+  transform: scale(1.025);
+}
+
+.skin-card-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #10150f;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.skin-card.selected .skin-card-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.skin-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 13px 13px;
+}
+
+.skin-card-copy b {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.skin-card-copy small {
+  color: rgba(157, 154, 140, 0.72);
+  font-size: 10px;
+  letter-spacing: 0.16em;
 }
 
 .form-row {
@@ -1696,5 +1810,34 @@ body.preview-mode #preview-canvas {
 
   .card:hover .card-media img {
     transform: none;
+  }
+}
+
+@media (max-width: 1080px) {
+  .skin-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  .skin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .skin-tab-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .skin-tabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .skin-tab {
+    flex: 0 0 auto;
+    padding: 10px 12px 11px;
   }
 }

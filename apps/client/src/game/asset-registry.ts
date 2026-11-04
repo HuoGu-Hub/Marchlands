@@ -16,6 +16,7 @@ import {
 import { deleteStoredPack, listStoredPacks, saveStoredPack } from "./asset-pack-store";
 import { buildTerrainAsset, TERRAIN_ASSETS } from "./visual-assets";
 import type { TerrainAssetKind } from "./visual-assets";
+import { CLASSIC_UNIT_SKINS as UNIT_SKINS, FRONTIER_UNIT_SKINS } from "./unit-skins";
 
 const BUILDING_URLS = import.meta.glob("../assets/converted/buildings/*.glb", {
   query: "?inline",
@@ -39,27 +40,7 @@ const CHARACTER_URLS = import.meta.glob("../assets/characters/*.glb", {
   eager: true,
 }) as Record<string, string>;
 
-/** 内置兵团皮肤：Quaternius 角色经过细分与换装处理，战斗动作统一为 idle / walk / attack / death。 */
-const UNIT_SKINS = [
-  { key: "warrior", label: "剑士" },
-  { key: "cleric", label: "祭司" },
-  { key: "monk", label: "武僧" },
-  { key: "rogue", label: "游侠" },
-] as const;
-
-/** 边军兵种皮肤：key 对应 assets/characters 下的 GLB 文件名，含老兵 A / 新募 B 两版。 */
-const FRONTIER_UNIT_SKINS = [
-  { key: "frontier-infantry-A", label: "边军步兵 · 老兵" },
-  { key: "frontier-infantry-B", label: "边军步兵 · 新募" },
-  { key: "frontier-shield-A", label: "边军盾兵 · 老兵" },
-  { key: "frontier-shield-B", label: "边军盾兵 · 新募" },
-  { key: "frontier-cavalry-A", label: "边军骑兵 · 老兵" },
-  { key: "frontier-cavalry-B", label: "边军骑兵 · 新募" },
-  { key: "frontier-archer-A", label: "边军弓兵 · 老兵" },
-  { key: "frontier-archer-B", label: "边军弓兵 · 新募" },
-  { key: "frontier-elite-A", label: "边军精兵 · 老兵" },
-  { key: "frontier-elite-B", label: "边军精兵 · 新募" },
-] as const;
+/** 内置兵团皮肤目录见 unit-skins.ts，和首页皮肤卡片共用同一份数据。 */
 
 const CHARACTER_TEMPLATES = new Map<string, string>();
 for (const [path, url] of Object.entries(CHARACTER_URLS)) {

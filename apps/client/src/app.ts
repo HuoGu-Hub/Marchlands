@@ -18,10 +18,12 @@ import { art } from "./game/assets";
 import { mapSketch } from "./game/map-sketch";
 import { GameSession } from "./game/session";
 import { UNIT_KINDS, UNIT_NAMES } from "./game/unit-models";
-import { loadSettings, saveSettings } from "./settings";
+import { skinsForKind, unitSkinAssetId } from "./game/unit-skins";
+import type { UnitSkinDef, UnitSkinKind } from "./game/unit-skins";
+import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
 
-type PageId = "boot" | "menu" | "campaign" | "series" | "editor" | "game" | "result" | "settings";
+type PageId = "boot" | "menu" | "campaign" | "series" | "editor" | "game" | "result" | "skins" | "settings";
 
 const TEMPLATE = `
 <section id="page-boot" class="page active">
@@ -44,6 +46,7 @@ const TEMPLATE = `
     </div>
     <div class="menu-actions">
       <button class="btn primary" id="btn-start">开始游戏</button>
+      <button class="btn" id="btn-skins">自定义皮肤</button>
       <button class="btn" id="btn-editor">地图编辑器</button>
       <button class="btn" id="btn-settings">设置</button>
       <button class="btn ghost" id="btn-exit">退出</button>
@@ -198,6 +201,24 @@ const TEMPLATE = `
   </div>
 </section>
 
+<section id="page-skins" class="page">
+  <div class="library skins-library">
+    <header class="library-head">
+      <button class="back-btn" id="btn-skins-back">主菜单</button>
+      <div class="library-title">
+        <div class="kicker">外观</div>
+        <h2>自定义皮肤</h2>
+      </div>
+      <span class="library-count" id="skin-count"></span>
+    </header>
+    <div class="skin-tab-row">
+      <div class="skin-tabs" id="skin-tabs" role="tablist" aria-label="兵种"></div>
+      <button class="btn ghost skin-reset" id="btn-skin-reset">恢复默认</button>
+    </div>
+    <div class="skin-grid" id="skin-grid"></div>
+  </div>
+</section>
+
 <section id="page-settings" class="page">
   <div class="stage">
     <div class="panel">
@@ -229,13 +250,6 @@ const TEMPLATE = `
         <select id="set-language" disabled>
           <option>简体中文</option>
         </select>
-      </div>
-      <div class="settings-block">
-        <div class="settings-block-head">
-          <span>兵团皮肤</span>
-          <b id="skin-source">仅内置模型</b>
-        </div>
-        <div class="skin-rows" id="skin-rows"></div>
       </div>
       <p class="settings-note">分辨率与全屏在 Electron 客户端生效；浏览器内只保存偏好。</p>
       <div class="panel-actions">
@@ -344,6 +358,7 @@ export class App {
   private selection: RunConfig | null = null;
   private activeRun: RunConfig | null = null;
   private lastFocusedCard: HTMLElement | null = null;
+  private skinKind: UnitSkinKind = "infantry";
 
   constructor(root: HTMLElement, options: { autoStart?: boolean } = {}) {
     this.root = root;
@@ -397,6 +412,9 @@ export class App {
     this.on("btn-start", "click", () => this.openCampaign());
     this.on("btn-editor", "click", () => this.openEditor());
     this.on("btn-settings", "click", () => this.openSettings());
+    this.on("btn-skins", "click", () => this.openSkins());
+    this.on("btn-skins-back", "click", () => this.show("menu"));
+    this.on("btn-skin-reset", "click", () => this.resetSkin());
     this.on("btn-exit", "click", () => this.showOverlay("exit-overlay"));
     this.on("btn-campaign-back", "click", () => this.show("menu"));
     this.on("btn-series-back", "click", () => this.show("campaign"));
@@ -486,6 +504,10 @@ export class App {
         }
         if (this.isOverlayOpen("pause-overlay")) this.resumeGame();
         else this.pauseGame();
+        return;
+      }
+      if (this.page === "skins") {
+        this.show("menu");
         return;
       }
       if (this.page === "settings") {
@@ -592,42 +614,6 @@ export class App {
           description: level.blurb,
         });
       }
-    }
-  }
-
-  private syncUnitSkins(): void {
-    const host = this.el("skin-rows");
-    const assets = assetRegistry.builtinReady ? assetRegistry.list("unit") : [];
-    const source = this.el("skin-source");
-    source.textContent = assets.length > 0 ? `已有 ${assets.length} 套兵团皮肤` : "仅内置模型";
-    host.replaceChildren();
-    for (const kind of UNIT_KINDS) {
-      const row = document.createElement("label");
-      row.className = "skin-row";
-      const name = document.createElement("span");
-      name.textContent = UNIT_NAMES[kind];
-      const select = document.createElement("select");
-      const fallback = document.createElement("option");
-      fallback.value = "";
-      fallback.textContent = "默认模型";
-      select.append(fallback);
-      for (const asset of assets) {
-        const option = document.createElement("option");
-        option.value = asset.id;
-        option.textContent = asset.label;
-        select.append(option);
-      }
-      const current = this.settings.unitSkins[kind];
-      select.value = current && assets.some((asset) => asset.id === current) ? current : "";
-      select.addEventListener("change", () => {
-        const next = { ...this.settings.unitSkins };
-        if (select.value) next[kind] = select.value;
-        else delete next[kind];
-        this.settings = { ...this.settings, unitSkins: next };
-        saveSettings(this.settings);
-      });
-      row.append(name, select);
-      host.append(row);
     }
   }
 
@@ -1067,6 +1053,94 @@ export class App {
     }
   }
 
+  private openSkins(): void {
+    this.renderSkins();
+    this.show("skins");
+  }
+
+  private renderSkins(): void {
+    const tabs = this.el("skin-tabs");
+    tabs.replaceChildren(
+      ...UNIT_KINDS.map((kind) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `skin-tab${kind === this.skinKind ? " on" : ""}`;
+        button.dataset.kind = kind;
+        button.setAttribute("role", "tab");
+        button.setAttribute("aria-selected", String(kind === this.skinKind));
+        button.textContent = UNIT_NAMES[kind];
+        button.addEventListener("click", () => {
+          this.skinKind = kind;
+          this.renderSkins();
+        });
+        return button;
+      }),
+    );
+
+    const skins = skinsForKind(this.skinKind);
+    this.el("skin-count").textContent = `${UNIT_NAMES[this.skinKind]} · ${skins.length} 套可选`;
+    const current = this.settings.unitSkins[this.skinKind];
+    this.el("skin-grid").replaceChildren(
+      ...skins.map((skin) => this.buildSkinCard(skin, current === unitSkinAssetId(skin.key))),
+    );
+  }
+
+  private buildSkinCard(skin: UnitSkinDef, selected: boolean): HTMLElement {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = `skin-card${selected ? " selected" : ""}`;
+    card.dataset.skinKey = skin.key;
+    card.setAttribute("aria-pressed", String(selected));
+
+    const media = document.createElement("span");
+    media.className = "skin-card-media";
+    const image = document.createElement("img");
+    image.src = `${import.meta.env.BASE_URL}skins/${skin.key}.png`;
+    image.alt = `${skin.label}正面照`;
+    image.loading = "lazy";
+    const check = document.createElement("span");
+    check.className = "skin-card-check";
+    check.textContent = "✓";
+    media.append(image, check);
+
+    const copy = document.createElement("span");
+    copy.className = "skin-card-copy";
+    const name = document.createElement("b");
+    name.textContent = skin.label;
+    const tag = document.createElement("small");
+    tag.textContent =
+      skin.family === "frontier"
+        ? `边军 · ${skin.variant === "A" ? "老兵" : "新募"}`
+        : skin.family === "sprite"
+          ? "序列帧"
+          : "通用角色";
+    copy.append(name, tag);
+    card.append(media, copy);
+    card.addEventListener("click", () => this.chooseSkin(skin));
+    return card;
+  }
+
+  private chooseSkin(skin: UnitSkinDef): void {
+    this.settings = {
+      ...this.settings,
+      unitSkins: { ...this.settings.unitSkins, [this.skinKind]: unitSkinAssetId(skin.key) },
+    };
+    saveSettings(this.settings);
+    this.toast(`已选择 ${skin.label}`);
+    this.renderSkins();
+  }
+
+  private resetSkin(): void {
+    const fallback = DEFAULT_SETTINGS.unitSkins[this.skinKind];
+    const next = { ...this.settings.unitSkins };
+    if (fallback) next[this.skinKind] = fallback;
+    else delete next[this.skinKind];
+    this.settings = { ...this.settings, unitSkins: next };
+    saveSettings(this.settings);
+    this.toast(`${UNIT_NAMES[this.skinKind]}已恢复默认皮肤`);
+    this.renderSkins();
+  }
+
   private openSettings(): void {
     this.syncSettingsForm();
     this.show("settings");
@@ -1078,7 +1152,6 @@ export class App {
     const volume = this.el("set-volume") as HTMLInputElement;
     volume.value = String(this.settings.volume);
     this.el("set-volume-out").textContent = String(this.settings.volume);
-    this.syncUnitSkins();
   }
 
   private applySettingsForm(notify: boolean): void {

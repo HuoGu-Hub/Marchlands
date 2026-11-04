@@ -68,8 +68,12 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
       action.clampWhenFinished = false;
       this.actions.set(clipKey(clip.name), action);
     }
+    // 剪辑顺序不固定，优先播放待机，避免一进场就循环挥击。
     const first = animations[0];
-    const action = this.actions.get(clipKey(first.name)) ?? findClip(this.actions, [clipKey(first.name)]);
+    const action =
+      this.pickClip(false) ??
+      this.actions.get(clipKey(first.name)) ??
+      findClip(this.actions, [clipKey(first.name)]);
     if (action) {
       action.play();
       action.setEffectiveWeight(1);

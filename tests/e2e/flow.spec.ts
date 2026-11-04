@@ -829,18 +829,25 @@ test("settings persist to local storage", async ({ page }) => {
   expect(stored).toContain('"volume":35');
 });
 
-test("unit skins live in settings and no longer block the level flow", async ({ page }) => {
+test("skin cards live on the home page and save the chosen look", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-settings");
-  await expect(page.locator("#skin-rows .skin-row")).toHaveCount(5);
-  await expect(page.locator("#skin-source")).toContainText(/兵团皮肤|内置模型/);
-  await page.click("#btn-settings-back");
+  await page.click("#btn-skins");
+  await expect(page.locator("#page-skins")).toBeVisible();
+  await expect(page.locator("#skin-tabs .skin-tab")).toHaveCount(5);
+  await expect(page.locator("#skin-grid .skin-card")).toHaveCount(7);
+  await expect(page.locator("#skin-grid .skin-card img").first()).toHaveAttribute("src", /\/skins\//);
+
+  await page.click('.skin-card[data-skin-key="frontier-infantry-B"]');
+  await expect(page.locator('.skin-card[data-skin-key="frontier-infantry-B"]')).toHaveClass(/selected/);
+  const stored = await page.evaluate(() => localStorage.getItem("marchlands.settings.v1"));
+  expect(stored).toContain('"infantry":"builtin:unit.frontier-infantry-B"');
+
+  await page.click('.skin-tab[data-kind="cavalry"]');
+  await expect(page.locator("#skin-count")).toContainText("骑兵");
+  await expect(page.locator("#skin-grid .skin-card")).toHaveCount(6);
+  await page.click("#btn-skins-back");
   await expect(page.locator("#page-menu")).toBeVisible();
-  await page.click("#btn-start");
-  await expect(page.locator("#page-campaign")).toBeVisible();
-  await expect(page.locator("#page-briefing")).toHaveCount(0);
-  await expect(page.locator("#page-settings")).not.toBeVisible();
 });
 
 test("height test scene boots with a live canvas", async ({ page }) => {
