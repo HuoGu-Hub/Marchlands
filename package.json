@@ -15,7 +15,8 @@
     "build:crossroads01": "pnpm --filter @marchlands/map-export build:crossroads01",
     "dev": "pnpm --filter @marchlands/client dev",
     "package:win": "pnpm --filter @marchlands/client package:win",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "previews": "node tools/previews/capture-previews.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

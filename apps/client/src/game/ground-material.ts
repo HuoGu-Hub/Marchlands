@@ -19,6 +19,27 @@ function load(path: string | undefined, colorSpace: boolean): THREE.Texture | nu
   return texture;
 }
 
+/**
+ * 预载地面贴图并写入缓存，供关卡封面截图等一次性渲染使用。
+ * 正常对局不需要调用，地形会自己异步加载。
+ */
+export async function preloadGroundMaterial(name: string | undefined): Promise<void> {
+  if (!name || name.startsWith("custom.")) return;
+  const key = name.toLowerCase();
+  if (cache.has(key)) return;
+  const url = URLS[`../assets/materials/${key}/color.jpg`];
+  if (!url) return;
+  try {
+    const texture = await loader.loadAsync(url);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    cache.set(key, new THREE.MeshStandardMaterial({ map: texture, roughness: 0.95, metalness: 0 }));
+  } catch {
+    // 贴图缺失时地形退回顶点色
+  }
+}
+
 export function groundMaterial(name: string | undefined): THREE.MeshStandardMaterial | null {
   if (!name) return null;
   if (name.startsWith("custom.")) return customGroundMaterial(name);

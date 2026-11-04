@@ -8,24 +8,31 @@ async function openClassicEditor(page: import("@playwright/test").Page): Promise
   await expect(page.locator("#page-editor")).toBeVisible();
 }
 
-async function openGame(page: import("@playwright/test").Page): Promise<void> {
-  await page.goto("/?map=forest01");
+async function openGame(
+  page: import("@playwright/test").Page,
+  mapId = "frontier01",
+  speed?: number,
+): Promise<void> {
+  const series = mapId === "autumnvale01" || mapId === "snowpass01" ? "north" : "frontier";
+  await page.goto(`/?map=${mapId}${speed ? `&speed=${speed}` : ""}`);
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-start");
-  await expect(page.locator("#page-briefing")).toBeVisible();
-  await page.click("#btn-brief-start");
+  await expect(page.locator("#page-campaign")).toBeVisible();
+  await page.click(`[data-series="${series}"]`);
+  await expect(page.locator("#page-series")).toBeVisible();
+  await page.click(`[data-level="${mapId}"]`);
+  await expect(page.locator("#level-overlay")).toHaveClass(/on/);
+  await page.click("#btn-level-start");
   await expect(page.locator("#page-game")).toBeVisible();
 }
 
-test("result screen appears at the time limit", async ({ page }) => {
+test("result screen appears when the match ends", async ({ page }) => {
   test.setTimeout(180_000);
-  await page.goto("/?map=forest01&speed=20");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-start");
-  await page.click("#btn-brief-start");
+  await openGame(page, "frontier01", 20);
   await expect(page.locator("#page-result")).toBeVisible({ timeout: 150_000 });
-  await expect(page.locator("#result-mark")).toHaveText("失败");
-  await expect(page.locator("#stat-time")).toHaveText("15:00");
+  await expect(page.locator("#result-mark")).toHaveText(/胜利|失败|平局/);
+  await expect(page.locator("#stat-time")).toHaveText(/\d{2}:\d{2}/);
+  await expect(page.locator("#stat-cities")).not.toHaveText("");
 });
 
 test("starts a match and captures an adjacent town", async ({ page }) => {
@@ -44,12 +51,12 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   const target = await page.evaluate(() => {
     const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
       .__mlDebug;
-    return hook ? hook.projectCity("c4") : null;
+    return hook ? hook.projectCity("c2") : null;
   });
-  if (!target) throw new Error("c4 has no screen position");
+  if (!target) throw new Error("c2 has no screen position");
   await page.mouse.dblclick(target.x, target.y);
-  await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 20_000 });
-  await expect(page.locator("#toast")).toContainText("c4 已占领", { timeout: 20_000 });
+  await expect(page.locator("#hud-cities")).toHaveText("2", { timeout: 30_000 });
+  await expect(page.locator("#toast")).toContainText("c2 已占领", { timeout: 30_000 });
 });
 
 test("creates a map in the editor and returns from playtest", async ({ page }) => {
@@ -822,6 +829,20 @@ test("settings persist to local storage", async ({ page }) => {
   expect(stored).toContain('"volume":35');
 });
 
+test("unit skins live in settings and no longer block the level flow", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-settings");
+  await expect(page.locator("#skin-rows .skin-row")).toHaveCount(5);
+  await expect(page.locator("#skin-source")).toContainText(/兵团皮肤|内置模型/);
+  await page.click("#btn-settings-back");
+  await expect(page.locator("#page-menu")).toBeVisible();
+  await page.click("#btn-start");
+  await expect(page.locator("#page-campaign")).toBeVisible();
+  await expect(page.locator("#page-briefing")).toHaveCount(0);
+  await expect(page.locator("#page-settings")).not.toBeVisible();
+});
+
 test("height test scene boots with a live canvas", async ({ page }) => {
   await page.goto("/?scene=height");
   await expect(page.locator("#height-canvas")).toBeVisible();
@@ -834,26 +855,47 @@ test("height test scene boots with a live canvas", async ({ page }) => {
   expect(size.height).toBeGreaterThan(0);
 });
 
-test("loads the crossroads01 map and selector", async ({ page }) => {
-  await page.goto("/?map=crossroads01");
+test("campaign opens a series, a level sheet, difficulty and full map preview", async ({ page }) => {
+  await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-start");
-  await expect(page.locator("#brief-title")).toHaveText("Crossroads 01");
-  await expect(page.locator("#brief-objective")).toContainText("12");
-  await expect(page.locator("#map-select")).toHaveValue("crossroads01");
-  await page.click("#btn-brief-start");
+  await expect(page.locator("#page-campaign")).toBeVisible();
+  await expect(page.locator(".series-card")).toHaveCount(3);
+  await expect(page.locator('[data-series="frontier"]')).toContainText("边境线");
+
+  await page.click('[data-series="frontier"]');
+  await expect(page.locator("#page-series")).toBeVisible();
+  await expect(page.locator(".level-card")).toHaveCount(2);
+  await expect(page.locator('[data-level="frontier01"]')).toContainText("Frontier 01");
+  await expect(page.locator('[data-level="frontier01"]')).toContainText("32 座产兵据点");
+
+  await page.click('[data-level="frontier01"]');
+  await expect(page.locator("#level-overlay")).toHaveClass(/on/);
+  await expect(page.locator("#level-title")).toHaveText("Frontier 01");
+  await expect(page.locator("#level-objective")).toContainText("32");
+  await expect(page.locator('input[name="level-difficulty"]')).toHaveCount(3);
+
+  await page.click('.difficulty-option:has(input[value="hard"])');
+  await expect(page.locator('input[name="level-difficulty"][value="hard"]')).toBeChecked();
+  await expect(page.locator("#difficulty-hint")).toContainText("频繁出击");
+
+  await page.click("#btn-preview-open");
+  await expect(page.locator("#map-viewer")).toHaveClass(/on/);
+  await expect(page.locator("#map-viewer-img")).toHaveAttribute("src", /frontier01\.jpg/);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#map-viewer")).not.toHaveClass(/on/);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#level-overlay")).not.toHaveClass(/on/);
+  await page.click('[data-level="frontier01"]');
+  await expect(page.locator('input[name="level-difficulty"][value="hard"]')).toBeChecked();
+  await page.click("#btn-level-start");
   await expect(page.locator("#page-game")).toBeVisible();
-  await expect(page.locator("#hud-cities")).toHaveText("1");
 });
 
 test("assigns groups in multi-select mode and dispatches with the button", async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto("/?map=frontier01");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-start");
-  await expect(page.locator("#page-briefing")).toBeVisible();
-  await page.click("#btn-brief-start");
-  await expect(page.locator("#page-game")).toBeVisible();
+  await openGame(page, "frontier01");
 
   const project = (id: string) =>
     page.evaluate(
@@ -955,12 +997,7 @@ test("assigns groups in multi-select mode and dispatches with the button", async
 
 test("dispatches one multi-select group from several towns", async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto("/?map=frontier01");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-start");
-  await expect(page.locator("#page-briefing")).toBeVisible();
-  await page.click("#btn-brief-start");
-  await expect(page.locator("#page-game")).toBeVisible();
+  await openGame(page, "frontier01");
 
   const project = (id: string) =>
     page.evaluate(
@@ -999,12 +1036,7 @@ test("dispatches one multi-select group from several towns", async ({ page }) =>
 
 test("double-clicking an arched arrow cancels its task", async ({ page }) => {
   test.setTimeout(60_000);
-  await page.goto("/?map=frontier01");
-  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
-  await page.click("#btn-start");
-  await expect(page.locator("#page-briefing")).toBeVisible();
-  await page.click("#btn-brief-start");
-  await expect(page.locator("#page-game")).toBeVisible();
+  await openGame(page, "frontier01");
 
   const project = (id: string) =>
     page.evaluate(

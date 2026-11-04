@@ -13,6 +13,23 @@ function clipKey(name: string): string {
 }
 
 /**
+ * 资产剪辑名可能是 act_U01-A_idle 这类带前缀的命名，
+ * 精确名找不到时按结尾段匹配，保证 idle / walk / attack 仍能对上。
+ */
+function findClip(actions: Map<string, THREE.AnimationAction>, keys: string[]): THREE.AnimationAction | null {
+  for (const key of keys) {
+    const exact = actions.get(key);
+    if (exact) return exact;
+  }
+  for (const key of keys) {
+    for (const [name, action] of actions) {
+      if (name.endsWith(key)) return action;
+    }
+  }
+  return null;
+}
+
+/**
  * 播放 GLB 单位资产的动画剪辑。骨骼动画与命名节点动画都走 AnimationMixer。
  * 剪辑优先使用 walk / run / move 与 idle / stand，缺失时退回第一个剪辑。
  */
@@ -40,7 +57,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
       this.actions.set(clipKey(clip.name), action);
     }
     const first = animations[0];
-    const action = this.actions.get(clipKey(first.name));
+    const action = this.actions.get(clipKey(first.name)) ?? findClip(this.actions, [clipKey(first.name)]);
     if (action) {
       action.play();
       action.setEffectiveWeight(1);
@@ -65,7 +82,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
 
   playAttack(): void {
     if (!this.mixer) return;
-    const action = this.actions.get("attack");
+    const action = findClip(this.actions, ["attack"]);
     if (!action || action === this.attackAction) return;
     action.reset();
     action.setLoop(THREE.LoopOnce, 1);
@@ -106,10 +123,6 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
     const preferred = moving
       ? ["walk", "run", "move", "runcycle", "walkcycle"]
       : ["idle", "stand", "breath", "idleloop"];
-    for (const key of preferred) {
-      const action = this.actions.get(key);
-      if (action) return action;
-    }
-    return this.actions.values().next().value ?? null;
+    return findClip(this.actions, preferred) ?? this.actions.values().next().value ?? null;
   }
 }

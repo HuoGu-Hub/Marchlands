@@ -2,6 +2,7 @@ import { createAi, createGame, step } from "@marchlands/sim";
 import type { MapVisual } from "@marchlands/map-authoring";
 import type {
   AiController,
+  AiTuning,
   CityId,
   CityState,
   Command,
@@ -46,6 +47,8 @@ export interface GameSessionOptions {
   visual?: MapVisual | null;
   /** 开场前选定的兵团皮肤：兵种 → 资产 id。 */
   unitSkins?: Record<string, string>;
+  /** 本局敌军的行为参数，缺省为标准难度。 */
+  aiTuning?: AiTuning;
   rules: Ruleset;
   onFinish: (state: SimState) => void;
   onToast: (text: string) => void;
@@ -90,7 +93,7 @@ export class GameSession {
     this.options = options;
     const requested = Number(new URLSearchParams(window.location.search).get("speed") ?? "1");
     this.timeScale = import.meta.env.DEV ? Math.max(1, Math.min(20, Number.isFinite(requested) ? requested : 1)) : 1;
-    this.ai = createAi(2);
+    this.ai = createAi(2, options.aiTuning);
     this.scene = new BattleScene(options.canvas, options.map, options.visual ?? null, options.unitSkins ?? {});
     this.simMap = synthesizeGrid(options.map, this.scene);
     this.state = createGame(this.simMap, Math.floor(Math.random() * 1_000_000_000), this.slowRules());

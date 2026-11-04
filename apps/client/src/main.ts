@@ -8,12 +8,17 @@ import { runRoadShowcase } from "./game/road-showcase";
 import { runSwitchDemo } from "./game/switch-demo";
 import { runUnitGallery } from "./game/unit-gallery";
 import { runTownShowcase } from "./game/town-showcase";
+import { runFrontierUnitShowcase } from "./game/frontier-unit-showcase";
 
 const host = document.getElementById("app");
 if (!host) throw new Error("missing #app");
 
-const scene = new URLSearchParams(window.location.search).get("scene");
-if (scene === "height") {
+const params = new URLSearchParams(window.location.search);
+const scene = params.get("scene");
+const previewMap = params.get("map");
+if (scene === "map-preview" && previewMap) {
+  void import("./game/map-preview").then((module) => module.runMapPreview(host, previewMap));
+} else if (scene === "height") {
   runHeightTest(host);
 } else if (scene === "lab") {
   runAssetLab(host);
@@ -29,6 +34,11 @@ if (scene === "height") {
   runRoadShowcase(host);
 } else if (scene === "units") {
   runUnitGallery(host);
+} else if (scene === "frontier-battle") {
+  // 直接进真实对局，开场即用边军兵种皮肤；?map= 可换地图
+  new App(host, { autoStart: true }).start();
+} else if (scene === "frontier-units") {
+  runFrontierUnitShowcase(host);
 } else if (scene === "convert") {
   void import("./game/convert-scene").then((module) => module.runModelConvert(host));
 } else {

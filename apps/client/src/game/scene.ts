@@ -248,6 +248,7 @@ export class BattleScene {
   private yawIndex = 0;
   private yaw = BASE_YAW;
   private targetYaw = BASE_YAW;
+  private pitch = PITCH;
   private zoom = 1.12;
   private frameY = 0;
   private readonly focus = new THREE.Vector3();
@@ -853,6 +854,20 @@ export class BattleScene {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /** 关卡预览取景：对准地图中心，把整座岛收进画面。 */
+  frameWholeMap(pitchDegrees = 34, fill = 0.97): void {
+    this.pitch = THREE.MathUtils.degToRad(pitchDegrees);
+    this.focus.set(
+      (this.bounds.minX + this.bounds.maxX) / 2,
+      0,
+      (this.bounds.minZ + this.bounds.maxZ) / 2,
+    );
+    this.yaw = BASE_YAW;
+    this.targetYaw = BASE_YAW;
+    this.zoom = THREE.MathUtils.clamp(this.fitZoom() * fill, ZOOM_MIN, ZOOM_MAX);
+    this.resize();
+  }
+
   /** 编辑器容器尺寸变化。 */
   resizeEditor(): void {
     this.resize();
@@ -873,10 +888,10 @@ export class BattleScene {
     if (Math.abs(delta) < 0.002) this.yaw = this.targetYaw;
 
     const distance = this.cameraDistance();
-    const horizontal = Math.cos(PITCH) * distance;
+    const horizontal = Math.cos(this.pitch) * distance;
     this.camera.position.set(
       this.focus.x + Math.sin(this.yaw) * horizontal,
-      this.frameY + Math.sin(PITCH) * distance,
+      this.frameY + Math.sin(this.pitch) * distance,
       this.focus.z + Math.cos(this.yaw) * horizontal,
     );
     this.camera.lookAt(this.focus.x, this.frameY, this.focus.z);
@@ -2291,7 +2306,7 @@ export class BattleScene {
     const sin = Math.abs(Math.sin(this.yaw));
     const depth = 2 * (island.radiusZ * cos + island.radiusX * sin);
     const width = 2 * (island.radiusX * cos + island.radiusZ * sin);
-    const vertical = depth * Math.sin(PITCH) + island.depth * Math.cos(PITCH) + 16;
+    const vertical = depth * Math.sin(this.pitch) + island.depth * Math.cos(this.pitch) + 16;
     const horizontal = width + 16;
     const aspect = Math.max(0.6, this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight));
     const fit = Math.min(VIEW_HEIGHT / vertical, (VIEW_HEIGHT * aspect) / horizontal);

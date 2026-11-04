@@ -47,6 +47,20 @@ const UNIT_SKINS = [
   { key: "rogue", label: "游侠" },
 ] as const;
 
+/** 边军兵种皮肤：key 对应 assets/characters 下的 GLB 文件名，含老兵 A / 新募 B 两版。 */
+const FRONTIER_UNIT_SKINS = [
+  { key: "frontier-infantry-A", label: "边军步兵 · 老兵" },
+  { key: "frontier-infantry-B", label: "边军步兵 · 新募" },
+  { key: "frontier-shield-A", label: "边军盾兵 · 老兵" },
+  { key: "frontier-shield-B", label: "边军盾兵 · 新募" },
+  { key: "frontier-cavalry-A", label: "边军骑兵 · 老兵" },
+  { key: "frontier-cavalry-B", label: "边军骑兵 · 新募" },
+  { key: "frontier-archer-A", label: "边军弓兵 · 老兵" },
+  { key: "frontier-archer-B", label: "边军弓兵 · 新募" },
+  { key: "frontier-elite-A", label: "边军精兵 · 老兵" },
+  { key: "frontier-elite-B", label: "边军精兵 · 新募" },
+] as const;
+
 const CHARACTER_TEMPLATES = new Map<string, string>();
 for (const [path, url] of Object.entries(CHARACTER_URLS)) {
   CHARACTER_TEMPLATES.set(buildingKey(path), url);
@@ -409,6 +423,25 @@ export class AssetRegistry {
         },
       });
     }
+
+    for (const skin of FRONTIER_UNIT_SKINS) {
+      this.addBuiltin({
+        id: `builtin:unit.${skin.key}`,
+        kind: "unit",
+        label: skin.label,
+        tags: ["兵团皮肤", "边军"],
+        scale: 1,
+        rotation: 0,
+        footprint: 1.2,
+        height: 1.6,
+        source: "builtin",
+        build: async () => {
+          const template = await this.characterTemplate(skin.key);
+          if (!template) throw new Error(`单位皮肤模型缺失：${skin.key}`);
+          return cloneSkeleton(template.object);
+        },
+      });
+    }
     return true;
   }
 
@@ -556,7 +589,9 @@ export class AssetRegistry {
       const key = id.startsWith("builtin:unit.") ? id.slice("builtin:unit.".length) : "";
       const template = await this.characterTemplate(key);
       if (!template) throw new Error(`单位皮肤缺少模型：${id}`);
-      return { object: cloneSkeleton(template.object), animations: template.animations };
+      const object = cloneSkeleton(template.object);
+      applyTeamColor(object, normalizeContext(context).owner);
+      return { object, animations: template.animations };
     }
     const asset = this.packAssets.get(id);
     if (!asset) throw new Error(`未知资产：${id}`);

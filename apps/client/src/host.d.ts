@@ -2,6 +2,8 @@ export {};
 
 declare global {
   interface Window {
+    /** 关卡预览页完成首帧渲染。 */
+    __mlPreviewReady?: boolean;
     marchlandsHost?: {
       setSize(width: number, height: number): Promise<void>;
       setFullscreen(enabled: boolean): Promise<void>;

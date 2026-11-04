@@ -1,28 +1,27 @@
-import autumnvaleMapJson from "@marchlands/content/maps/autumnvale01.json";
-import crossroadsMapJson from "@marchlands/content/maps/crossroads01.json";
-import frontierMapJson from "@marchlands/content/maps/frontier01.json";
-import forestMapJson from "@marchlands/content/maps/forest01.json";
-import highlandMapJson from "@marchlands/content/maps/highland01.json";
-import snowpassMapJson from "@marchlands/content/maps/snowpass01.json";
-import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
+import { BASE_RULES, mapEntry } from "./game/map-catalog";
 import { compileDocument, defaultVisualForMap, parseDocument } from "@marchlands/map-authoring";
 import type { MapDocument, MapVisual } from "@marchlands/map-authoring";
 import { defenseMilliFor, isProductionSiteKind } from "@marchlands/sim";
-import { siteKindLabel } from "./game/site-kind";
 import type { MapDef, SimState } from "@marchlands/sim";
+import { CAMPAIGN, defaultLevelId, findLevel, previewUrl } from "./campaign";
+import type { LevelDef, SeriesDef } from "./campaign";
+import { DIFFICULTIES, difficultyDef, isDifficultyId } from "./difficulty";
+import type { DifficultyId } from "./difficulty";
+import { siteKindLabel } from "./game/site-kind";
 import { audio } from "./audio";
 import { EditorController } from "./editor/editor";
 import { EditorNext } from "./editor/next/editor-next";
 import { openMapText } from "./editor/map-io";
 import { assetRegistry } from "./game/asset-registry";
 import { art } from "./game/assets";
+import { mapSketch } from "./game/map-sketch";
 import { GameSession } from "./game/session";
 import { UNIT_KINDS, UNIT_NAMES } from "./game/unit-models";
 import { loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
 
-type PageId = "boot" | "menu" | "briefing" | "editor" | "game" | "result" | "settings";
+type PageId = "boot" | "menu" | "campaign" | "series" | "editor" | "game" | "result" | "settings";
 
 const TEMPLATE = `
 <section id="page-boot" class="page active">
@@ -53,41 +52,37 @@ const TEMPLATE = `
   </div>
 </section>
 
-<section id="page-briefing" class="page">
-  <div class="stage">
-    <div class="panel">
-      <div class="kicker">战役简报</div>
-      <h2 id="brief-title">Forest 01</h2>
-      <p id="brief-desc">你的旗帜插在西侧。东侧的红旗正在集结，五座中立据点等待第一个到达的人。</p>
-      <div class="form-row">
-        <label for="map-select">地图</label>
-        <select id="map-select">
-          <option value="forest01">Forest 01</option>
-          <option value="crossroads01">Crossroads 01</option>
-          <option value="frontier01">Frontier 01 · 40 据点</option>
-          <option value="highland01">Highland 01 · 31 据点</option>
-          <option value="autumnvale01">Autumn Vale 01 · 30 据点</option>
-          <option value="snowpass01">Snow Pass 01 · 30 据点</option>
-        </select>
+<section id="page-campaign" class="page">
+  <div class="library">
+    <header class="library-head">
+      <button class="back-btn" id="btn-campaign-back">主菜单</button>
+      <div class="library-title">
+        <div class="kicker">战役</div>
+        <h2>选择系列</h2>
       </div>
-      <ul class="brief-list">
-        <li><span>目标</span><b id="brief-objective">占领全部 7 座产兵据点</b></li>
-        <li><span>时限</span><b id="brief-time">15 分钟</b></li>
-        <li><span>判定</span><b>据点数 · 人口 · 金币</b></li>
-      </ul>
-      <details class="brief-skins">
-        <summary>
-          <span>兵团皮肤</span>
-          <b id="skin-source">仅内置模型</b>
-        </summary>
-        <div class="skin-rows" id="skin-rows"></div>
-      </details>
-      <p>点击己方据点选中，再点击目标据点派出一半守军。点击行军中的兵团可改道或更换目的地；经过岔路口前可以改路，兵团断粮后会掉兵。</p>
-      <div class="panel-actions">
-        <button class="btn primary" id="btn-brief-start">开始</button>
-        <button class="btn" id="btn-brief-load">载入地图文件</button>
-        <button class="btn" id="btn-brief-back">返回</button>
+      <span class="library-count" id="campaign-count"></span>
+    </header>
+    <div class="series-grid" id="series-grid"></div>
+  </div>
+</section>
+
+<section id="page-series" class="page">
+  <div class="library">
+    <header class="library-head">
+      <button class="back-btn" id="btn-series-back">战役</button>
+      <div class="library-title">
+        <div class="kicker" id="series-kicker"></div>
+        <h2 id="series-title"></h2>
       </div>
+      <span class="library-count" id="series-count"></span>
+    </header>
+    <div class="level-grid" id="level-grid"></div>
+    <div class="library-empty" id="series-empty" hidden>
+      <p>还没有自制关卡。</p>
+      <button class="btn" id="btn-empty-import">载入地图文件</button>
+    </div>
+    <div class="library-foot" id="series-foot" hidden>
+      <button class="btn ghost" id="btn-import-map">载入地图文件</button>
     </div>
   </div>
 </section>
@@ -224,6 +219,13 @@ const TEMPLATE = `
           <option>简体中文</option>
         </select>
       </div>
+      <div class="settings-block">
+        <div class="settings-block-head">
+          <span>兵团皮肤</span>
+          <b id="skin-source">仅内置模型</b>
+        </div>
+        <div class="skin-rows" id="skin-rows"></div>
+      </div>
       <p class="settings-note">分辨率与全屏在 Electron 客户端生效；浏览器内只保存偏好。</p>
       <div class="panel-actions">
         <button class="btn primary" id="btn-save-settings">保存</button>
@@ -232,6 +234,42 @@ const TEMPLATE = `
     </div>
   </div>
 </section>
+
+<div class="overlay level-overlay" id="level-overlay">
+  <div class="level-sheet" role="dialog" aria-modal="true" aria-labelledby="level-title">
+    <button class="sheet-close" id="btn-level-close" aria-label="关闭">×</button>
+    <div class="level-preview" id="level-preview">
+      <img class="preview-blur" id="level-preview-bg" alt="" aria-hidden="true" />
+      <img id="level-preview-img" alt="" />
+      <div class="level-preview-empty" id="level-preview-empty" hidden>自制地图</div>
+      <button class="preview-open" id="btn-preview-open">全屏查看</button>
+    </div>
+    <div class="level-info">
+      <div class="kicker" id="level-series"></div>
+      <h2 id="level-title"></h2>
+      <p id="level-desc"></p>
+      <ul class="level-facts">
+        <li><span>目标</span><b id="level-objective"></b></li>
+        <li><span>时限</span><b id="level-time"></b></li>
+        <li><span>判定</span><b>据点数 · 人口 · 金币</b></li>
+      </ul>
+      <div class="difficulty-block">
+        <div class="field-label">难度</div>
+        <div class="difficulty-options" id="difficulty-options" role="radiogroup" aria-label="难度"></div>
+        <p class="difficulty-hint" id="difficulty-hint"></p>
+      </div>
+      <div class="panel-actions">
+        <button class="btn primary" id="btn-level-start">开始游戏</button>
+        <button class="btn" id="btn-level-back">返回</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay map-viewer" id="map-viewer" role="dialog" aria-modal="true" aria-label="地图预览">
+  <button class="sheet-close viewer-close" id="btn-viewer-close" aria-label="关闭">×</button>
+  <img id="map-viewer-img" alt="" />
+</div>
 
 <div class="overlay" id="exit-overlay">
   <div class="panel">
@@ -257,10 +295,12 @@ interface ResultStats {
 
 interface MapEntry {
   id: string;
-  label: string;
-  content: ReturnType<typeof validateContent>;
+  title: string;
+  content: { map: MapDef; rules: typeof BASE_RULES };
   visual: MapVisual;
   description: string;
+  /** 自制地图的示意图 data URL。 */
+  preview?: string;
   custom?: boolean;
   document?: MapDocument;
 }
@@ -270,156 +310,41 @@ interface StoredCustomMap {
   document: MapDocument;
 }
 
+interface RunConfig {
+  mapId: string;
+  difficulty: DifficultyId;
+}
+
 const CUSTOM_MAPS_KEY = "marchlands.customMaps.v1";
-
-interface TerrainPreset {
-  style: "frontier" | "meadow" | "autumn" | "ash" | "coast" | "snow";
-  amplitude: number;
-  seed: number;
-  roadStyle: "cobble" | "dirt";
-  material: string;
-  description: string;
-}
-
-const TERRAIN_PRESETS: Record<string, TerrainPreset> = {
-  highland01: {
-    style: "meadow",
-    amplitude: 2.6,
-    seed: 4711,
-    roadStyle: "cobble",
-    material: "rocks007",
-    description: "岩脊高地：三十一座据点散落在起伏的岩台上，碎石路顺着坡道上下，站住高处就能看清整片谷地。",
-  },
-  autumnvale01: {
-    style: "autumn",
-    amplitude: 2.4,
-    seed: 923,
-    roadStyle: "dirt",
-    material: "ground068",
-    description: "秋色谷地：落叶林里藏着三十座据点，土路沿着缓坡绕行，粮仓卡在谷口要道上。",
-  },
-  snowpass01: {
-    style: "snow",
-    amplitude: 2.2,
-    seed: 1607,
-    roadStyle: "cobble",
-    material: "snow014",
-    description: "雪岭关隘：积雪覆盖的山道层层设防，翻过垭口才算进入对方腹地。",
-  },
-};
-
-function withTerrainPreset(visual: MapVisual, id: string): MapVisual {
-  const preset = TERRAIN_PRESETS[id];
-  if (!preset) return visual;
-  return {
-    ...visual,
-    terrain: {
-      ...visual.terrain,
-      style: preset.style,
-      seed: preset.seed,
-      amplitude: preset.amplitude,
-      material: preset.material,
-    },
-    roads: { ...visual.roads, style: preset.roadStyle },
-  };
-}
+const CUSTOM_SERIES_ID = "custom";
 
 export class App {
   private readonly root: HTMLElement;
-  private readonly mapEntries: Map<string, MapEntry>;
-  private content: ReturnType<typeof validateContent>;
-  private currentVisual: MapVisual;
-  private currentMapId: string;
+  private readonly mapEntries = new Map<string, MapEntry>();
   private settings: Settings = loadSettings();
   private session: GameSession | null = null;
   private editor: EditorController | EditorNext | null = null;
   private editorKind: "classic" | "next" | null = null;
   private playtestMap: { map: MapDef; visual: MapVisual } | null = null;
   private page: PageId = "boot";
+  private readonly autoStart: boolean;
+  private readonly requestedMapId: string | null;
   private toastTimer = 0;
+  private selection: RunConfig | null = null;
+  private activeRun: RunConfig | null = null;
+  private lastFocusedCard: HTMLElement | null = null;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, options: { autoStart?: boolean } = {}) {
     this.root = root;
-    const forest = validateContent(forestMapJson, rulesJson);
-    const crossroads = validateContent(crossroadsMapJson, rulesJson);
-    const frontier = validateContent(frontierMapJson, rulesJson);
-    const highland = validateContent(highlandMapJson, rulesJson);
-    const autumnvale = validateContent(autumnvaleMapJson, rulesJson);
-    const snowpass = validateContent(snowpassMapJson, rulesJson);
-    this.mapEntries = new Map<string, MapEntry>([
-      [
-        "forest01",
-        {
-          id: "forest01",
-          label: "Forest 01",
-          content: forest,
-          visual: defaultVisualForMap(forest.map),
-          description: "你的旗帜插在西侧。东侧的红旗正在集结，五座中立据点等待第一个到达的人。",
-        },
-      ],
-      [
-        "crossroads01",
-        {
-          id: "crossroads01",
-          label: "Crossroads 01",
-          content: crossroads,
-          visual: defaultVisualForMap(crossroads.map),
-          description:
-            "十二座产兵据点沿河谷铺开，四条粮道与四个路边驻兵点卡在岔路口。先拿下路口和粮仓的人，才能让兵团走得更远。",
-        },
-      ],
-      [
-        "frontier01",
-        {
-          id: "frontier01",
-          label: "Frontier 01 · 40 据点",
-          content: frontier,
-          visual: defaultVisualForMap(frontier.map),
-          description:
-            "三十二座产兵据点铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
-        },
-      ],
-      [
-        "highland01",
-        {
-          id: "highland01",
-          label: "Highland 01 · 31 据点",
-          content: highland,
-          visual: withTerrainPreset(defaultVisualForMap(highland.map), "highland01"),
-          description: TERRAIN_PRESETS.highland01.description,
-        },
-      ],
-      [
-        "autumnvale01",
-        {
-          id: "autumnvale01",
-          label: "Autumn Vale 01 · 30 据点",
-          content: autumnvale,
-          visual: withTerrainPreset(defaultVisualForMap(autumnvale.map), "autumnvale01"),
-          description: TERRAIN_PRESETS.autumnvale01.description,
-        },
-      ],
-      [
-        "snowpass01",
-        {
-          id: "snowpass01",
-          label: "Snow Pass 01 · 30 据点",
-          content: snowpass,
-          visual: withTerrainPreset(defaultVisualForMap(snowpass.map), "snowpass01"),
-          description: TERRAIN_PRESETS.snowpass01.description,
-        },
-      ],
-    ]);
-    this.loadStoredMaps();
+    this.autoStart = options.autoStart === true;
     const requested = new URLSearchParams(window.location.search).get("map");
-    this.currentMapId = requested && this.mapEntries.has(requested) ? requested : "frontier01";
-    this.content = this.mapEntries.get(this.currentMapId)!.content;
-    this.currentVisual = this.mapEntries.get(this.currentMapId)!.visual;
+    this.requestedMapId = requested && mapEntry(requested) ? requested : null;
+    this.loadBuiltinMaps();
+    this.loadStoredMaps();
     this.root.innerHTML = TEMPLATE;
     this.bind();
     this.syncSettingsForm();
-    this.syncMapOptions();
-    this.syncBriefing();
+    this.syncCampaign();
     audio.setVolume(this.settings.volume);
   }
 
@@ -442,20 +367,28 @@ export class App {
             ? `准备就绪 · ${packs} 个资产包`
             : "准备就绪"
           : "资源加载失败，使用简化美术";
-        window.setTimeout(() => this.show("menu"), 320);
+        if (this.autoStart) {
+          this.startLevel(
+            this.activeRun ?? {
+              mapId: this.requestedMapId ?? defaultLevelId(),
+              difficulty: this.settings.difficulty,
+            },
+          );
+        } else {
+          window.setTimeout(() => this.show("menu"), 320);
+        }
       });
   }
 
   private bind(): void {
-    this.on("btn-start", "click", () => this.openBriefing());
+    this.on("btn-start", "click", () => this.openCampaign());
     this.on("btn-editor", "click", () => this.openEditor());
     this.on("btn-settings", "click", () => this.openSettings());
     this.on("btn-exit", "click", () => this.showOverlay("exit-overlay"));
-    this.on("btn-brief-start", "click", () => this.startGame());
-    this.on("btn-brief-load", "click", () => {
-      void this.importMap();
-    });
-    this.on("btn-brief-back", "click", () => this.show("menu"));
+    this.on("btn-campaign-back", "click", () => this.show("menu"));
+    this.on("btn-series-back", "click", () => this.show("campaign"));
+    this.on("btn-import-map", "click", () => void this.importMap());
+    this.on("btn-empty-import", "click", () => void this.importMap());
     this.on("btn-pause", "click", () => this.pauseGame());
     this.on("btn-resume", "click", () => this.resumeGame());
     this.on("btn-editor-return", "click", () => this.returnToEditor());
@@ -467,6 +400,13 @@ export class App {
     this.on("btn-dispatch", "click", () => this.session?.dispatchSelectedPlan());
     this.on("city-upgrade", "click", () => this.session?.upgradeSelected());
     this.on("city-transit", "click", () => this.session?.toggleTransit());
+    this.on("btn-level-close", "click", () => this.closeLevelSheet());
+    this.on("btn-level-back", "click", () => this.closeLevelSheet());
+    this.on("btn-level-start", "click", () => this.startSelectedLevel());
+    this.on("btn-preview-open", "click", () => {
+      if (this.selection) this.openViewer(this.selection.mapId);
+    });
+    this.on("btn-viewer-close", "click", () => this.closeViewer());
     this.on("btn-save-settings", "click", () => this.applySettingsForm(true));
     this.on("btn-settings-back", "click", () => {
       this.applySettingsForm(true);
@@ -476,7 +416,7 @@ export class App {
     this.on("btn-exit-confirm", "click", () => this.exitApp());
     this.on("btn-replay", "click", () => {
       if (this.playtestMap) this.startEditorPlaytest(this.playtestMap.map, this.playtestMap.visual);
-      else this.startGame();
+      else if (this.activeRun) this.startLevel(this.activeRun);
     });
     this.on("btn-result-menu", "click", () => {
       this.playtestMap = null;
@@ -487,8 +427,20 @@ export class App {
     volume.addEventListener("input", () => {
       this.el("set-volume-out").textContent = volume.value;
     });
-    const mapSelect = this.el("map-select") as HTMLSelectElement;
-    mapSelect.addEventListener("change", () => this.selectMap(mapSelect.value));
+
+    const difficulties = this.el("difficulty-options");
+    difficulties.addEventListener("change", (event) => {
+      const input = event.target as HTMLInputElement;
+      if (input.name !== "level-difficulty" || !isDifficultyId(input.value)) return;
+      this.selectDifficulty(input.value);
+    });
+
+    this.el("level-overlay").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) this.closeLevelSheet();
+    });
+    this.el("map-viewer").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) this.closeViewer();
+    });
 
     window.addEventListener("keydown", (event) => this.onKeyDown(event));
     window.addEventListener(
@@ -500,12 +452,20 @@ export class App {
     );
     this.root.addEventListener("click", (event) => {
       const target = event.target as Element | null;
-      if (target?.closest(".btn, .icon-btn")) audio.click();
+      if (target?.closest(".btn, .icon-btn, .back-btn, .card")) audio.click();
     });
   }
 
   private onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
+      if (this.isOverlayOpen("map-viewer")) {
+        this.closeViewer();
+        return;
+      }
+      if (this.isOverlayOpen("level-overlay")) {
+        this.closeLevelSheet();
+        return;
+      }
       if (this.page === "game") {
         if (this.isOverlayOpen("confirm-overlay")) {
           this.hideOverlay("confirm-overlay");
@@ -520,8 +480,12 @@ export class App {
         this.show("menu");
         return;
       }
-      if (this.page === "briefing") {
+      if (this.page === "campaign") {
         this.show("menu");
+        return;
+      }
+      if (this.page === "series") {
+        this.show("campaign");
         return;
       }
       if (this.isOverlayOpen("exit-overlay")) this.hideOverlay("exit-overlay");
@@ -532,6 +496,7 @@ export class App {
     this.session?.dispose();
     this.session = null;
     this.playtestMap = null;
+    this.activeRun = null;
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
     this.updateCityPanel(null);
@@ -540,7 +505,7 @@ export class App {
       this.editor?.dispose();
       const options = {
         root: this.el("editor-root"),
-        rules: this.content.rules,
+        rules: BASE_RULES,
         onPlaytest: (map: MapDef, visual: MapVisual) => this.startEditorPlaytest(map, visual),
         onExit: () => this.closeEditor(),
       };
@@ -560,6 +525,8 @@ export class App {
     this.session?.dispose();
     this.editor?.suspend();
     this.playtestMap = { map, visual };
+    this.activeRun = null;
+    this.hideLevelSheet();
     this.show("game");
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
@@ -570,7 +537,7 @@ export class App {
       map,
       visual,
       unitSkins: this.settings.unitSkins,
-      rules: this.content.rules,
+      rules: BASE_RULES,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),
       onSelect: (cityId, count) => this.updateCityPanel(cityId, count),
@@ -599,11 +566,27 @@ export class App {
     this.el("btn-editor-return").style.display = "none";
   }
 
+  private loadBuiltinMaps(): void {
+    for (const series of CAMPAIGN) {
+      for (const level of series.levels) {
+        const source = mapEntry(level.mapId);
+        if (!source) continue;
+        this.mapEntries.set(level.mapId, {
+          id: level.mapId,
+          title: level.title,
+          content: { map: source.map, rules: source.rules },
+          visual: source.visual,
+          description: level.blurb,
+        });
+      }
+    }
+  }
+
   private syncUnitSkins(): void {
     const host = this.el("skin-rows");
     const assets = assetRegistry.builtinReady ? assetRegistry.list("unit") : [];
     const source = this.el("skin-source");
-    source.textContent = assets.length > 0 ? `已有 ${assets.length} 套外部兵团` : "仅内置模型";
+    source.textContent = assets.length > 0 ? `已有 ${assets.length} 套兵团皮肤` : "仅内置模型";
     host.replaceChildren();
     for (const kind of UNIT_KINDS) {
       const row = document.createElement("label");
@@ -635,7 +618,251 @@ export class App {
     }
   }
 
-  private startGame(): void {
+  private allSeries(): SeriesDef[] {
+    const custom: LevelDef[] = [...this.mapEntries.values()]
+      .filter((entry) => entry.custom)
+      .map((entry) => ({ mapId: entry.id, title: entry.title, blurb: entry.description }));
+    return [
+      ...CAMPAIGN,
+      {
+        id: CUSTOM_SERIES_ID,
+        chapter: "自制",
+        title: "自制关卡",
+        levels: custom,
+      },
+    ];
+  }
+
+  private openCampaign(): void {
+    this.syncCampaign();
+    this.show("campaign");
+  }
+
+  private syncCampaign(): void {
+    const series = this.allSeries();
+    const levels = series.reduce((total, item) => total + item.levels.length, 0);
+    this.el("campaign-count").textContent = `${series.length} 个系列 · ${levels} 个关卡`;
+    this.el("series-grid").replaceChildren(...series.map((item, index) => this.buildSeriesCard(item, index)));
+  }
+
+  private buildSeriesCard(series: SeriesDef, index: number): HTMLElement {
+    const card = document.createElement("article");
+    card.className = "card series-card";
+    card.dataset.series = series.id;
+    const hit = document.createElement("button");
+    hit.type = "button";
+    hit.className = "card-hit";
+    hit.setAttribute(
+      "aria-label",
+      series.levels.length > 0 ? `${series.title}，${series.levels.length} 关` : `${series.title}，暂无关卡`,
+    );
+    hit.addEventListener("click", () => this.openSeries(series.id));
+    card.append(hit, this.buildCardMedia(series.levels[0] ? this.levelCover(series.levels[0].mapId) : null));
+
+    const chapter = document.createElement("span");
+    chapter.className = "card-chapter";
+    chapter.textContent = series.chapter || `第 ${index + 1} 章`;
+
+    const title = document.createElement("span");
+    title.className = "card-title";
+    title.textContent = series.title;
+
+    const meta = document.createElement("span");
+    meta.className = "card-meta";
+    meta.textContent = series.levels.length > 0 ? `${series.levels.length} 关` : "暂无关卡";
+
+    const copy = document.createElement("div");
+    copy.className = "card-copy";
+    copy.append(chapter, title, meta);
+    card.append(copy);
+    return card;
+  }
+
+  private buildLevelCard(level: LevelDef, index: number): HTMLElement {
+    const entry = this.mapEntries.get(level.mapId);
+    const card = document.createElement("article");
+    card.className = "card level-card";
+    card.dataset.level = level.mapId;
+    const hit = document.createElement("button");
+    hit.type = "button";
+    hit.className = "card-hit";
+    hit.setAttribute("aria-label", `${entry?.title ?? level.title}，查看关卡详情`);
+    hit.addEventListener("click", () => this.openLevelSheet(level.mapId, hit));
+    card.append(hit, this.buildCardMedia(this.levelCover(level.mapId)));
+
+    const chapter = document.createElement("span");
+    chapter.className = "card-chapter";
+    chapter.textContent = `第 ${index + 1} 关`;
+
+    const title = document.createElement("span");
+    title.className = "card-title";
+    title.textContent = entry?.title ?? level.title;
+
+    const meta = document.createElement("span");
+    meta.className = "card-meta";
+    const towns = entry ? entry.content.map.cities.filter((city) => isProductionSiteKind(city.kind)).length : 0;
+    const minutes = entry
+      ? Math.round(entry.content.rules.maxTicks / entry.content.rules.tickHz / 60)
+      : 0;
+    meta.textContent = entry ? `${towns} 座产兵据点 · ${minutes} 分钟` : "自制地图";
+
+    const copy = document.createElement("div");
+    copy.className = "card-copy";
+    copy.append(chapter, title, meta);
+    card.append(copy);
+    return card;
+  }
+
+  private levelCover(mapId: string): string | null {
+    const entry = this.mapEntries.get(mapId);
+    if (!entry) return null;
+    return entry.custom ? entry.preview ?? null : previewUrl(mapId);
+  }
+
+  private buildCardMedia(cover: string | null): HTMLElement {
+    const media = document.createElement("div");
+    media.className = "card-media";
+    if (cover) {
+      const image = document.createElement("img");
+      image.src = cover;
+      image.alt = "";
+      image.loading = "lazy";
+      image.decoding = "async";
+      media.append(image);
+    } else {
+      media.classList.add("card-media-empty");
+      const label = document.createElement("span");
+      label.textContent = "自制地图";
+      media.append(label);
+    }
+    return media;
+  }
+
+  private openSeries(seriesId: string): void {
+    const series = this.allSeries().find((entry) => entry.id === seriesId);
+    if (!series) return;
+    this.el("series-kicker").textContent = series.chapter;
+    this.el("series-title").textContent = series.title;
+    this.el("series-count").textContent = series.id === CUSTOM_SERIES_ID
+      ? `${series.levels.length} 张自制地图`
+      : `${series.levels.length} 个关卡`;
+    const empty = series.levels.length === 0;
+    (this.el("series-empty") as HTMLElement).hidden = !empty;
+    (this.el("series-foot") as HTMLElement).hidden = series.id !== CUSTOM_SERIES_ID || empty;
+    this.el("level-grid").replaceChildren(
+      ...series.levels.map((level, index) => this.buildLevelCard(level, index)),
+    );
+    this.show("series");
+  }
+
+  private openLevelSheet(mapId: string, card: HTMLElement | null): void {
+    const entry = this.mapEntries.get(mapId);
+    if (!entry) return;
+    this.selection = { mapId, difficulty: this.settings.difficulty };
+    this.lastFocusedCard = card;
+    const context = findLevel(mapId);
+    this.el("level-series").textContent = context
+      ? `${context.series.chapter} · ${context.series.title}`
+      : "自制关卡";
+    this.el("level-title").textContent = entry.title;
+    this.el("level-desc").textContent = entry.description;
+    const towns = entry.content.map.cities.filter((city) => isProductionSiteKind(city.kind)).length;
+    const minutes = Math.round(entry.content.rules.maxTicks / entry.content.rules.tickHz / 60);
+    this.el("level-objective").textContent = `占领全部 ${towns} 座产兵据点`;
+    this.el("level-time").textContent = `${minutes} 分钟`;
+
+    const image = this.el("level-preview-img") as HTMLImageElement;
+    const backdrop = this.el("level-preview-bg") as HTMLImageElement;
+    const cover = this.levelCover(mapId);
+    const available = Boolean(cover);
+    if (cover) {
+      image.src = cover;
+      image.alt = `${entry.title} 地图`;
+      image.hidden = false;
+      backdrop.src = cover;
+      backdrop.hidden = false;
+    } else {
+      image.removeAttribute("src");
+      image.alt = "";
+      image.hidden = true;
+      backdrop.removeAttribute("src");
+      backdrop.hidden = true;
+    }
+    (this.el("level-preview-empty") as HTMLElement).hidden = available;
+    (this.el("btn-preview-open") as HTMLButtonElement).disabled = !available;
+    this.syncDifficultyOptions();
+    this.showOverlay("level-overlay");
+    (this.el("btn-level-start") as HTMLButtonElement).focus({ preventScroll: true });
+  }
+
+  private syncDifficultyOptions(): void {
+    const selected = this.selection?.difficulty ?? this.settings.difficulty;
+    const host = this.el("difficulty-options");
+    host.replaceChildren(
+      ...DIFFICULTIES.map((entry) => {
+        const label = document.createElement("label");
+        label.className = "difficulty-option";
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "level-difficulty";
+        input.value = entry.id;
+        input.checked = entry.id === selected;
+        const text = document.createElement("span");
+        text.textContent = entry.label;
+        label.append(input, text);
+        return label;
+      }),
+    );
+    this.el("difficulty-hint").textContent = difficultyDef(selected).hint;
+  }
+
+  private selectDifficulty(id: DifficultyId): void {
+    if (!this.selection) return;
+    this.selection = { ...this.selection, difficulty: id };
+    this.settings = { ...this.settings, difficulty: id };
+    saveSettings(this.settings);
+    this.el("difficulty-hint").textContent = difficultyDef(id).hint;
+  }
+
+  private startSelectedLevel(): void {
+    if (!this.selection) return;
+    const config = { ...this.selection };
+    this.hideLevelSheet();
+    this.startLevel(config);
+  }
+
+  private closeLevelSheet(): void {
+    this.hideLevelSheet();
+    this.lastFocusedCard?.focus();
+  }
+
+  private hideLevelSheet(): void {
+    this.hideOverlay("level-overlay");
+    this.hideOverlay("map-viewer");
+    this.selection = null;
+  }
+
+  private closeViewer(): void {
+    this.hideOverlay("map-viewer");
+    (this.el("btn-preview-open") as HTMLButtonElement).focus();
+  }
+
+  private openViewer(mapId: string): void {
+    const entry = this.mapEntries.get(mapId);
+    const cover = this.levelCover(mapId);
+    if (!entry || !cover) return;
+    const image = this.el("map-viewer-img") as HTMLImageElement;
+    image.src = cover;
+    image.alt = `${entry.title} 地图全屏预览`;
+    this.showOverlay("map-viewer");
+    (this.el("btn-viewer-close") as HTMLButtonElement).focus();
+  }
+
+  private startLevel(config: RunConfig): void {
+    const entry = this.mapEntries.get(config.mapId);
+    if (!entry) return;
+    this.selection = null;
+    this.activeRun = config;
     this.session?.dispose();
     this.editor?.suspend();
     this.playtestMap = null;
@@ -647,10 +874,11 @@ export class App {
     this.session = new GameSession({
       canvas,
       hud: this.root,
-      map: this.content.map,
-      visual: this.currentVisual,
+      map: entry.content.map,
+      visual: entry.visual,
       unitSkins: this.settings.unitSkins,
-      rules: this.content.rules,
+      aiTuning: difficultyDef(config.difficulty).ai,
+      rules: entry.content.rules,
       onFinish: (state) => this.finish(state),
       onToast: (text) => this.toast(text),
       onSelect: (cityId, count) => this.updateCityPanel(cityId, count),
@@ -716,49 +944,16 @@ export class App {
     this.session = null;
     this.editor?.suspend();
     this.playtestMap = null;
+    this.activeRun = null;
     this.hideEditorReturn();
     this.hideOverlay("pause-overlay");
     this.hideOverlay("confirm-overlay");
+    this.hideLevelSheet();
     this.updateCityPanel(null);
     this.show("menu");
   }
 
-  private openBriefing(): void {
-    this.syncBriefing();
-    this.show("briefing");
-  }
-
-  private selectMap(id: string): void {
-    const entry = this.mapEntries.get(id);
-    if (!entry) return;
-    this.currentMapId = id;
-    this.content = entry.content;
-    this.currentVisual = entry.visual;
-    this.syncBriefing();
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set("map", id);
-      window.history.replaceState(null, "", url);
-    } catch {
-      // file:// pages can reject history updates
-    }
-  }
-
-  private syncMapOptions(): void {
-    const select = this.el("map-select") as HTMLSelectElement;
-    select.replaceChildren(
-      ...Array.from(this.mapEntries.values()).map((entry) => {
-        const option = document.createElement("option");
-        option.value = entry.id;
-        option.textContent = entry.label;
-        return option;
-      }),
-    );
-  }
-
   private loadStoredMaps(): void {
-    const rules = this.mapEntries.get("forest01")?.content.rules;
-    if (!rules) return;
     try {
       const raw = localStorage.getItem(CUSTOM_MAPS_KEY);
       if (!raw) return;
@@ -772,10 +967,11 @@ export class App {
           if (compiled.diagnostics.some((item) => item.severity === "error")) continue;
           this.mapEntries.set(entry.id, {
             id: entry.id,
-            label: `${parsed.document.name} · 玩家`,
-            content: validateContent(compiled.map, rules),
+            title: parsed.document.name || "未命名地图",
+            content: validateContent(compiled.map, BASE_RULES),
             visual: compiled.visual,
             description: `玩家地图 · ${parsed.document.sites.length} 个据点`,
+            preview: mapSketch(compiled.map),
             custom: true,
             document: parsed.document,
           });
@@ -790,7 +986,7 @@ export class App {
 
   private saveCustomMaps(): void {
     try {
-      const stored: StoredCustomMap[] = Array.from(this.mapEntries.values())
+      const stored: StoredCustomMap[] = [...this.mapEntries.values()]
         .filter((entry) => entry.custom && entry.document)
         .map((entry) => ({ id: entry.id, document: entry.document as MapDocument }));
       localStorage.setItem(CUSTOM_MAPS_KEY, JSON.stringify(stored));
@@ -799,24 +995,24 @@ export class App {
     }
   }
 
-  private addCustomMap(document: MapDocument): void {
+  private addCustomMap(document: MapDocument): string {
     const compiled = compileDocument(document);
     const error = compiled.diagnostics.find((entry) => entry.severity === "error");
     if (error) throw new Error(error.message);
     const id = `custom-${Date.now().toString(36)}`;
-    const content = validateContent(compiled.map, this.content.rules);
     this.mapEntries.set(id, {
       id,
-      label: `${document.name || "未命名地图"} · 玩家`,
-      content,
-      visual: compiled.visual,
+      title: document.name || "未命名地图",
+      content: validateContent(compiled.map, BASE_RULES),
+      visual: compiled.visual ?? defaultVisualForMap(compiled.map),
       description: `玩家地图 · ${document.sites.length} 个据点`,
+      preview: mapSketch(compiled.map),
       custom: true,
       document,
     });
-    this.syncMapOptions();
-    this.selectMap(id);
     this.saveCustomMaps();
+    this.syncCampaign();
+    return id;
   }
 
   private async importMap(): Promise<void> {
@@ -824,24 +1020,13 @@ export class App {
       const opened = await openMapText();
       if (!opened) return;
       const parsed = parseDocument(JSON.parse(opened.text));
-      this.addCustomMap(parsed.document);
+      const id = this.addCustomMap(parsed.document);
       this.toast(`已载入 ${parsed.document.name}`);
+      this.openSeries(CUSTOM_SERIES_ID);
+      this.openLevelSheet(id, null);
     } catch (error) {
       this.toast(error instanceof Error ? error.message : "地图文件无法读取");
     }
-  }
-
-  private syncBriefing(): void {
-    const entry = this.mapEntries.get(this.currentMapId);
-    if (!entry) return;
-    const towns = entry.content.map.cities.filter((city) => isProductionSiteKind(city.kind)).length;
-    const minutes = Math.round(entry.content.rules.maxTicks / entry.content.rules.tickHz / 60);
-    this.el("brief-title").textContent = entry.content.map.name;
-    this.el("brief-desc").textContent = entry.description;
-    this.el("brief-objective").textContent = `占领全部 ${towns} 座产兵据点`;
-    this.el("brief-time").textContent = `${minutes} 分钟`;
-    (this.el("map-select") as HTMLSelectElement).value = this.currentMapId;
-    this.syncUnitSkins();
   }
 
   private openSettings(): void {
@@ -855,6 +1040,7 @@ export class App {
     const volume = this.el("set-volume") as HTMLInputElement;
     volume.value = String(this.settings.volume);
     this.el("set-volume-out").textContent = String(this.settings.volume);
+    this.syncUnitSkins();
   }
 
   private applySettingsForm(notify: boolean): void {
@@ -931,7 +1117,7 @@ export class App {
     fill.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#b3ab97";
     const pips = this.el("city-pips").querySelectorAll("i");
     pips.forEach((pip, index) => pip.classList.toggle("on", index < city.level));
-    const defense = defenseMilliFor(city, this.content.rules) / 1000;
+    const defense = defenseMilliFor(city, BASE_RULES) / 1000;
     this.el("city-defense").textContent = defense.toFixed(2);
     const cost = [15, 22, 32][city.level - 1] ?? 0;
     const transit = this.el("city-transit") as HTMLButtonElement;
