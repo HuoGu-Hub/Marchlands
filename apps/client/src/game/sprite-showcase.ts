@@ -54,6 +54,7 @@ class SpriteShowcase {
   private readonly statics: SpriteUnit[] = [];
   private turner: SpriteUnit | null = null;
   private haloed: SpriteUnitActor | null = null;
+  private walker: SpriteUnitActor | null = null;
   private flipLabel: HTMLElement | null = null;
   private cameraYaw = 0;
   private targetYaw = 0;
@@ -118,6 +119,15 @@ class SpriteShowcase {
       this.statics.push(unit);
     }
 
+    // 行走采样：用带帧的图集，原地播放循环。
+    const walk = await loadSpriteAtlas("./sprites/frontier-ranger-boy-walk-atlas");
+    const walkerBody = new SpriteUnit(walk.atlas, walk.texture, { height: 0.92 });
+    const walker = new SpriteUnitActor(walkerBody, () => this.cameraYaw, null);
+    walker.position.set(-2.9, 0, 0.9);
+    walker.setMoving(true);
+    this.scene.add(walker);
+    this.walker = walker;
+
     this.turner = new SpriteUnit(knight.atlas, knight.texture, { height: 1.5, flip: this.flip });
     this.turner.position.set(0, 0, 0.9);
     this.scene.add(this.turner);
@@ -141,8 +151,9 @@ class SpriteShowcase {
     }
     if (this.haloed) {
       this.haloed.rotation.y = now * 0.0009;
-      this.haloed.update();
+      this.haloed.update(delta);
     }
+    if (this.walker) this.walker.update(delta);
     // 静帧行只固定索引，仅把平面转向镜头，用来检查图集打包与锚点。
     for (const unit of this.statics) unit.mesh.rotation.y = this.cameraYaw;
 

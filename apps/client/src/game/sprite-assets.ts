@@ -11,7 +11,7 @@ export interface SpriteSkinAsset {
 }
 
 const DEFINITIONS: Record<string, { file: string; height: number }> = {
-  "builtin:unit.sprite-ranger": { file: "./sprites/frontier-ranger-boy-atlas", height: 0.92 },
+  "builtin:unit.sprite-ranger": { file: "./sprites/frontier-ranger-boy-walk-atlas", height: 0.92 },
   "builtin:unit.sprite-knight": { file: "./sprites/heavy-shield-knight-atlas", height: 1.55 },
 };
 

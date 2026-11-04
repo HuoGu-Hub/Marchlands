@@ -110,6 +110,20 @@ def key_background(im: Image.Image, thresh: int = 0, dehalo: int = 2):
     return Image.fromarray(out), tuple(int(c) for c in bg_color)
 
 
+def drop_small_islands(panel: Image.Image, ratio: float) -> Image.Image:
+    data = np.asarray(panel)
+    solid = data[..., 3] > 32
+    labels, count = ndimage.label(solid)
+    if count <= 1:
+        return panel
+    sizes = ndimage.sum(solid, labels, range(1, count + 1))
+    keep = sizes >= sizes.max() * ratio
+    mask = np.isin(labels, np.where(keep)[0] + 1)
+    out = data.copy()
+    out[..., 3] = np.where(mask, out[..., 3], 0)
+    return Image.fromarray(out)
+
+
 def find_panels(foreground: np.ndarray, min_gap: int) -> list[tuple[int, int]]:
     cols = foreground.any(axis=0)
     runs, start = [], None
@@ -186,8 +200,17 @@ def process(path: Path, out_dir: Path, size: int, pad: float, thresh: int, dehal
     keyed, bg_color = key_background(trimmed, thresh=thresh, dehalo=dehalo)
     alpha = np.asarray(keyed)[..., 3] > 8
     if columns > 0:
+        # 名义等分点可能正好切在相邻人像的披风上，就近找一列空白最多的位置下刀。
+        coverage = alpha.sum(axis=0)
+        cuts = [0]
         step = keyed.width / columns
-        panels = [(round(i * step), round((i + 1) * step)) for i in range(columns)]
+        for i in range(1, columns):
+            nominal = round(i * step)
+            window = range(max(1, nominal - 40), min(keyed.width - 1, nominal + 40))
+            best = min(window, key=lambda x: int(coverage[x]))
+            cuts.append(best)
+        cuts.append(keyed.width)
+        panels = [(cuts[i], cuts[i + 1]) for i in range(columns)]
     else:
         panels = find_panels(alpha, min_gap=max(12, keyed.width // 120))
 
@@ -210,7 +233,11 @@ def process(path: Path, out_dir: Path, size: int, pad: float, thresh: int, dehal
     for x0, x1 in panels:
         box = keyed.crop((x0, 0, x1, keyed.height))
         bounds = box.getbbox()
-        crops.append(box.crop(bounds) if bounds else box)
+        box = box.crop(bounds) if bounds else box
+        # 相邻人像越界过来的披风碎片要丢掉，否则会飘在本帧旁边。
+        if columns > 0:
+            box = drop_small_islands(box, 0.15)
+        crops.append(box)
 
     # 按列切分时用同一个缩放系数，否则抬脚帧会被放大，播起来会一胀一缩。
     common_scale = None

@@ -19,6 +19,8 @@ export interface SpriteAtlasData {
   columns: number;
   rows: number;
   directions: number;
+  /** 每个方向列出的帧数；1 表示只有静帧。 */
+  frames?: number;
   cells: SpriteCell[];
 }
 
@@ -42,12 +44,17 @@ export class SpriteUnit extends THREE.Object3D {
   private readonly planeWidth: number;
   private readonly planeHeight: number;
   private index = -1;
+  private frame = 0;
+  private moving = false;
+  private clock = 0;
   private flip: boolean;
+  private readonly frameCount: number;
 
   constructor(atlas: SpriteAtlasData, texture: THREE.Texture, options: SpriteUnitOptions = {}) {
     super();
     this.atlas = atlas;
     this.flip = options.flip ?? false;
+    this.frameCount = Math.max(1, atlas.frames ?? 1);
 
     const coverage = options.coverage ?? 0.88;
     const height = options.height ?? 0.9;
@@ -87,23 +94,46 @@ export class SpriteUnit extends THREE.Object3D {
     return Math.max(0, this.index);
   }
 
+  /** 行走时推进帧；停下时回到第一帧。 */
+  setMoving(moving: boolean): void {
+    if (this.moving === moving) return;
+    this.moving = moving;
+    this.clock = 0;
+    this.frame = moving && this.frameCount > 1 ? 1 : 0;
+    this.applyCell();
+  }
+
+  /** 按毫秒推进动画，静帧时无动作。 */
+  advance(deltaMs: number): void {
+    if (!this.moving || this.frameCount <= 1) return;
+    this.clock += Math.min(100, Math.max(0, deltaMs));
+    const steps = Math.floor(this.clock / 110);
+    const next = 1 + (steps % (this.frameCount - 1));
+    if (next === this.frame) return;
+    this.frame = next;
+    this.applyCell();
+  }
+
+  private applyCell(): void {
+    const idx = this.index * this.frameCount + this.frame;
+    const cell = this.atlas.cells[idx] ?? this.atlas.cells[0];
+    if (!cell) return;
+    const tile = this.atlas.tile;
+    const [px, py] = cell.pivot_in_tile;
+    this.mesh.position.set((0.5 - px / tile) * this.planeWidth, (py / tile - 0.5) * this.planeHeight, 0);
+    this.mesh.material.map?.offset.set(
+      cell.rect[0] / (this.atlas.columns * tile),
+      1 - (cell.rect[1] + tile) / (this.atlas.rows * tile),
+    );
+  }
+
   /** 直接指定图集索引，用于静态陈列。 */
   setDirection(index: number): void {
     const count = this.atlas.directions;
     const next = ((index % count) + count) % count;
     if (next === this.index) return;
     this.index = next;
-
-    const cell = this.atlas.cells[next];
-    const tile = this.atlas.tile;
-    const [px, py] = cell.pivot_in_tile;
-
-    // 让 pivot 落在物体原点上，脚底贴地。
-    this.mesh.position.set((0.5 - px / tile) * this.planeWidth, (py / tile - 0.5) * this.planeHeight, 0);
-    this.mesh.material.map?.offset.set(
-      cell.rect[0] / (this.atlas.columns * tile),
-      1 - (cell.rect[1] + tile) / (this.atlas.rows * tile),
-    );
+    this.applyCell();
   }
 
   /**
@@ -158,15 +188,16 @@ export class SpriteUnitActor extends THREE.Group implements UnitActorView {
     if (this.halo) this.add(this.halo);
   }
 
-  setMoving(_moving: boolean): void {
-    // 立绘阶段没有行走帧，接口留空以便后续接入帧序列。
+  setMoving(moving: boolean): void {
+    this.sprite.setMoving(moving);
   }
 
   playAttack(): void {
     // 同上。
   }
 
-  update(): void {
+  update(deltaMs = 0): void {
+    this.sprite.advance(deltaMs);
     const parentYaw = this.parent ? parentYawOf(this.parent) : 0;
     const accumulated = parentYaw + this.rotation.y;
     this.sprite.setPose(accumulated, this.yawOfCamera(), accumulated);
