@@ -199,6 +199,8 @@ export class BattleScene {
   private readonly reachGroup = new THREE.Group();
   private readonly reachCellGroup = new THREE.Group();
   private reachCellMesh: THREE.Mesh | null = null;
+  private reachCorners: Float32Array | null = null;
+  private reachCornersKey = "";
   private readonly reachFillMaterial = new THREE.MeshBasicMaterial({
     color: 0x2f7d3e,
     transparent: true,
@@ -322,6 +324,27 @@ export class BattleScene {
     this.updateRings();
   }
 
+  /** 开局预采样地形格角高度，避免第一次点建筑时才算两万多个点。 */
+  prepareReachableCells(map: MapDef): void {
+    const grid = map.grid;
+    if (!grid) return;
+    const key = `${grid.width}x${grid.height}x${grid.cellSizeCm}`;
+    if (this.reachCorners && this.reachCornersKey === key) return;
+    const cellM = grid.cellSizeCm / 100;
+    const halfX = map.size[0] / 20;
+    const halfZ = map.size[1] / 20;
+    const stride = grid.width + 1;
+    const corners = new Float32Array(stride * (grid.height + 1));
+    for (let z = 0; z <= grid.height; z += 1) {
+      const wz = z * cellM - halfZ;
+      for (let x = 0; x <= grid.width; x += 1) {
+        corners[z * stride + x] = this.terrain.heightAt(x * cellM - halfX, wz);
+      }
+    }
+    this.reachCorners = corners;
+    this.reachCornersKey = key;
+  }
+
   /**
    * 网格地图：浅绿色标出可抵达的地面格，深绿色标出可抵达建筑占地内的格子。
    * 非网格地图传 null，清空网格高亮。
@@ -355,14 +378,21 @@ export class BattleScene {
     }
 
     // 取每个格角的实际地形高度，避免起伏地面把贴地高亮切碎。
+    // 地形在一局内不变，缓存下来，切换建筑时不再重复采样两万多个点。
     const stride = nav.width + 1;
-    const corners = new Float32Array(stride * (nav.height + 1));
-    for (let z = 0; z <= nav.height; z += 1) {
-      const wz = z * cellM - halfZ;
-      for (let x = 0; x <= nav.width; x += 1) {
-        corners[z * stride + x] = this.terrain.heightAt(x * cellM - halfX, wz);
+    const cornersKey = `${nav.width}x${nav.height}x${nav.cellSizeCm}`;
+    if (!this.reachCorners || this.reachCornersKey !== cornersKey) {
+      const corners = new Float32Array(stride * (nav.height + 1));
+      for (let z = 0; z <= nav.height; z += 1) {
+        const wz = z * cellM - halfZ;
+        for (let x = 0; x <= nav.width; x += 1) {
+          corners[z * stride + x] = this.terrain.heightAt(x * cellM - halfX, wz);
+        }
       }
+      this.reachCorners = corners;
+      this.reachCornersKey = cornersKey;
     }
+    const corners = this.reachCorners;
 
     const positions: number[] = [];
     const colors: number[] = [];

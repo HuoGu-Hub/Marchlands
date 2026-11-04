@@ -11,7 +11,7 @@ import type {
   SimState,
   SquadState,
 } from "@marchlands/sim";
-import { isProductionSiteKind, reachableGridCells, sendReachableTargets } from "@marchlands/sim";
+import { isProductionSiteKind, reachableGridCells, reachableGridCities, sendReachableTargets } from "@marchlands/sim";
 import { audio } from "../audio";
 import { RouteOverlay } from "./route-overlay";
 import { synthesizeGrid } from "./nav-synthesis";
@@ -92,6 +92,7 @@ export class GameSession {
     this.scene = new BattleScene(options.canvas, options.map, options.visual ?? null, options.unitSkins ?? {});
     this.simMap = synthesizeGrid(options.map, this.scene);
     this.state = createGame(this.simMap, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
+    this.scene.prepareReachableCells(this.state.map);
     this.routeOverlay = new RouteOverlay({
       canvas: options.canvas,
       scene: this.scene,
@@ -135,6 +136,7 @@ export class GameSession {
     this.scene = new BattleScene(this.options.canvas, this.options.map, this.options.visual ?? null, this.options.unitSkins ?? {});
     this.simMap = synthesizeGrid(this.options.map, this.scene);
     this.state = createGame(this.simMap, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
+    this.scene.prepareReachableCells(this.state.map);
     this.routeOverlay = new RouteOverlay({
       canvas: this.options.canvas,
       scene: this.scene,
@@ -275,26 +277,30 @@ export class GameSession {
     const selected = new Set(this.selected);
     // 只显示最后点选的那座建筑的可达范围，避免多选时把几座城的范围混在一起。
     const focus = this.primary;
-    const targets = new Set<CityId>();
-    if (focus) {
-      for (const target of sendReachableTargets(this.state, focus)) {
-        if (!selected.has(target)) targets.add(target);
-      }
-    }
-    this.reachTargets = [...targets].filter((id) => this.getCity(id)?.owner !== 1).sort();
 
     if (this.state.nav) {
+      // 只算当前显示的那座；其余编组据点在派兵/分配时按需再算，避免多选越点越卡。
       this.gridReach.clear();
-      for (const id of this.selected) {
-        const reach = reachableGridCells(this.state, id);
-        if (reach) this.gridReach.set(id, reach);
-      }
-      this.gridFocus = focus ? this.gridReach.get(focus) ?? null : null;
+      const focusReach = focus ? reachableGridCells(this.state, focus) : null;
+      if (focus && focusReach) this.gridReach.set(focus, focusReach);
+      this.gridFocus = focusReach;
+      this.reachTargets = this.gridFocus && focus
+        ? reachableGridCities(this.state, focus, this.gridFocus)
+            .filter((id) => !selected.has(id) && this.getCity(id)?.owner !== 1)
+            .sort()
+        : [];
       this.scene.setReachable([]);
       this.scene.setReachableCells(this.gridFocus, this.reachTargets);
     } else {
       this.gridReach.clear();
       this.gridFocus = null;
+      const targets = new Set<CityId>();
+      if (focus) {
+        for (const target of sendReachableTargets(this.state, focus)) {
+          if (!selected.has(target)) targets.add(target);
+        }
+      }
+      this.reachTargets = [...targets].filter((id) => this.getCity(id)?.owner !== 1).sort();
       this.scene.setReachableCells(null, []);
       this.scene.setReachable(this.reachTargets);
     }
@@ -309,6 +315,13 @@ export class GameSession {
           : 0,
       };
     }
+  }
+
+  /** 目标建筑是否可达；网格地图直接用洪泛结果判断，不再逐城跑 A*。 */
+  private reachCities(id: CityId): CityId[] {
+    if (!this.state.nav) return sendReachableTargets(this.state, id);
+    const reach = this.gridReach.get(id) ?? reachableGridCells(this.state, id);
+    return reach ? reachableGridCities(this.state, id, reach) : [];
   }
 
   /** 同时向目标派兵；无法出发的据点单独说明原因。 */
@@ -328,7 +341,7 @@ export class GameSession {
         if (!problem) problem = `${id} 守军不足两人`;
         continue;
       }
-      if (!sendReachableTargets(this.state, id).includes(to)) {
+      if (!this.reachCities(id).includes(to)) {
         if (!problem) problem = `${id} 路线被阻断`;
         continue;
       }
@@ -404,7 +417,7 @@ export class GameSession {
     const sources: CityId[] = [];
     const left: CityId[] = [];
     for (const id of this.selected) {
-      if (sendReachableTargets(this.state, id).includes(to)) sources.push(id);
+      if (this.reachCities(id).includes(to)) sources.push(id);
       else left.push(id);
     }
     if (sources.length === 0) {
@@ -431,7 +444,7 @@ export class GameSession {
     const sources: CityId[] = [];
     const left: CityId[] = [];
     for (const id of this.selected) {
-      const reach = this.gridReach.get(id);
+      const reach = this.gridReach.get(id) ?? reachableGridCells(this.state, id);
       if (reach && reach.cells[index] === 1) sources.push(id);
       else left.push(id);
     }
@@ -503,7 +516,7 @@ export class GameSession {
           continue;
         }
         if (group.to === undefined) continue;
-        if (!sendReachableTargets(this.state, id).includes(group.to)) {
+        if (!this.reachCities(id).includes(group.to)) {
           if (!problem) problem = `${id} 路线被阻断`;
           continue;
         }
@@ -869,7 +882,7 @@ export class GameSession {
         if (!problem) problem = `${id} 守军不足两人`;
         continue;
       }
-      const reach = this.gridReach.get(id);
+      const reach = this.gridReach.get(id) ?? reachableGridCells(this.state, id);
       if (!reach || reach.cells[cell.index] !== 1) {
         if (!problem) problem = `${id} 无法抵达该网格`;
         continue;

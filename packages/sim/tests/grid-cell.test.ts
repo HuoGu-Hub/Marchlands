@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeBitmapBase64, encodeInt16Base64, encodeUint8Base64 } from "@marchlands/nav";
-import { createGame, hash, reachableGridCells, step } from "../src";
+import { createGame, hash, reachableGridCells, reachableGridCities, sendReachableTargets, step } from "../src";
 import type { MapDef, SimState } from "../src/types";
 import { TIMED_RULES } from "./fixtures";
 
@@ -69,6 +69,16 @@ describe("grid cell reachability", () => {
     // 敌方建筑的格子被阻挡，不算可达地面。
     const enemyCell = reach.nav.cellFromWorld(150 * 10 + 2000, 0 + 1000);
     expect(reach.cells[enemyCell]).toBe(0);
+  });
+
+  it("derives city targets from the reachable bitmap", () => {
+    const state = createGame(gridMap(), 7, TIMED_RULES);
+    const reach = reachableGridCells(state, "a");
+    expect(reach).not.toBeNull();
+    if (!reach) return;
+    expect(reachableGridCities(state, "a", reach).sort()).toEqual(
+      sendReachableTargets(state, "a").sort(),
+    );
   });
 
   it("does not flood through a wall", () => {

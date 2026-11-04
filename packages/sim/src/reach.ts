@@ -1,5 +1,5 @@
 import type { NavGrid } from "@marchlands/nav";
-import { GRID_UNIT_RADIUS_CM, createUnitNavGrid, planGridRoute } from "./grid";
+import { GRID_CAPTURE_RADIUS_CM, GRID_UNIT_RADIUS_CM, createUnitNavGrid, planGridRoute } from "./grid";
 import { blockedTransit } from "./routes";
 import { isProductionSiteKind, siteUnitKind } from "./types";
 import type { CityId, CityState, SimState } from "./types";
@@ -73,6 +73,44 @@ export function reachableGridCells(state: SimState, fromId: CityId): GridReach |
     }
   }
   return { nav, cells };
+}
+
+/**
+ * 网格模式下用一次洪泛结果判断哪些建筑可抵达，避免对每座城各跑一次 A*。
+ * 只要建筑格相邻的任意一格可达，兵团就能借目标豁免走进建筑格。
+ */
+export function reachableGridCities(
+  state: SimState,
+  fromId: CityId,
+  reach: GridReach,
+): CityId[] {
+  const nav = reach.nav;
+  const grid = state.map.grid;
+  if (!grid) return [];
+  const offsetX = state.map.size[0] * 5;
+  const offsetZ = state.map.size[1] * 5;
+  const radius = Math.max(1, Math.ceil(GRID_CAPTURE_RADIUS_CM / grid.cellSizeCm));
+  const result: CityId[] = [];
+  for (const city of state.cities) {
+    if (city.id === fromId) continue;
+    const cell = nav.cellFromWorld(city.pos[0] * 10 + offsetX, city.pos[1] * 10 + offsetZ);
+    if (cell < 0) continue;
+    const cx = nav.cellX(cell);
+    const cz = nav.cellZ(cell);
+    let found = false;
+    for (let dz = -radius; dz <= radius && !found; dz += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        const nx = cx + dx;
+        const nz = cz + dz;
+        if (!nav.inBounds(nx, nz)) continue;
+        if (reach.cells[nav.index(nx, nz)] !== 1) continue;
+        found = true;
+        break;
+      }
+    }
+    if (found) result.push(city.id);
+  }
+  return result;
 }
 
 export function sendReachableTargets(state: SimState, fromId: CityId): CityId[] {
