@@ -15,7 +15,7 @@ import { isProductionSiteKind, reachableGridCells, reachableGridCities, sendReac
 import { audio } from "../audio";
 import { RouteOverlay } from "./route-overlay";
 import { synthesizeGrid } from "./nav-synthesis";
-import type { PlannedAssignment } from "./route-overlay";
+import type { DragArrowTarget, PlannedAssignment } from "./route-overlay";
 import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
@@ -805,7 +805,8 @@ export class GameSession {
       }
       this.dragMoved = true;
       if (this.dispatchSource) {
-        this.routeOverlay.setDragArrow(this.dispatchSource, event.clientX, event.clientY);
+        const target = this.dragArrowTarget(event.clientX, event.clientY);
+        this.routeOverlay.setDragArrow(this.dispatchSource, target, event.clientX, event.clientY);
       }
       return;
     }
@@ -941,6 +942,32 @@ export class GameSession {
     if (cell) return cell;
     if (nearest && nearCity && nearCity.owner !== 1) return { city: nearest.id };
     return null;
+  }
+
+  /** 拖拽时把鼠标位置吸附到目标格/据点，供箭头与落点标记使用。 */
+  private dragArrowTarget(clientX: number, clientY: number): DragArrowTarget | null {
+    const target = this.dispatchTargetAt(clientX, clientY, this.dispatchSource);
+    if (!target) return null;
+    if (target.city) {
+      const city = this.getCity(target.city);
+      if (!city) return null;
+      return {
+        xCm: city.pos[0] * 10,
+        zCm: city.pos[1] * 10,
+        sizeCm: 0,
+        heightM: this.scene.groundHeight(city.pos[0], city.pos[1]),
+      };
+    }
+    if (!target.cell) return null;
+    const nav = this.gridFocus?.nav;
+    return {
+      xCm: target.cell.xCm,
+      zCm: target.cell.zCm,
+      sizeCm: nav ? nav.cellSizeCm : 100,
+      heightM: nav
+        ? nav.heightCm(target.cell.index) / 100
+        : this.scene.groundHeight(target.cell.xCm / 10, target.cell.zCm / 10),
+    };
   }
 
   private dispatchSingle(target: { city?: CityId; cell?: { index: number; xCm: number; zCm: number } }): void {

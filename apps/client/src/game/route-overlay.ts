@@ -16,6 +16,14 @@ interface RouteOverlayOptions {
   map: MapDef;
 }
 
+/** 拖拽派兵时箭头指向的目标；sizeCm=0 表示据点，>0 表示网格。 */
+export interface DragArrowTarget {
+  readonly xCm: number;
+  readonly zCm: number;
+  readonly sizeCm: number;
+  readonly heightM: number;
+}
+
 /** 批量指定目标时已经编好组的派兵计划：目标可以是据点，也可以是任意网格（地图坐标厘米）。 */
 export interface PlannedAssignment {
   sources: readonly CityId[];
@@ -142,7 +150,12 @@ export class RouteOverlay {
   private readonly projector = new ScreenProjector();
   private readonly panelRefs: Record<string, HTMLElement> = {};
   private plan: PlannedAssignment[] = [];
-  private dragArrow: { from: CityId; x: number; y: number } | null = null;
+  private dragArrow: {
+    from: CityId;
+    target: DragArrowTarget | null;
+    cursorX: number;
+    cursorY: number;
+  } | null = null;
   private width = 0;
   private height = 0;
   private pixelRatio = 0;
@@ -204,8 +217,13 @@ export class RouteOverlay {
   }
 
   /** 单选后从建筑拖拽派兵时显示的拱形箭头；传 null 清除。 */
-  setDragArrow(from: CityId | null, clientX = 0, clientY = 0): void {
-    this.dragArrow = from ? { from, x: clientX, y: clientY } : null;
+  setDragArrow(
+    from: CityId | null,
+    target: DragArrowTarget | null = null,
+    cursorX = 0,
+    cursorY = 0,
+  ): void {
+    this.dragArrow = from ? { from, target, cursorX, cursorY } : null;
   }
 
   setPlan(assignments: readonly PlannedAssignment[]): void {
@@ -477,24 +495,90 @@ export class RouteOverlay {
     }
   }
 
-  /** 拖拽派兵的拱形箭头：起点为发兵建筑，终点跟随鼠标。 */
+  /** 拖拽派兵的拱形箭头：根在建筑顶部，箭头抬高并吸附到目标格中心。 */
   private drawDragArrow(): void {
-    if (!this.dragArrow) return;
-    const source = this.sitePoint(this.dragArrow.from, GROUND_Y);
+    const arrow = this.dragArrow;
+    if (!arrow) return;
+    const source = this.sitePoint(arrow.from, 3.6);
     if (!source) return;
-    const target = {
-      x: this.dragArrow.x - this.rect.left,
-      y: this.dragArrow.y - this.rect.top,
-    };
-    const points = this.planArc(source, target, 0);
-    this.stroke(points, PLAN_SHADOW, 5, []);
-    this.stroke(points, PLAN_COLOR, 2.2, []);
-    this.arrowHead(points);
+    let end: ScreenPoint;
+    if (arrow.target) {
+      const point = this.projector.point(
+        arrow.target.xCm / 100,
+        arrow.target.zCm / 100,
+        arrow.target.heightM + 0.9,
+      );
+      if (!point) return;
+      end = point;
+      this.drawDragTarget(arrow.target);
+    } else {
+      end = { x: arrow.cursorX - this.rect.left, y: arrow.cursorY - this.rect.top };
+    }
+    const points = this.planArc(source, end, 0);
+    this.stroke(points, PLAN_SHADOW, 7, []);
+    this.stroke(points, PLAN_COLOR, 3.2, []);
+    this.arrowHead(points, 13);
     const context = this.context;
     context.beginPath();
-    context.arc(source.x, source.y, 3, 0, Math.PI * 2);
+    context.arc(source.x, source.y, 4.5, 0, Math.PI * 2);
     context.fillStyle = PLAN_COLOR;
     context.fill();
+    context.strokeStyle = PLAN_SHADOW;
+    context.lineWidth = 2;
+    context.stroke();
+  }
+
+  /** 目标标记：网格画方框，据点画圆环，确保能看清落点。 */
+  private drawDragTarget(target: DragArrowTarget): void {
+    const context = this.context;
+    if (target.sizeCm <= 0) {
+      const point = this.projector.point(target.xCm / 100, target.zCm / 100, target.heightM + 0.5);
+      if (!point) return;
+      context.beginPath();
+      context.arc(point.x, point.y, 16, 0, Math.PI * 2);
+      context.strokeStyle = "rgba(235,255,240,.98)";
+      context.lineWidth = 2.4;
+      context.stroke();
+      context.beginPath();
+      context.arc(point.x, point.y, 3, 0, Math.PI * 2);
+      context.fillStyle = PLAN_COLOR;
+      context.fill();
+      return;
+    }
+    const half = target.sizeCm / 200;
+    const x = target.xCm / 100;
+    const z = target.zCm / 100;
+    const y = target.heightM + 0.08;
+    const corners = [
+      [x - half, z - half],
+      [x + half, z - half],
+      [x + half, z + half],
+      [x - half, z + half],
+    ].map(([px, pz]) => this.projector.point(px, pz, y));
+    if (corners.some((corner) => !corner)) return;
+    const [a, b, c, d] = corners as ScreenPoint[];
+    context.beginPath();
+    context.moveTo(a.x, a.y);
+    context.lineTo(b.x, b.y);
+    context.lineTo(c.x, c.y);
+    context.lineTo(d.x, d.y);
+    context.closePath();
+    context.fillStyle = "rgba(166,245,184,.22)";
+    context.fill();
+    context.strokeStyle = "rgba(235,255,240,.98)";
+    context.lineWidth = 2.4;
+    context.stroke();
+    const center = this.projector.point(x, z, y);
+    if (center) {
+      context.beginPath();
+      context.moveTo(center.x - 5, center.y);
+      context.lineTo(center.x + 5, center.y);
+      context.moveTo(center.x, center.y - 5);
+      context.lineTo(center.x, center.y + 5);
+      context.strokeStyle = PLAN_COLOR;
+      context.lineWidth = 2;
+      context.stroke();
+    }
   }
 
   /** 拱形控制点位于连线中点的上方，多个出发据点按序号抬高避免重叠。 */
@@ -527,11 +611,10 @@ export class RouteOverlay {
     return points;
   }
 
-  private arrowHead(points: ScreenPoint[]): void {
+  private arrowHead(points: ScreenPoint[], size = 9): void {
     const tip = points[points.length - 1];
     const tail = points[Math.max(0, points.length - 5)];
     const angle = Math.atan2(tip.y - tail.y, tip.x - tail.x);
-    const size = 9;
     const context = this.context;
     context.beginPath();
     context.moveTo(tip.x, tip.y);
