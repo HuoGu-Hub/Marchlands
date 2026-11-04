@@ -145,6 +145,10 @@ export interface SiteDraft {
   visualAssetId?: string;
   /** 外观自带朝向，单位为度。 */
   visualRotation?: number;
+  /** 外观俯仰 X，单位为度。 */
+  visualRotationX?: number;
+  /** 外观侧倾 Z，单位为度。 */
+  visualRotationZ?: number;
   visualScale?: number;
   /** 城镇占地直径，分米。 */
   footprintDm?: number;
@@ -186,6 +190,8 @@ export interface MapDocument {
 export interface SiteVisual {
   assetId?: string;
   rotation: number;
+  rotationX?: number;
+  rotationZ?: number;
   scale: number;
 }
 

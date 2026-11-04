@@ -503,7 +503,9 @@ export class EditorNext {
       if (this.selection?.kind === "site" && this.selectedProxy) {
         this.scene?.previewSiteRotation(
           this.selection.id,
+          (this.selectedProxy.rotation.x * 180) / Math.PI,
           (this.selectedProxy.rotation.y * 180) / Math.PI,
+          (this.selectedProxy.rotation.z * 180) / Math.PI,
         );
       }
       this.updateViewInfo();
@@ -558,6 +560,8 @@ export class EditorNext {
       (window as unknown as Record<string, unknown>).__mlnxRoadMarker = () => this.roadSelectionRoot?.children.length ?? 0;
       (window as unknown as Record<string, unknown>).__mlnxSiteRotation = (id: string) =>
         this.scene?.siteModelRotation(id) ?? null;
+      (window as unknown as Record<string, unknown>).__mlnxSiteEuler = (id: string) =>
+        this.scene?.siteModelEuler(id) ?? null;
       (window as unknown as Record<string, unknown>).__mlnxGizmo = () => {
         if (!this.gizmo) return null;
         const gizmo = this.gizmo as unknown as { mode?: string; axis?: string | null; visible?: boolean };
@@ -1706,6 +1710,18 @@ export class EditorNext {
       { step: 15, precision: 0 },
     );
     this.addNumber(
+      "俯仰 X",
+      site.visualRotationX ?? 0,
+      (value) => this.commit(updateSite(this.doc, id, { visualRotationX: Math.round(value) }), "已调整据点俯仰", { sites: true }),
+      { step: 15, precision: 0 },
+    );
+    this.addNumber(
+      "侧倾 Z",
+      site.visualRotationZ ?? 0,
+      (value) => this.commit(updateSite(this.doc, id, { visualRotationZ: Math.round(value) }), "已调整据点侧倾", { sites: true }),
+      { step: 15, precision: 0 },
+    );
+    this.addNumber(
       "缩放",
       site.visualScale ?? 1,
       (value) => this.commit(updateSite(this.doc, id, { visualScale: Math.max(0.1, Math.min(10, value)) }), "已调整据点缩放", { sites: true }),
@@ -1994,9 +2010,18 @@ export class EditorNext {
     }
     if (selection.kind === "site") {
       const pos: [number, number] = [snapDm(proxy.position.x * 10), snapDm(proxy.position.z * 10)];
-      const patch: { pos: [number, number]; visualRotation?: number } = { pos };
+      const patch: {
+        pos: [number, number];
+        visualRotation?: number;
+        visualRotationX?: number;
+        visualRotationZ?: number;
+      } = { pos };
       if (this.tool === "rotate") {
-        patch.visualRotation = ((Math.round((proxy.rotation.y * 180) / Math.PI) % 360) + 360) % 360;
+        const degrees = (radians: number): number =>
+          ((Math.round((radians * 180) / Math.PI) % 360) + 360) % 360;
+        patch.visualRotation = degrees(proxy.rotation.y);
+        patch.visualRotationX = degrees(proxy.rotation.x);
+        patch.visualRotationZ = degrees(proxy.rotation.z);
       }
       this.commit(updateSite(this.doc, selection.id, patch), "已更新据点", { sites: true });
       return;

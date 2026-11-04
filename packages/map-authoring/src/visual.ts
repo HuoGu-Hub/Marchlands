@@ -331,10 +331,20 @@ export function cloneVisual(visual: VisualDraft): VisualDraft {
 export function compileVisual(document: MapDocument): MapVisual {
   const sites: MapVisual["sites"] = {};
   for (const site of document.sites) {
-    if (!site.visualAssetId && site.visualRotation === undefined && site.visualScale === undefined) continue;
+    if (
+      !site.visualAssetId &&
+      site.visualRotation === undefined &&
+      site.visualRotationX === undefined &&
+      site.visualRotationZ === undefined &&
+      site.visualScale === undefined
+    ) {
+      continue;
+    }
     sites[site.id] = {
       ...(site.visualAssetId ? { assetId: site.visualAssetId } : {}),
       rotation: site.visualRotation ?? 0,
+      ...(site.visualRotationX !== undefined ? { rotationX: site.visualRotationX } : {}),
+      ...(site.visualRotationZ !== undefined ? { rotationZ: site.visualRotationZ } : {}),
       scale: site.visualScale ?? 1,
     };
   }

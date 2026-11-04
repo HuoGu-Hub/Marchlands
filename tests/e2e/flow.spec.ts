@@ -411,6 +411,33 @@ test("next editor rotates a selected site with the gizmo", async ({ page }) => {
     .toBeGreaterThan(0);
 });
 
+test("next editor rotates a site on the vertical axes", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.locator(".pcui-treeview-item-text", { hasText: "c1 ·" }).click();
+  const pitch = page.locator("#mlnx-inspector .pcui-numeric-input input").nth(4);
+  await pitch.fill("30");
+  await pitch.dispatchEvent("change");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __mlnxDoc: () => { sites: Array<{ id: string; visualRotationX?: number }> } })
+            .__mlnxDoc().sites.find((site) => site.id === "c1")?.visualRotationX,
+      ),
+    )
+    .toBe(30);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { __mlnxSiteEuler: (id: string) => { x: number } }).__mlnxSiteEuler("c1").x,
+      ),
+    )
+    .toBeGreaterThan(0);
+});
+
 test("next editor keeps map rules on the map and terrain on foundations", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });

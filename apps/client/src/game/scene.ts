@@ -901,7 +901,13 @@ export class BattleScene {
       if (position) view.group.position.set(position.x, this.terrain.heightAt(position.x, position.z), position.z);
       const siteVisual = this.visual?.sites[city.id];
       const visualKey = siteVisual
-        ? [siteVisual.assetId ?? "", siteVisual.rotation ?? 0, siteVisual.scale ?? 1].join("|")
+        ? [
+            siteVisual.assetId ?? "",
+            siteVisual.rotation ?? 0,
+            siteVisual.rotationX ?? 0,
+            siteVisual.rotationZ ?? 0,
+            siteVisual.scale ?? 1,
+          ].join("|")
         : "";
       if (
         view.owner !== city.owner ||
@@ -1109,7 +1115,12 @@ export class BattleScene {
     });
     view.model.clear();
     const siteVisual = this.visual?.sites[city.id];
-    view.model.rotation.y = ((siteVisual?.rotation ?? 0) * Math.PI) / 180;
+    view.model.rotation.set(
+      ((siteVisual?.rotationX ?? 0) * Math.PI) / 180,
+      ((siteVisual?.rotation ?? 0) * Math.PI) / 180,
+      ((siteVisual?.rotationZ ?? 0) * Math.PI) / 180,
+      "YXZ",
+    );
     view.model.scale.setScalar(siteVisual?.scale ?? 1);
     const seed = hashId(city.id) + city.level * 17;
     const palette = paletteFor(city.owner);
@@ -1542,9 +1553,22 @@ export class BattleScene {
     return this.cityViews.get(cityId)?.model.rotation.y ?? 0;
   }
 
-  previewSiteRotation(cityId: CityId, degrees: number): void {
+  siteModelEuler(cityId: CityId): { x: number; y: number; z: number } {
     const view = this.cityViews.get(cityId);
-    if (view) view.model.rotation.y = (degrees * Math.PI) / 180;
+    if (!view) return { x: 0, y: 0, z: 0 };
+    return { x: view.model.rotation.x, y: view.model.rotation.y, z: view.model.rotation.z };
+  }
+
+  previewSiteRotation(cityId: CityId, xDegrees: number, yDegrees: number, zDegrees: number): void {
+    const view = this.cityViews.get(cityId);
+    if (view) {
+      view.model.rotation.set(
+        (xDegrees * Math.PI) / 180,
+        (yDegrees * Math.PI) / 180,
+        (zDegrees * Math.PI) / 180,
+        "YXZ",
+      );
+    }
   }
 
   updateSites(map: MapDef, visual: MapVisual | null, state: SimState): void {

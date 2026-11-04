@@ -237,6 +237,16 @@ function siteFromUnknown(value: unknown): SiteDraft | null {
     if (rotation === null) throw new Error(`据点 ${site.id} 的外观朝向无效`);
     site.visualRotation = rotation;
   }
+  if (value.visualRotationX !== undefined) {
+    const rotation = finiteNumber(value.visualRotationX);
+    if (rotation === null) throw new Error(`据点 ${site.id} 的外观俯仰无效`);
+    site.visualRotationX = rotation;
+  }
+  if (value.visualRotationZ !== undefined) {
+    const rotation = finiteNumber(value.visualRotationZ);
+    if (rotation === null) throw new Error(`据点 ${site.id} 的外观侧倾无效`);
+    site.visualRotationZ = rotation;
+  }
   if (value.visualScale !== undefined) {
     const scale = finiteNumber(value.visualScale);
     if (scale === null || scale < 0.1 || scale > 10) throw new Error(`据点 ${site.id} 的外观缩放无效`);
