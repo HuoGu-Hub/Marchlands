@@ -10,9 +10,17 @@ export interface AiController {
 }
 
 const DECIDE_EVERY = 40;
+const SEND_THRESHOLD = 60;
 const FALLBACK_TICKS = 600;
 const GRANARY_EXTRA_COST = 5000;
 const GRANARY_FIRST_BONUS = 1500;
+
+export interface AiTuning {
+  /** 每隔多少 tick 决策一次，越小反应越快。 */
+  decideTicks?: number;
+  /** 守军达到上限的百分比就出兵，越小越激进。 */
+  sendThresholdPercent?: number;
+}
 
 function byCityId(a: { id: string }, b: { id: string }): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
@@ -80,12 +88,14 @@ function pickTarget(
   return capture ?? trade;
 }
 
-export function createAi(player: PlayerId): AiController {
+export function createAi(player: PlayerId, tuning: AiTuning = {}): AiController {
+  const decideTicks = Math.max(1, Math.round(tuning.decideTicks ?? DECIDE_EVERY));
+  const sendThreshold = Math.min(100, Math.max(1, tuning.sendThresholdPercent ?? SEND_THRESHOLD));
   let lastAction = 0;
 
   return {
     decide(state: SimState): Command[] {
-      if (state.tick % DECIDE_EVERY !== 0) return [];
+      if (state.tick % decideTicks !== 0) return [];
 
       const commands: Command[] = [];
       for (const site of state.cities) {
@@ -101,7 +111,7 @@ export function createAi(player: PlayerId): AiController {
       for (const city of own) {
         const full = city.pop * 100 >= city.maxPop * 80;
 
-        if (city.pop * 100 >= city.maxPop * 60) {
+        if (city.pop * 100 >= city.maxPop * sendThreshold) {
           const count = Math.max(1, Math.floor((city.pop * sendPercent(state.rules)) / 100));
           const capture = pickTarget(state, city, player, count, false);
           if (capture) {

@@ -41,7 +41,7 @@ export { UNIT_PROFILES, unitProfile } from "./units";
 export type { UnitProfile } from "./units";
 export { canonicalState, hash, hashText, mapHashOf } from "./hash";
 export { createAi } from "./ai";
-export type { AiController } from "./ai";
+export type { AiController, AiTuning } from "./ai";
 export {
   DEFAULT_RULESET,
   arrivalTicks,

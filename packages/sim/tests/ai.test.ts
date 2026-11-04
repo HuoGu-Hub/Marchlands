@@ -47,6 +47,21 @@ describe("ai", () => {
     expect(ai.decide(offset)).toEqual([]);
   });
 
+  it("uses the configured decision cadence", () => {
+    const state = createGame(AI_MAP, 7, TIMED_RULES);
+    const slow = createAi(2, { decideTicks: 80 });
+    expect(slow.decide({ ...state, tick: 40 })).toEqual([]);
+  });
+
+  it("uses the configured send threshold", () => {
+    const state = createGame(AI_MAP, 7, TIMED_RULES);
+    const eager = createAi(2, { sendThresholdPercent: 40 });
+    const relaxed = createAi(2, { sendThresholdPercent: 90 });
+    const at = { ...state, tick: 40 };
+    expect(eager.decide(at).some((command) => command.type === "send")).toBe(true);
+    expect(relaxed.decide(at).some((command) => command.type === "send")).toBe(false);
+  });
+
   it("switches an owned outpost to engage", () => {
     const state = createGame(AI_OUTPOST_MAP, 1, TIMED_RULES);
     expect(createAi(2).decide(state)).toContainEqual({
