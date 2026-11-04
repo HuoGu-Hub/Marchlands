@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marchlands 生图提示词 · 建筑与兵种</title>
+<style>
+:root{
+  --bg:#0b110d; --panel:#111814; --panel2:#0d1410; --line:#243029;
+  --ink:#e8e0ce; --dim:#93a08f; --gold:#c9a86a; --green:#8ed9a0; --red:#ef9278;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.62 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+header{position:sticky;top:0;z-index:20;background:rgba(11,17,13,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
+.bar{max-width:1480px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+h1{font-size:17px;font-weight:600;letter-spacing:.22em;margin:0;color:var(--ink);white-space:nowrap}
+.stats{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.stats b{color:var(--gold);font-weight:600;margin-right:4px;font-size:14px}
+.bar .acts{margin-left:auto;display:flex;gap:8px}
+main{max-width:1480px;margin:0 auto;padding:8px 24px 96px}
+h2{
+  font-size:13px;font-weight:600;letter-spacing:.2em;color:var(--gold);
+  margin:46px 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;text-transform:none;
+}
+h2 small{font-size:12px;letter-spacing:.04em;color:var(--dim);font-weight:400;margin-left:auto;font-variant-numeric:tabular-nums}
+button{
+  font:12.5px/1 "Segoe UI","Microsoft YaHei",sans-serif;color:var(--ink);
+  background:#18211b;border:1px solid #2c3a31;border-radius:4px;padding:7px 11px;cursor:pointer;
+  transition:background .14s,border-color .14s,color .14s;
+}
+button:hover{background:#1f2b23;border-color:#3d5142;color:#fff}
+button:active{transform:translateY(1px)}
+button.hot{background:#26331f;border-color:#4c6a3f;color:#d9ecc8}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:15px 16px;display:flex;flex-direction:column;gap:9px}
+.head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.id{
+  font:600 11.5px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.06em;
+  color:#141a10;background:var(--gold);padding:4px 7px;border-radius:3px;
+}
+.id.u{background:var(--green);color:#0d160f}
+.id.m{background:var(--red);color:#1a0e0a}
+.name{font-size:14.5px;font-weight:600;letter-spacing:.02em}
+.tier{margin-left:auto;font-size:11.5px;color:var(--dim);border:1px solid #2b3a30;border-radius:999px;padding:3px 9px;white-space:nowrap}
+.tier.l1{border-color:#3a3a30;color:#b8b49c}
+.tier.l2{border-color:#4a4330;color:#d6c08a}
+.tier.l3{border-color:#44543a;color:#a9c88e}
+.anchor{margin:0;font-size:12.5px;color:var(--dim);line-height:1.5}
+.prompt{
+  margin:0;font:12.8px/1.72 ui-monospace,SFMono-Regular,Consolas,"Courier New",monospace;
+  color:#d8d0bd;background:var(--panel2);border-left:2px solid #33483a;
+  padding:11px 13px;border-radius:0 3px 3px 0;word-break:break-word;
+}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+.poses{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:1px}
+.poses li{
+  font:12.5px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;color:#d3cbb8;
+  background:var(--panel2);padding:9px 12px;border-left:2px solid #4a3a34;cursor:pointer;
+  transition:background .12s,color .12s,border-color .12s;
+}
+.poses li:hover{background:#17201a;color:#fff;border-left-color:var(--red)}
+.poses b{display:inline-block;min-width:4.4em;color:var(--gold);font-weight:600;font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:12px;letter-spacing:.06em}
+.block{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:14px 16px;display:flex;flex-direction:column;gap:9px}
+.bh{display:flex;align-items:center;gap:10px}
+.bh span{font-size:13.5px;font-weight:600}
+.bh button{margin-left:auto}
+.formula{
+  margin:16px 0 0;font:12.5px/1.9 ui-monospace,Consolas,monospace;color:#b9c4ae;
+  background:#0e1611;border:1px dashed #2f3f33;border-radius:4px;padding:12px 14px;
+}
+.formula em{color:var(--gold);font-style:normal}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+th,td{border-bottom:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:12px;letter-spacing:.06em;white-space:nowrap}
+td code,p code{font:12.4px/1.5 ui-monospace,Consolas,monospace;color:#c8d6bd;background:#0e1611;padding:2px 5px;border-radius:3px}
+tr:hover td{background:#0f1612}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.block.wide{margin-bottom:14px}
+@media(max-width:900px){.two{grid-template-columns:1fr}.bar{gap:12px}.stats{display:none}}
+.toast{
+  position:fixed;left:50%;bottom:30px;transform:translate(-50%,16px);z-index:40;
+  background:var(--gold);color:#171307;font-size:13px;font-weight:600;padding:9px 18px;border-radius:4px;
+  opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>MARCHLANDS 生图提示词</h1>
+    <div class="stats">
+      <span><b>8</b>建筑类型</span>
+      <span><b>24</b>建筑模型</span>
+      <span><b>5</b>兵种</span>
+      <span><b>10</b>兵种模型</span>
+      <span><b>10</b>动作表</span>
+      <span><b>40</b>动作姿势</span>
+    </div>
+    <div class="acts">
+      <button data-copy="all" class="hot">复制全部正片提示词</button>
+      <button data-copy="neg">复制负面词</button>
+    </div>
+  </div>
+</header>
+<main>
+
+<h2>风格词<small>S0 基准图 · S1 风格前缀 · S2 画面 · S3 队伍色 · S4 负面</small></h2>
+<div class="block wide">
+  <div class="bh"><span class="id">S0</span><span>风格基准图</span><button data-copy="self">复制</button></div>
+  <p class="prompt">stylized low-poly medieval frontier fantasy art direction board, three panels on one warm grey backdrop: a plaster and timber levy barracks on the left, a squat stone shield blockhouse in the middle, a team-green levy soldier with a curved machete on the right, a row of five flat paint chips along the bottom in sun-bleached plaster #D9CAAB, weathered stone #8D8676, walnut timber #4A3626, oat straw #C6A55E and faction green #5CC07F, flat-shaded faceted geometry, warm late afternoon light, no text, 3D render</p>
+</div>
+<div class="two">
+  <div class="block">
+    <div class="bh"><span class="id">S1</span><span>风格前缀</span><button data-copy="s1">复制</button></div>
+    <p class="prompt">stylized low-poly medieval frontier fantasy game asset, flat-shaded faceted surfaces, hand-painted matte albedo, chunky handcrafted silhouette, muted palette of sun-bleached plaster #D9CAAB, weathered grey stone #8D8676, dark walnut timber #4A3626, oat straw #C6A55E and sage grass #58743C, warm late afternoon light, crisp clean edges, tabletop strategy board game look, 3D render</p>
+  </div>
+  <div class="block">
+    <div class="bh"><span class="id">S2</span><span>画面</span><button data-copy="s2">复制</button></div>
+    <p class="prompt">single isolated asset centered on a flat warm grey backdrop, three-quarter front view slightly above eye level, even soft studio light with a warm key from upper left and a faint cool rim, one soft contact shadow, nothing beyond the described parts, no text, no watermark, no interface, sharp focus, game ready reference render</p>
+  </div>
+  <div class="block">
+    <div class="bh"><span class="id">S3</span><span>队伍色</span><button data-copy="s3">复制</button></div>
+    <p class="prompt">cloth banners and shield paint are one flat single color without gradients or patterns, roof shingles carry only a plain tile pattern, every tinted area stays clean and solid so the faction color can be swapped to green #5CC07F, red #E06A4A or neutral grey #97917F</p>
+  </div>
+  <div class="block">
+    <div class="bh"><span class="id">S4</span><span>负面</span><button data-copy="neg">复制</button></div>
+    <p class="prompt">photorealistic, cinematic realism, gritty dirt, blood, gore, glossy plastic, chrome, neon, science fiction, anime, cel shading, black outline, comic, sketch, painterly blur, depth of field, motion blur, vignette, busy background, landscape, sky, clouds, multiple objects, duplicated parts, warped perspective, cropped, text, watermark, logo, signature, low contrast, muddy color</p>
+  </div>
+</div>
+<p class="formula">成品 = <em>S1</em> + 主体 + <em>S2</em> + <em>S3</em>　·　负面 = <em>S4</em>　·　拼接由页面按钮完成，主体只写建筑或兵种本身</p>
+
+<h2>建筑模型<small>B01–B24 · 8 类型 × 3 等级</small></h2>
+<table>
+  <tr><th>驻点类型</th><th>siteKind</th><th>建筑类型</th><th>模型</th><th>等级语汇</th></tr>
+  <tr><td>兵营</td><td><code>barracks</code></td><td>infantry 步兵营</td><td>B01 B02 B03</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+  <tr><td>马厩</td><td><code>stable</code></td><td>cavalry 骑兵营</td><td>B07 B08 B09</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+  <tr><td>盾兵营</td><td><code>shieldBarracks</code></td><td>shield 盾兵营</td><td>B04 B05 B06</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+  <tr><td>弓兵营</td><td><code>archerBarracks</code></td><td>archer 弓兵营</td><td>B10 B11 B12</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+  <tr><td>粮仓</td><td><code>granary</code></td><td>granary 粮仓</td><td>B19 B20 B21</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+  <tr><td>驻兵点</td><td><code>outpost</code></td><td>tower 弓箭塔</td><td>B16 B17 B18</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+  <tr><td>城镇大厅</td><td>—</td><td>elite 精兵营</td><td>B13 B14 B15</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+  <tr><td>矿区</td><td>—</td><td>mine 矿区</td><td>B22 B23 B24</td><td>L1 营地 → L2 驻所 → L3 要塞</td></tr>
+</table>
+<div class="grid">
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B01</span><span class="name">步兵营 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：单间木骨泥墙 · 剑形门匾 · 无石基 · 单旗</p>
+  <p class="prompt">single-room levy barracks, beige plaster infill between dark walnut beams, low gable roof of flat grey shingles with deep eaves, plain plank door under a small timber hood, sword-shaped signboard above the door, one shuttered window, a leaning weapon rack and one straw training dummy beside the door, trodden earth apron, single-storey hut footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B02</span><span class="name">步兵营 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：石砌墙脚 · 侧翼披屋 · 围栏院 · 双挂旗</p>
+  <p class="prompt">two-volume infantry garrison, beige plaster walls on a low stone footing, taller gable shingle roof, visible stone base band, side lean-to annex with its own shingle roof, fenced yard, weapon rack, straw training dummy, stacked crates and a barrel, two hanging cloth banners, door hood carried on timber posts, storey-and-a-half footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B03</span><span class="name">步兵营 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：石砌高台 · 角楼尖帽 · 雉堞门墙 · 金顶</p>
+  <p class="prompt">fortified infantry keep, plaster and timber main hall raised on a heavy stone podium, square stone watchtower on one corner with a four-sided shingle cap and a cloth pennant, crenellated stone gate wall, hanging cloth banners flanking the door, warm glowing windows, weapon rack and a fence line, small gold finial, two-storey footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B04</span><span class="name">盾兵营 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：粗石方块体 · 转角石 · 三面圆盾 · 矮胖</p>
+  <p class="prompt">squat stone blockhouse barracks, thick rough grey stone walls with heavy corner quoins, low hipped shingle roof, single arched oak door with iron bands, three round wooden shields with steel rims hung on the front wall, narrow slit windows, rubble apron, wider than tall, single-storey blockhouse footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B05</span><span class="name">盾兵营 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：单圆角楼 · 铁锥顶 · 盾墙横列 · 石栏</p>
+  <p class="prompt">stone shield barracks with one round corner turret, coursed grey stone walls, tall conical shingle turret roof with an iron spike, arched door, a row of round shields along the facade, low stone balustrade, supply crate, one long hanging cloth banner, storey-and-a-half footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B06</span><span class="name">盾兵营 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：双圆角楼 · 雉堞女儿墙 · 闸门 · 金锥尖</p>
+  <p class="prompt">fortified shield barracks with two round turrets, crenellated stone parapet, arched gate with iron portcullis bars, shields mounted along the wall, two long cloth banners flanking the gate, gold finials on the turret spikes, stone steps, garrison crates, two-storey footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B07</span><span class="name">骑兵营 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：折线谷仓顶 · 马蹄门匾 · 单匹马 · 屋脊风标</p>
+  <p class="prompt">timber stable with a steep gambrel barn roof, vertical plank walls with dark battens, wide arched door, horseshoe signboard above the door, one hay bale at the entrance, one shaggy brown horse standing beside the building, small cupola with a weather vane on the ridge, packed dirt yard, long low stable footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B08</span><span class="name">骑兵营 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：石基抬高 · 围栏马场 · 水槽 · 两匹马</p>
+  <p class="prompt">timber cavalry stable with a gambrel roof on a stone footing, fenced paddock on one side holding two horses, wooden water trough, hay bales, stacked crates, wide barn door, cupola vent, flat cloth skirt under the roof edge, storey-and-a-half footprint with an open yard</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B09</span><span class="name">骑兵营 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：端部石塔 · 三匹马 · 大车 · 塔旗</p>
+  <p class="prompt">fortified cavalry stable with a stone watchtower at one end, tall gambrel barn on a stone base, paddock holding three horses and a loaded cart, hay bales, tack rack, cloth pennant on the tower and a banner over the barn door, two-storey footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B10</span><span class="name">弓兵营 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：柱架浅顶 · 侧梯 · 箭形门匾 · 两只箭靶</p>
+  <p class="prompt">light archer barracks, small plaster hut under a shallow shingle roof carried on a timber pole frame, side ladder up to the roof edge, arrow signboard, two straw target butts on wooden stands beside the building, quiver rack, trodden dirt, single-storey footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B11</span><span class="name">弓兵营 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：围栏靶场 · 三只箭靶 · 外露椽条 · 箭桶</p>
+  <p class="prompt">timber archer barracks with a fenced practice range, three straw target butts on stands, low plaster hut lifted on timber posts, shallow roof with exposed rafters, arrow signboard, hanging cloth banner, barrel of arrows, storey-and-a-half footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B12</span><span class="name">弓兵营 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：四柱瞭望台 · 栏板回廊 · 四坡锥顶 · 顶旗</p>
+  <p class="prompt">elevated archer barracks, tall timber watch platform on four posts with a railed deck, four-sided cone roof and cloth pennant on top, plaster hut below, fenced target range with three butts, hanging banner at the door, crate and ladder, two-storey footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B13</span><span class="name">精兵营 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：高瘦大厅 · 金饰门框 · 圆徽 · 双长幡</p>
+  <p class="prompt">tall elite hall, pale plaster walls with dark timber framing, steep shingle roof with deep eaves, gold-trimmed door frame, round gold and cloth emblem above the door, two long hanging cloth banners, small stone stoop, narrow tall footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B14</span><span class="name">精兵营 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：双柱门廊 · 金栏 · 山墙金冠 · 石基</p>
+  <p class="prompt">elite garrison hall with a columned porch, two stone columns carrying a shingle porch roof, gold rail between the columns, long hanging banners, gold gable crest, plaster and timber walls on a stone base, crate and barrel at the porch, storey-and-a-half footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B15</span><span class="name">精兵营 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：方塔金尖 · 金腰线 · 石阶门廊 · 演武场</p>
+  <p class="prompt">elite fortress hall with a square stone tower and gold-tipped spire, gold cornice bands, deep columned porch with stone stairs, long cloth banners, training dummy and weapon rack in front, warm glowing windows, two-storey footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B16</span><span class="name">弓箭塔 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：石基灰墙 · 露顶木台 · 单旗杆 · 塔下双靶</p>
+  <p class="prompt">slender archer watchtower, stone base under a beige plaster shaft, timber railed fighting deck at the top open to the sky, tall banner pole with a flat cloth pennant, ladder rungs up the shaft, two target butts at the foot, tall narrow footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B17</span><span class="name">弓箭塔 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：角柱木骨 · 双层栏板 · 火盆哨亭 · 双旗</p>
+  <p class="prompt">taller archer tower with corner timber posts and a wider double-railed deck, small roofed sentry box holding a brazier on the deck, cloth pennant and a second banner, target butts at the base, tall narrow footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B18</span><span class="name">弓箭塔 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：封顶四坡锥 · 铁顶针 · 雉堞木栏 · 火盆货箱</p>
+  <p class="prompt">fortified archer tower with a roofed fighting deck, four-sided cone roof and iron finial, crenellated timber parapet, wide deck with a brazier and crates, cloth pennant at the peak, target butts below, tall narrow footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B19</span><span class="name">粮仓 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：石桩架空 · 竖板墙 · 拱门跳板 · 麻袋草捆</p>
+  <p class="prompt">raised timber granary on stone posts, vertical plank walls, gable shingle roof, arched door with a plank loading ramp, burlap sacks, one hay bale, crate, narrow vent slots, low wide footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B20</span><span class="name">粮仓 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：圆筒仓 · 锥顶石帽 · 载粮大车 · 围栏</p>
+  <p class="prompt">timber granary with a round plank silo, conical shingle silo roof on a stone cap, raised main barn on stone posts, loading ramp, cart loaded with sacks, fenced edge, hanging cloth banner, wide footprint with two volumes</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B21</span><span class="name">粮仓 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：四叶风车 · 石磨塔 · 路灯 · 粮袋堆场</p>
+  <p class="prompt">large granary complex, stone mill tower with four lattice windmill sails and a conical roof, raised plank barn with a loading ramp, cart and stacked sacks, lamp post, fence line, hanging cloth banner, wide footprint with three volumes</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B22</span><span class="name">矿区 · 营地</span><span class="tier l1">L1</span></div>
+  <p class="anchor">差异锚点：裸岩洞口 · 木门框 · 单轨矿车 · 矿脉</p>
+  <p class="prompt">rock-cut mine entrance, timber portal frame and lintel over a dark arch, rusty rail tracks with one ore cart, boulders with exposed green-gold ore veins, picks and a crate, rough stone floor, low mound footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B23</span><span class="name">矿区 · 驻所</span><span class="tier l2">L2</span></div>
+  <p class="anchor">差异锚点：井架绞盘 · 双矿车 · 矿石堆 · 更大岩体</p>
+  <p class="prompt">working mine entrance with a timber headframe and winch wheel above the portal, two ore carts on rails, ore pile, crate, boulders with green-gold veins, higher rock mound footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="b">
+  <div class="head"><span class="id">B24</span><span class="name">矿区 · 要塞</span><span class="tier l3">L3</span></div>
+  <p class="anchor">差异锚点：石砌矿棚 · 通风烟囱 · 三矿车 · 双旗</p>
+  <p class="prompt">large mining site, stone ore shed with a vent chimney, timber headframe and winch, rails and three ore carts, ore piles, lamp post, cloth pennant and hanging banner, broad rock mound footprint</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+</div>
+<h2>兵种模型<small>U01–U10 · 5 兵种 × 2 变体</small></h2>
+<table>
+  <tr><th>兵种</th><th>武器</th><th>老兵模型</th><th>新募模型</th><th>动作表</th></tr>
+  <tr><td>步兵 infantry</td><td>弯刀 · 札甲</td><td><code>U01-A</code></td><td><code>U01-B</code></td><td><code>M01-A</code> <code>M01-B</code></td></tr>
+  <tr><td>盾兵 shield</td><td>阔剑 · 大圆盾</td><td><code>U02-A</code></td><td><code>U02-B</code></td><td><code>M02-A</code> <code>M02-B</code></td></tr>
+  <tr><td>骑兵 cavalry</td><td>长枪 · 战马</td><td><code>U03-A</code></td><td><code>U03-B</code></td><td><code>M03-A</code> <code>M03-B</code></td></tr>
+  <tr><td>弓兵 archer</td><td>反曲弓 · 箭囊</td><td><code>U04-A</code></td><td><code>U04-B</code></td><td><code>M04-A</code> <code>M04-B</code></td></tr>
+  <tr><td>精兵 elite</td><td>长剑 · 羽饰盔</td><td><code>U05-A</code></td><td><code>U05-B</code></td><td><code>M05-A</code> <code>M05-B</code></td></tr>
+</table>
+<div class="grid">
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U01-A</span><span class="name">步兵 · 老兵</span><span class="tier">变体 A</span></div>
+  <p class="anchor">刀疤脸 · 打补丁的背带 · 缺口弯刀 · 泥渍靴</p>
+  <p class="prompt">full-body frontier infantry soldier, stylized semi-chibi build about four heads tall, matte dark leather cap with ear flaps, weathered face with a diagonal scar, beige wool tunic under a rawhide lamellar chest piece with one square iron plate, rope belt with a gold stud, patched shoulder straps, knee boots stained with mud, team-green cloth tabard, notched curved machete held low in the right hand, slight forward lean</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U01-B</span><span class="name">步兵 · 新募</span><span class="tier">变体 B</span></div>
+  <p class="anchor">无伤年轻脸 · 新皮带铜扣 · 左臂臂章 · 抛光弯刀</p>
+  <p class="prompt">full-body frontier infantry soldier, stylized semi-chibi build about four heads tall, clean dark leather cap with ear flaps, young clean-shaven face, crisp team-green tunic under a rawhide lamellar chest piece with one square iron plate, new leather belt with a brass buckle, team armband on the left arm, spare dagger at the hip, clean knee boots, polished curved machete held low in the right hand, upright confident stance</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U02-A</span><span class="name">盾兵 · 老兵</span><span class="tier">变体 A</span></div>
+  <p class="anchor">凹痕圆盾 · 划痕漆带 · 破边战袍 · 锁甲残片</p>
+  <p class="prompt">full-body shield guard, stylized semi-chibi build about four heads tall, full steel helm with a ragged mail aventail, heavy steel pauldrons over a lamellar cuirass, dented round wooden shield with a scratched painted band on the left arm, chipped broad sword in the right hand, torn tabard hem, battered greaves</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U02-B</span><span class="name">盾兵 · 新募</span><span class="tier">变体 B</span></div>
+  <p class="anchor">抛光盔 · 完好锁甲 · 新盾亮钢凸 · 全套战袍</p>
+  <p class="prompt">full-body shield guard, stylized semi-chibi build about four heads tall, polished steel helm with an intact mail aventail, heavy steel pauldrons over a clean lamellar cuirass, new round wooden shield with a crisp painted band and a bright steel boss on the left arm, clean broad sword in the right hand, full tabard, team armband on the right arm</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U03-A</span><span class="name">骑兵 · 老兵</span><span class="tier">变体 A</span></div>
+  <p class="anchor">杂毛棕马 · 补丁鞍毯 · 磨损马甲 · 断边枪旗</p>
+  <p class="prompt">full-body cavalryman on a shaggy brown warhorse, stylized semi-chibi proportions, conical leather cap with ear discs, lamellar rider armour, patched saddle blanket, long lance with a frayed cloth pennant in the right hand, scratched round shield on the left arm, worn horse barding</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U03-B</span><span class="name">骑兵 · 新募</span><span class="tier">变体 B</span></div>
+  <p class="anchor">深枣骝白流星 · 新鞍毯 · 齐整枪旗 · 亮甲</p>
+  <p class="prompt">full-body cavalryman on a dark bay warhorse with a white blaze, stylized semi-chibi proportions, conical leather cap with ear discs, clean lamellar rider armour, fresh team-green saddle blanket, long lance with a crisp cloth pennant in the right hand, new round shield on the left arm, bright horse barding</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U04-A</span><span class="name">弓兵 · 老兵</span><span class="tier">变体 A</span></div>
+  <p class="anchor">补丁兜帽 · 旧弓 · 半空箭囊 · 破斗篷</p>
+  <p class="prompt">full-body archer, stylized semi-chibi build about four heads tall, patched cloth hood with a half mask, light leather jerkin over a long tunic, ragged team-green cloak, worn recurve bow in the left hand, half-empty quiver on the back, wrapped forearms, soft boots</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U04-B</span><span class="name">弓兵 · 新募</span><span class="tier">变体 B</span></div>
+  <p class="anchor">新兜帽 · 包柄新弓 · 满箭囊 · 完整斗篷</p>
+  <p class="prompt">full-body archer, stylized semi-chibi build about four heads tall, fresh cloth hood with a half mask, light leather jerkin over a clean tunic, full team-green cloak, new recurve bow with a wrapped grip in the left hand, full quiver on the back, team armband, soft boots</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U05-A</span><span class="name">精兵 · 老兵</span><span class="tier">变体 A</span></div>
+  <p class="anchor">暗钢盔 · 三羽残损 · 下颌刀疤 · 战损胫甲</p>
+  <p class="prompt">full-body elite guard, stylized semi-chibi build about four heads tall, dark steel dome helm with three bedraggled feathers, dark steel cuirass with gold rivets, layered cloth cloak strips at the back, gleaming longsword in the right hand, scar across the jaw, battle-worn greaves</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+<article class="card" data-kind="u">
+  <div class="head"><span class="id u">U05-B</span><span class="name">精兵 · 新募</span><span class="tier">变体 B</span></div>
+  <p class="anchor">亮钢盔 · 三羽齐整 · 金饰腰带 · 抛光胫甲</p>
+  <p class="prompt">full-body elite guard, stylized semi-chibi build about four heads tall, polished steel dome helm with three crisp feathers, bright steel cuirass with gold rivets, clean layered cloak strips at the back, gleaming longsword in the right hand, gold-trimmed belt, polished greaves</p>
+  <div class="acts"><button data-copy="body">复制主体</button><button data-copy="full">复制成品</button></div>
+</article>
+
+</div>
+<h2>兵种动作<small>M01–M10 · 待机 / 行进 / 战斗 / 死亡</small></h2>
+<div class="grid">
+<article class="card motion" data-kind="m" data-app="a scarred infantry veteran in patched rawhide armour and a team-green tabard">
+  <div class="head"><span class="id m">M01-A</span><span class="name">步兵 · 老兵</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="standing at ease, weight on the right leg, machete lowered in the right hand, left hand relaxed, chest open, face turned slightly to camera"><b>待机</b>standing at ease, weight on the right leg, machete lowered in the right hand, left hand relaxed, chest open, face turned slightly to camera</li>
+    <li data-pose="mid stride with the left leg forward and the right arm swinging forward, machete low at the hip, torso leaning into the step, tabard swinging back"><b>行进</b>mid stride with the left leg forward and the right arm swinging forward, machete low at the hip, torso leaning into the step, tabard swinging back</li>
+    <li data-pose="overhead chop at full extension, torso twisted, right arm driving the machete down, left arm counterbalanced back, weight on the front foot"><b>战斗</b>overhead chop at full extension, torso twisted, right arm driving the machete down, left arm counterbalanced back, weight on the front foot</li>
+    <li data-pose="falling backward with buckling knees, machete slipping from the hand, head tilted back, arms thrown wide, cloth dragging on the ground"><b>死亡</b>falling backward with buckling knees, machete slipping from the hand, head tilted back, arms thrown wide, cloth dragging on the ground</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a young infantry levy in clean team-green kit and new rawhide armour">
+  <div class="head"><span class="id m">M01-B</span><span class="name">步兵 · 新募</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="standing at ease, weight on the right leg, machete lowered in the right hand, left hand relaxed, chest open, face turned slightly to camera"><b>待机</b>standing at ease, weight on the right leg, machete lowered in the right hand, left hand relaxed, chest open, face turned slightly to camera</li>
+    <li data-pose="mid stride with the left leg forward and the right arm swinging forward, machete low at the hip, torso leaning into the step, tabard swinging back"><b>行进</b>mid stride with the left leg forward and the right arm swinging forward, machete low at the hip, torso leaning into the step, tabard swinging back</li>
+    <li data-pose="overhead chop at full extension, torso twisted, right arm driving the machete down, left arm counterbalanced back, weight on the front foot"><b>战斗</b>overhead chop at full extension, torso twisted, right arm driving the machete down, left arm counterbalanced back, weight on the front foot</li>
+    <li data-pose="falling backward with buckling knees, machete slipping from the hand, head tilted back, arms thrown wide, cloth dragging on the ground"><b>死亡</b>falling backward with buckling knees, machete slipping from the hand, head tilted back, arms thrown wide, cloth dragging on the ground</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a battered shield guard in dented steel with a scratched round shield">
+  <div class="head"><span class="id m">M02-A</span><span class="name">盾兵 · 老兵</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="shield raised at chest height, sword resting on the shoulder, feet apart in a braced stance"><b>待机</b>shield raised at chest height, sword resting on the shoulder, feet apart in a braced stance</li>
+    <li data-pose="advancing behind the raised shield, left leg driving forward, sword held low behind the shield, head tucked"><b>行进</b>advancing behind the raised shield, left leg driving forward, sword held low behind the shield, head tucked</li>
+    <li data-pose="short thrust past the shield edge, right arm fully extended, shoulder rotated, right leg lunging, shield pulled back as a counterweight"><b>战斗</b>short thrust past the shield edge, right arm fully extended, shoulder rotated, right leg lunging, shield pulled back as a counterweight</li>
+    <li data-pose="dropping backward as the shield falls away, arms flung out, helmet knocked aside, body twisted"><b>死亡</b>dropping backward as the shield falls away, arms flung out, helmet knocked aside, body twisted</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a fresh shield guard in polished steel with a new painted round shield">
+  <div class="head"><span class="id m">M02-B</span><span class="name">盾兵 · 新募</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="shield raised at chest height, sword resting on the shoulder, feet apart in a braced stance"><b>待机</b>shield raised at chest height, sword resting on the shoulder, feet apart in a braced stance</li>
+    <li data-pose="advancing behind the raised shield, left leg driving forward, sword held low behind the shield, head tucked"><b>行进</b>advancing behind the raised shield, left leg driving forward, sword held low behind the shield, head tucked</li>
+    <li data-pose="short thrust past the shield edge, right arm fully extended, shoulder rotated, right leg lunging, shield pulled back as a counterweight"><b>战斗</b>short thrust past the shield edge, right arm fully extended, shoulder rotated, right leg lunging, shield pulled back as a counterweight</li>
+    <li data-pose="dropping backward as the shield falls away, arms flung out, helmet knocked aside, body twisted"><b>死亡</b>dropping backward as the shield falls away, arms flung out, helmet knocked aside, body twisted</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a scarred cavalryman on a shaggy brown horse with a patched blanket">
+  <div class="head"><span class="id m">M03-A</span><span class="name">骑兵 · 老兵</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="horse standing square, rider sitting tall, lance upright in the right hand, shield on the left forearm, horse head slightly turned"><b>待机</b>horse standing square, rider sitting tall, lance upright in the right hand, shield on the left forearm, horse head slightly turned</li>
+    <li data-pose="horse in a four-beat walk with one foreleg lifted, rider rising slightly in the saddle, lance upright, pennant trailing"><b>行进</b>horse in a four-beat walk with one foreleg lifted, rider rising slightly in the saddle, lance upright, pennant trailing</li>
+    <li data-pose="couched charge, lance levelled past the horse neck, rider leaning in, horse at full gallop with all hooves off the ground, pennant snapping"><b>战斗</b>couched charge, lance levelled past the horse neck, rider leaning in, horse at full gallop with all hooves off the ground, pennant snapping</li>
+    <li data-pose="horse rearing and falling sideways, rider thrown forward out of the saddle, lance released, banner dragging"><b>死亡</b>horse rearing and falling sideways, rider thrown forward out of the saddle, lance released, banner dragging</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a clean cavalryman on a dark bay horse with a fresh team-green blanket">
+  <div class="head"><span class="id m">M03-B</span><span class="name">骑兵 · 新募</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="horse standing square, rider sitting tall, lance upright in the right hand, shield on the left forearm, horse head slightly turned"><b>待机</b>horse standing square, rider sitting tall, lance upright in the right hand, shield on the left forearm, horse head slightly turned</li>
+    <li data-pose="horse in a four-beat walk with one foreleg lifted, rider rising slightly in the saddle, lance upright, pennant trailing"><b>行进</b>horse in a four-beat walk with one foreleg lifted, rider rising slightly in the saddle, lance upright, pennant trailing</li>
+    <li data-pose="couched charge, lance levelled past the horse neck, rider leaning in, horse at full gallop with all hooves off the ground, pennant snapping"><b>战斗</b>couched charge, lance levelled past the horse neck, rider leaning in, horse at full gallop with all hooves off the ground, pennant snapping</li>
+    <li data-pose="horse rearing and falling sideways, rider thrown forward out of the saddle, lance released, banner dragging"><b>死亡</b>horse rearing and falling sideways, rider thrown forward out of the saddle, lance released, banner dragging</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a ragged archer in a patched hood with a worn recurve bow">
+  <div class="head"><span class="id m">M04-A</span><span class="name">弓兵 · 老兵</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="bow held loosely in the left hand, string hand at the hip, weight on the back leg, quiver over the shoulder"><b>待机</b>bow held loosely in the left hand, string hand at the hip, weight on the back leg, quiver over the shoulder</li>
+    <li data-pose="striding with the bow carried across the body, left leg forward, cloak lifting, head scanning ahead"><b>行进</b>striding with the bow carried across the body, left leg forward, cloak lifting, head scanning ahead</li>
+    <li data-pose="full draw with the bow arm straight, string hand at the cheek, shoulders squared, arrow nocked, back leg braced"><b>战斗</b>full draw with the bow arm straight, string hand at the cheek, shoulders squared, arrow nocked, back leg braced</li>
+    <li data-pose="crumpling forward onto one knee, bow dropping from the hand, head lowered, quiver spilling arrows"><b>死亡</b>crumpling forward onto one knee, bow dropping from the hand, head lowered, quiver spilling arrows</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a crisp archer in a fresh hood with a new recurve bow">
+  <div class="head"><span class="id m">M04-B</span><span class="name">弓兵 · 新募</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="bow held loosely in the left hand, string hand at the hip, weight on the back leg, quiver over the shoulder"><b>待机</b>bow held loosely in the left hand, string hand at the hip, weight on the back leg, quiver over the shoulder</li>
+    <li data-pose="striding with the bow carried across the body, left leg forward, cloak lifting, head scanning ahead"><b>行进</b>striding with the bow carried across the body, left leg forward, cloak lifting, head scanning ahead</li>
+    <li data-pose="full draw with the bow arm straight, string hand at the cheek, shoulders squared, arrow nocked, back leg braced"><b>战斗</b>full draw with the bow arm straight, string hand at the cheek, shoulders squared, arrow nocked, back leg braced</li>
+    <li data-pose="crumpling forward onto one knee, bow dropping from the hand, head lowered, quiver spilling arrows"><b>死亡</b>crumpling forward onto one knee, bow dropping from the hand, head lowered, quiver spilling arrows</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a battle-worn elite guard in dark steel with bedraggled feathers">
+  <div class="head"><span class="id m">M05-A</span><span class="name">精兵 · 老兵</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="standing tall with the longsword point down in front, both hands on the pommel, feathers stirring, cloak strips hanging"><b>待机</b>standing tall with the longsword point down in front, both hands on the pommel, feathers stirring, cloak strips hanging</li>
+    <li data-pose="confident stride, sword carried at the side, cloak strips swinging, chin up"><b>行进</b>confident stride, sword carried at the side, cloak strips swinging, chin up</li>
+    <li data-pose="diagonal downward slash, torso coiled then released, sword crossing the body, left hand trailing, weight forward"><b>战斗</b>diagonal downward slash, torso coiled then released, sword crossing the body, left hand trailing, weight forward</li>
+    <li data-pose="spinning fall to the side, sword flung out, one feather torn loose, cloak strips spreading on the ground"><b>死亡</b>spinning fall to the side, sword flung out, one feather torn loose, cloak strips spreading on the ground</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+
+<article class="card motion" data-kind="m" data-app="a pristine elite guard in bright steel with crisp feathers">
+  <div class="head"><span class="id m">M05-B</span><span class="name">精兵 · 新募</span><span class="tier">4 姿势</span></div>
+  <ol class="poses">
+    <li data-pose="standing tall with the longsword point down in front, both hands on the pommel, feathers stirring, cloak strips hanging"><b>待机</b>standing tall with the longsword point down in front, both hands on the pommel, feathers stirring, cloak strips hanging</li>
+    <li data-pose="confident stride, sword carried at the side, cloak strips swinging, chin up"><b>行进</b>confident stride, sword carried at the side, cloak strips swinging, chin up</li>
+    <li data-pose="diagonal downward slash, torso coiled then released, sword crossing the body, left hand trailing, weight forward"><b>战斗</b>diagonal downward slash, torso coiled then released, sword crossing the body, left hand trailing, weight forward</li>
+    <li data-pose="spinning fall to the side, sword flung out, one feather torn loose, cloak strips spreading on the ground"><b>死亡</b>spinning fall to the side, sword flung out, one feather torn loose, cloak strips spreading on the ground</li>
+  </ol>
+  <div class="acts"><button data-copy="sheet">复制动作表</button></div>
+</article>
+</div>
+
+<h2>命名与规格<small>与现有资产管线对齐</small></h2>
+<div class="two">
+<table>
+  <tr><th>资产</th><th>路径</th><th>数量</th></tr>
+  <tr><td>建筑 GLB</td><td><code>apps/client/src/assets/converted/buildings/{kind}-L{1|2|3}.glb</code></td><td>24</td></tr>
+  <tr><td>城镇组合</td><td><code>apps/client/src/assets/converted/buildings/town-{kind}-L{level}.glb</code></td><td>15</td></tr>
+  <tr><td>城墙</td><td><code>apps/client/src/assets/converted/buildings/wall-L{level}.glb</code></td><td>3</td></tr>
+  <tr><td>兵种 GLB</td><td><code>apps/client/src/assets/characters/{key}.glb</code></td><td>10</td></tr>
+  <tr><td>动作剪辑</td><td><code>idle</code> <code>walk</code> <code>attack</code> <code>death</code>，可选 <code>run</code></td><td>4–5</td></tr>
+</table>
+<table>
+  <tr><th>项</th><th>值</th></tr>
+  <tr><td>单位</td><td>米制，Y 向上</td></tr>
+  <tr><td>原点</td><td>底面中心，落地 Y=0</td></tr>
+  <tr><td>朝向</td><td>正面 +Z，与现有 GLB 一致</td></tr>
+  <tr><td>建筑体量</td><td>占地 1.7–2.3 m，高 3.8–4.7 m，塔 5.8 m</td></tr>
+  <tr><td>兵种体量</td><td>程序化 0.9 m，骑兵含马 1.3 m，Q 版四头身</td></tr>
+  <tr><td>面数</td><td>建筑现状 533–1614 三角面，重制上限 6k；兵种现状 9.6k，重制上限 20k</td></tr>
+  <tr><td>贴图</td><td>512²–1024²，纯 albedo，无烘焙光影</td></tr>
+  <tr><td>材质名</td><td><code>team_roof</code> <code>team_edge</code> <code>team_cloth</code></td></tr>
+</table>
+</div>
+
+<h2>验收<small>逐张过</small></h2>
+<table>
+  <tr><th>检查项</th><th>标准</th></tr>
+  <tr><td>同级差异</td><td>同一驻点类型的 L1 L2 L3 并排时，轮廓高度、体块数量、屋顶形态、道具密度四项中至少三项不同</td></tr>
+  <tr><td>同级同源</td><td>三种等级共用同一墙体材质、同一门窗母题、同一屋面瓦型与同一配色</td></tr>
+  <tr><td>跨类型区分</td><td>八类建筑在同一张图里不得混淆，主要靠屋顶形态与主体轮廓识别</td></tr>
+  <tr><td>兵种双变体</td><td>同一兵种 A B 两版轮廓一致，仅战损程度、饰件与整洁度不同</td></tr>
+  <tr><td>动作可读</td><td>待机有重心、行进有对侧摆臂、战斗有蓄力与收势、死亡有失衡轨迹</td></tr>
+  <tr><td>换色区</td><td>旗帜、盾面、屋瓦为纯色平面，替换绿红中立三色后不脏</td></tr>
+  <tr><td>单体构图</td><td>单一主体居中，不裁切，无文字水印，无多余道具</td></tr>
+  <tr><td>风格一致</td><td>同批图像的低模面数感、平直着色、色温与明度接近，可并排展示</td></tr>
+</table>
+</main>
+<div class="toast" id="toast">已复制</div>
+<script>
+const S = {
+  s1: 'stylized low-poly medieval frontier fantasy game asset, flat-shaded faceted surfaces, hand-painted matte albedo, chunky handcrafted silhouette, muted palette of sun-bleached plaster #D9CAAB, weathered grey stone #8D8676, dark walnut timber #4A3626, oat straw #C6A55E and sage grass #58743C, warm late afternoon light, crisp clean edges, tabletop strategy board game look, 3D render',
+  s2: 'single isolated asset centered on a flat warm grey backdrop, three-quarter front view slightly above eye level, even soft studio light with a warm key from upper left and a faint cool rim, one soft contact shadow, nothing beyond the described parts, no text, no watermark, no interface, sharp focus, game ready reference render',
+  s3: 'cloth banners and shield paint are one flat single color without gradients or patterns, roof shingles carry only a plain tile pattern, every tinted area stays clean and solid so the faction color can be swapped to green #5CC07F, red #E06A4A or neutral grey #97917F',
+  s4: 'photorealistic, cinematic realism, gritty dirt, blood, gore, glossy plastic, chrome, neon, science fiction, anime, cel shading, black outline, comic, sketch, painterly blur, depth of field, motion blur, vignette, busy background, landscape, sky, clouds, multiple objects, duplicated parts, warped perspective, cropped, text, watermark, logo, signature, low contrast, muddy color'
+};
+
+const SHEET = ', four-panel animation reference sheet, same character in every panel, identical outfit and scale, left to right: ';
+
+function build(body) {
+  return [S.s1, body, S.s2, S.s3].join(', ');
+}
+
+let toastTimer = 0;
+function toast(text) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 1300);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand('copy');
+    area.remove();
+  }
+  toast('已复制 ' + (typeof text === 'string' ? text.length : 0) + ' 字符');
+}
+
+function headOf(card) {
+  return [...card.querySelectorAll('.head .id, .head .name')].map((el) => el.textContent.trim()).join(' ');
+}
+
+function sheetOf(card) {
+  const poses = [...card.querySelectorAll('.poses li')].map((li) => li.dataset.pose);
+  return build(card.dataset.app + SHEET + poses.join('; '));
+}
+
+document.querySelectorAll('.card').forEach((card) => {
+  const promptEl = card.querySelector('.prompt');
+  const body = promptEl ? promptEl.textContent.trim() : '';
+  card.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.copy;
+      if (mode === 'body') copyText(body);
+      else if (mode === 'full') copyText(build(body));
+      else if (mode === 'sheet') copyText(sheetOf(card));
+    });
+  });
+  card.querySelectorAll('.poses li').forEach((li) => {
+    li.title = '复制单帧提示词';
+    li.addEventListener('click', () => copyText(build(card.dataset.app + ', ' + li.dataset.pose)));
+  });
+});
+
+document.querySelectorAll('button[data-copy]').forEach((btn) => {
+  const mode = btn.dataset.copy;
+  if (mode === 's1' || mode === 's2' || mode === 's3') {
+    btn.addEventListener('click', () => copyText(S[mode]));
+  }
+  if (mode === 'neg') {
+    btn.addEventListener('click', () => copyText(S.s4));
+  }
+  if (mode === 'self') {
+    btn.addEventListener('click', () => copyText(btn.closest('.block').querySelector('.prompt').textContent.trim()));
+  }
+  if (mode === 'all') {
+    btn.addEventListener('click', () => {
+      const blocks = [];
+      document.querySelectorAll('.card').forEach((card) => {
+        const text = card.classList.contains('motion') ? sheetOf(card) : build(card.querySelector('.prompt').textContent.trim());
+        blocks.push('# ' + headOf(card) + '\n' + text);
+      });
+      copyText(blocks.join('\n\n'));
+    });
+  }
+});
+</script>
+</body>
+</html>
