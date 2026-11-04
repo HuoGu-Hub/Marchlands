@@ -51,7 +51,7 @@ def trim_white_bands(im: Image.Image) -> Image.Image:
     return im.crop((left, top, right, bottom))
 
 
-def key_background(im: Image.Image, thresh: int = 0):
+def key_background(im: Image.Image, thresh: int = 0, dehalo: int = 2):
     rgb = im.convert("RGB")
     w, h = rgb.size
     arr = np.asarray(rgb).astype(np.int16)
@@ -83,6 +83,21 @@ def key_background(im: Image.Image, thresh: int = 0):
 
     alpha = (foreground * 255).astype(np.uint8)
     alpha = np.asarray(Image.fromarray(alpha).filter(ImageFilter.GaussianBlur(1.0)))
+
+    # Generated sheets often carry a soft glow or shadow halo a few pixels wide.
+    # Keep alpha only next to the opaque core so the halo cannot survive.
+    if dehalo > 0:
+        core = alpha >= 230
+        allowed = ndimage.binary_dilation(core, iterations=dehalo)
+        alpha = np.where(allowed, alpha, 0).astype(np.uint8)
+
+    # Droppings of smoke, paint speckle or stray shadow far from the body.
+    solid = alpha > 32
+    islands, island_count = ndimage.label(solid)
+    if island_count > 1:
+        sizes = ndimage.sum(solid, islands, range(1, island_count + 1))
+        keep = sizes >= max(64, sizes.max() * 0.05)
+        alpha = np.where(np.isin(islands, np.where(keep)[0] + 1), alpha, 0).astype(np.uint8)
 
     src = np.asarray(rgb).astype(np.float32)
     a = (alpha.astype(np.float32) / 255.0)[..., None]
@@ -162,10 +177,10 @@ def build_preview(frames: list[Image.Image], size: int) -> Image.Image:
     return sheet
 
 
-def process(path: Path, out_dir: Path, size: int, pad: float, thresh: int) -> dict:
+def process(path: Path, out_dir: Path, size: int, pad: float, thresh: int, dehalo: int) -> dict:
     raw = Image.open(path)
     trimmed = trim_white_bands(raw)
-    keyed, bg_color = key_background(trimmed, thresh=thresh)
+    keyed, bg_color = key_background(trimmed, thresh=thresh, dehalo=dehalo)
     alpha = np.asarray(keyed)[..., 3] > 8
     panels = find_panels(alpha, min_gap=max(12, keyed.width // 120))
 
@@ -211,6 +226,8 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--size", type=int, default=512)
     parser.add_argument("--pad", type=float, default=0.06)
+    parser.add_argument("--dehalo", type=int, default=2,
+                        help="pixels of halo to drop around the opaque core; 0 disables")
     parser.add_argument("--thresh", type=int, default=0,
                         help="background key tolerance; 0 derives it from border noise")
     args = parser.parse_args()
@@ -228,7 +245,7 @@ def main() -> int:
 
     report = []
     for path in files:
-        result = process(path, out_dir, args.size, args.pad, args.thresh)
+        result = process(path, out_dir, args.size, args.pad, args.thresh, args.dehalo)
         report.append(result)
         print(f"{path.name}: {result['panels']} panel(s), bg={result['background']}, "
               f"trimmed={result['trimmed_size']}")
