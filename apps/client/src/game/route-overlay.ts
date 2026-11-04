@@ -3,6 +3,7 @@ import type { CityId, MapDef, SimState, SquadState } from "@marchlands/sim";
 
 interface CityProjection {
   projectCity(id: CityId): { x: number; y: number } | null;
+  projectGround(xDm: number, zDm: number, height?: number): { x: number; y: number } | null;
 }
 
 interface ScreenPoint {
@@ -226,9 +227,25 @@ export class RouteOverlay {
     }));
   }
 
+  /** 用当前相机把地图坐标投到画布坐标，和多选箭头共用同一套精准投影。 */
+  private planScreenPoint(xDm: number, zDm: number, height: number): ScreenPoint | null {
+    const point = this.scene.projectGround(xDm, zDm, height);
+    return point ? { x: point.x - this.rect.left, y: point.y - this.rect.top } : null;
+  }
+
+  private planSourcePoint(id: CityId): ScreenPoint | null {
+    const site = this.sites.get(id);
+    if (!site) return null;
+    return this.planScreenPoint(site.x * 10, site.z * 10, 3.6);
+  }
+
   private planTargetPoint(group: PlannedAssignment): ScreenPoint | null {
-    if (group.to !== undefined) return this.sitePoint(group.to, GROUND_Y);
-    if (group.cell) return this.projector.point(group.cell[0] / 100, group.cell[1] / 100, GROUND_Y);
+    if (group.to !== undefined) {
+      const site = this.sites.get(group.to);
+      if (!site) return null;
+      return this.planScreenPoint(site.x * 10, site.z * 10, 0.5);
+    }
+    if (group.cell) return this.planScreenPoint(group.cell[0] / 10, group.cell[1] / 10, 0.9);
     return null;
   }
 
@@ -434,7 +451,7 @@ export class RouteOverlay {
       const target = this.planTargetPoint(group);
       if (!target) continue;
       group.sources.forEach((sourceId, sourceIndex) => {
-        const source = this.sitePoint(sourceId, GROUND_Y);
+        const source = this.planSourcePoint(sourceId);
         if (!source) return;
         const points = this.planArc(source, target, sourceIndex);
         // 两端留出空隙，避免箭头端点与建筑点击互相抢占。
@@ -458,33 +475,98 @@ export class RouteOverlay {
     this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
     const target = this.planTargetPoint(group);
     const first = group.sources[0];
-    const source = first ? this.sitePoint(first, GROUND_Y) : null;
+    const source = first ? this.planSourcePoint(first) : null;
     if (!target || !source) return null;
     const points = this.planArc(source, target, 0);
     const middle = points[Math.floor(points.length / 2)];
     return { x: this.rect.left + middle.x, y: this.rect.top + middle.y };
   }
 
-  /** 每个出发据点画一条浅绿色拱形箭头指向目标。 */
+  /** 每个出发据点画一条浅绿色拱形箭头指向目标，目标格单独标出。 */
   private drawPlan(): void {
     if (this.plan.length === 0) return;
     const context = this.context;
     for (const group of this.plan) {
       const target = this.planTargetPoint(group);
       if (!target) continue;
+      this.drawPlanTarget(group);
       group.sources.forEach((sourceId, sourceIndex) => {
-        const source = this.sitePoint(sourceId, GROUND_Y);
+        const source = this.planSourcePoint(sourceId);
         if (!source) return;
         const points = this.planArc(source, target, sourceIndex);
-        this.stroke(points, PLAN_SHADOW, 5, []);
-        this.stroke(points, PLAN_COLOR, 2.2, []);
-        this.arrowHead(points);
+        this.stroke(points, PLAN_SHADOW, 7, []);
+        this.stroke(points, PLAN_COLOR, 3.2, []);
+        this.arrowHead(points, 13);
         context.beginPath();
-        context.arc(source.x, source.y, 3, 0, Math.PI * 2);
+        context.arc(source.x, source.y, 4.5, 0, Math.PI * 2);
         context.fillStyle = PLAN_COLOR;
         context.fill();
+        context.strokeStyle = PLAN_SHADOW;
+        context.lineWidth = 2;
+        context.stroke();
       });
     }
+  }
+
+  /** 多选箭头的目标标记：网格画方框和准星圈，据点画圆环。 */
+  private drawPlanTarget(group: PlannedAssignment): void {
+    const context = this.context;
+    if (group.cell) {
+      const sizeCm = this.map.grid?.cellSizeCm ?? 100;
+      const half = sizeCm / 20;
+      const x = group.cell[0] / 10;
+      const z = group.cell[1] / 10;
+      const corners = [
+        [x - half, z - half],
+        [x + half, z - half],
+        [x + half, z + half],
+        [x - half, z + half],
+      ].map(([px, pz]) => this.planScreenPoint(px, pz, 0.08));
+      if (corners.every((point): point is ScreenPoint => point !== null)) {
+        const [a, b, c, d] = corners;
+        context.beginPath();
+        context.moveTo(a.x, a.y);
+        context.lineTo(b.x, b.y);
+        context.lineTo(c.x, c.y);
+        context.lineTo(d.x, d.y);
+        context.closePath();
+        context.fillStyle = "rgba(166,245,184,.22)";
+        context.fill();
+        context.strokeStyle = "rgba(235,255,240,.98)";
+        context.lineWidth = 2.4;
+        context.stroke();
+      }
+      const center = this.planScreenPoint(x, z, 0.08);
+      if (center) {
+        context.beginPath();
+        context.arc(center.x, center.y, 12, 0, Math.PI * 2);
+        context.strokeStyle = "rgba(235,255,240,.98)";
+        context.lineWidth = 2;
+        context.stroke();
+        context.beginPath();
+        context.moveTo(center.x - 5, center.y);
+        context.lineTo(center.x + 5, center.y);
+        context.moveTo(center.x, center.y - 5);
+        context.lineTo(center.x, center.y + 5);
+        context.strokeStyle = PLAN_COLOR;
+        context.lineWidth = 2;
+        context.stroke();
+      }
+      return;
+    }
+    const site = group.to ? this.sites.get(group.to) : undefined;
+    if (!site) return;
+    const ring = this.planScreenPoint(site.x * 10, site.z * 10, 0.5);
+    if (!ring) return;
+    context.beginPath();
+    context.arc(ring.x, ring.y, 16, 0, Math.PI * 2);
+    context.strokeStyle = "rgba(235,255,240,.98)";
+    context.lineWidth = 2.4;
+    context.stroke();
+    context.beginPath();
+    context.arc(ring.x, ring.y, 3, 0, Math.PI * 2);
+    context.fillStyle = PLAN_COLOR;
+    context.fill();
   }
 
   /** 拖拽派兵的拱形箭头：根在建筑顶部，箭头终点就是鼠标，目标格单独画框。 */
