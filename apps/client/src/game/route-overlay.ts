@@ -259,18 +259,19 @@ export class RouteOverlay {
       ? state.squads.find((squad) => squad.id === selectedSquadId)
       : undefined;
 
-    if (selected) {
-      this.drawOwnSquadDot(selected, state);
-    } else {
-      for (const squad of state.squads) {
-        if (squad.owner !== 1) continue;
-        const point = this.squadPoint(squad, state);
-        if (!point) continue;
-        context.beginPath();
-        context.arc(point.x, point.y, 5, 0, Math.PI * 2);
-        context.fillStyle = "rgba(137,220,158,.22)";
-        context.fill();
-      }
+    for (const squad of state.squads) {
+      if (squad.owner !== 1 || squad.id === selected?.id) continue;
+      const point = this.squadPoint(squad, state);
+      if (!point) continue;
+      context.beginPath();
+      context.arc(point.x, point.y, 5, 0, Math.PI * 2);
+      context.fillStyle = "rgba(137,220,158,.22)";
+      context.fill();
+    }
+    if (selected) this.drawOwnSquadDot(selected, state);
+    for (const squad of state.squads) {
+      if (squad.owner !== 1) continue;
+      this.drawSquadDestination(squad, squad.id === selectedSquadId);
     }
 
     if (!selected) {
@@ -391,18 +392,22 @@ export class RouteOverlay {
     context.fill();
   }
 
+  /** 每支己方兵团的终点标记；选中的更亮。 */
+  private drawSquadDestination(squad: SquadState, selected: boolean): void {
+    const last = squad.gridPath?.[squad.gridPath.length - 1];
+    if (!last) return;
+    const point = this.scene.projectGround(last[0] / 10, last[1] / 10, GROUND_Y);
+    if (!point) return;
+    this.diamond(
+      { x: point.x - this.rect.left, y: point.y - this.rect.top },
+      selected ? "rgba(133,226,157,.95)" : "rgba(133,226,157,.55)",
+    );
+  }
+
   private drawRoutes(squad: SquadState, state: SimState): void {
     const context = this.context;
     const start = this.squadPoint(squad, state);
     if (squad.gridPath && squad.gridPath.length > 0 && squad.xCm !== undefined && squad.zCm !== undefined) {
-      const last = squad.gridPath[squad.gridPath.length - 1];
-      const point = this.scene.projectGround(last[0] / 10, last[1] / 10, GROUND_Y);
-      if (point) {
-        this.diamond(
-          { x: point.x - this.rect.left, y: point.y - this.rect.top },
-          "rgba(133,226,157,.95)",
-        );
-      }
       return;
     }
     const currentPoints: ScreenPoint[] = start ? [start] : [];

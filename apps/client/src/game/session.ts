@@ -612,16 +612,16 @@ export class GameSession {
     this.scene.dispose();
   }
 
-  /** 把兵团实际行走折线栅格化成格心，交给场景画浅绿网格。 */
-  private updateSquadPath(): void {
-    const squad = this.selectedSquad ? this.getSquad(this.selectedSquad) : null;
-    const nav = this.state.nav;
-    if (!squad?.gridPath || squad.gridPath.length === 0 || squad.xCm === undefined || squad.zCm === undefined || !nav) {
-      this.scene.setSquadPath(null);
-      return;
+  /** 把一支兵团实际行走折线栅格化成格心。 */
+  private squadPathCells(
+    squad: SquadState,
+    nav: NonNullable<SimState["nav"]>,
+    offsetX: number,
+    offsetZ: number,
+  ): Array<[number, number]> {
+    if (!squad.gridPath || squad.gridPath.length === 0 || squad.xCm === undefined || squad.zCm === undefined) {
+      return [];
     }
-    const offsetX = this.state.map.size[0] * 5;
-    const offsetZ = this.state.map.size[1] * 5;
     const cells: Array<[number, number]> = [];
     const seen = new Set<number>();
     const add = (xCm: number, zCm: number): void => {
@@ -642,7 +642,26 @@ export class GameSession {
         add(x0 + ((x1 - x0) * k) / steps, z0 + ((z1 - z0) * k) / steps);
       }
     }
-    this.scene.setSquadPath(cells, nav.cellSizeCm);
+    return cells;
+  }
+
+  /** 场上每支己方兵团都显示剩余路线，选中那支更亮。 */
+  private updateSquadPaths(): void {
+    const nav = this.state.nav;
+    if (!nav) {
+      this.scene.setSquadPaths([], 100);
+      return;
+    }
+    const offsetX = this.state.map.size[0] * 5;
+    const offsetZ = this.state.map.size[1] * 5;
+    const paths: Array<{ id: string; cells: Array<[number, number]>; selected: boolean }> = [];
+    for (const squad of this.state.squads) {
+      if (squad.owner !== 1) continue;
+      const cells = this.squadPathCells(squad, nav, offsetX, offsetZ);
+      if (cells.length === 0) continue;
+      paths.push({ id: squad.id, cells, selected: squad.id === this.selectedSquad });
+    }
+    this.scene.setSquadPaths(paths, nav.cellSizeCm);
   }
 
   private readonly frame = (now: number): void => {
@@ -662,7 +681,7 @@ export class GameSession {
       if (steps === 32) this.accumulator = 0;
     }
 
-    this.updateSquadPath();
+    this.updateSquadPaths();
     this.scene.update(this.state, delta);
     this.routeOverlay.render(this.state, this.selectedSquad);
     this.raf = requestAnimationFrame(this.frame);
