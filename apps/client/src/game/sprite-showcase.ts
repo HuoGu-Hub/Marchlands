@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { SpriteUnit, loadSpriteAtlas } from "./sprite-unit";
+import { SpriteUnit, SpriteUnitActor, loadSpriteAtlas } from "./sprite-unit";
 
 const PITCH = (28 * Math.PI) / 180;
 const DISTANCE = 42;
@@ -53,6 +53,7 @@ class SpriteShowcase {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly statics: SpriteUnit[] = [];
   private turner: SpriteUnit | null = null;
+  private haloed: SpriteUnitActor | null = null;
   private flipLabel: HTMLElement | null = null;
   private cameraYaw = 0;
   private targetYaw = 0;
@@ -120,6 +121,13 @@ class SpriteShowcase {
     this.turner = new SpriteUnit(knight.atlas, knight.texture, { height: 1.5, flip: this.flip });
     this.turner.position.set(0, 0, 0.9);
     this.scene.add(this.turner);
+
+    // 敌方标识：叠一层浅红光，验证队伍区分方案。
+    const haloBody = new SpriteUnit(knight.atlas, knight.texture, { height: 1.5 });
+    const haloed = new SpriteUnitActor(haloBody, () => this.cameraYaw, 0xff7a5c);
+    haloed.position.set(2.9, 0, 0.9);
+    this.scene.add(haloed);
+    this.haloed = haloed;
   }
 
   private readonly frame = (now: number): void => {
@@ -130,6 +138,10 @@ class SpriteShowcase {
     if (this.turner) {
       const facing = now * 0.0009;
       this.turner.setPose(facing, this.cameraYaw);
+    }
+    if (this.haloed) {
+      this.haloed.rotation.y = now * 0.0009;
+      this.haloed.update();
     }
     // 静帧行只固定索引，仅把平面转向镜头，用来检查图集打包与锚点。
     for (const unit of this.statics) unit.mesh.rotation.y = this.cameraYaw;

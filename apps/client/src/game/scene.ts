@@ -978,7 +978,7 @@ export class BattleScene {
     for (const assetId of Object.values(unitSkins)) {
       const sprite = spriteAsset(assetId);
       if (sprite) {
-        const actor = this.createSpriteActor(sprite);
+        const actor = this.createSpriteActor(sprite, 1);
         temp.add(actor);
         actors.push(actor);
         continue;
@@ -1435,9 +1435,11 @@ export class BattleScene {
     return producingUnitKind(site.kind) ?? "infantry";
   }
 
-  private createSpriteActor(sprite: SpriteSkinAsset): SpriteUnitActor {
+  /** 队伍标识：敌方叠一层浅红光，我方与中立不加。 */
+  private createSpriteActor(sprite: SpriteSkinAsset, squadOwner: Owner): SpriteUnitActor {
     const inner = new SpriteUnit(sprite.atlas, sprite.texture, { height: sprite.height });
-    const actor = new SpriteUnitActor(inner, () => this.yaw);
+    const halo = squadOwner === 2 ? 0xff7a5c : null;
+    const actor = new SpriteUnitActor(inner, () => this.yaw, halo);
     actor.setMoving(true);
     return actor;
   }
@@ -1450,7 +1452,7 @@ export class BattleScene {
     kind: UnitKind,
   ): void {
     for (let index = 0; index < offsets.length; index += 1) {
-      const unit = this.createSpriteActor(sprite);
+      const unit = this.createSpriteActor(sprite, squad.owner);
       this.placeSquadUnit(unit, index, offsets, squad.id, kind);
       this.prepareSquadUnit(unit);
       view.group.add(unit);
@@ -1531,7 +1533,7 @@ export class BattleScene {
     while (view.units.length < target) {
       const index = view.units.length;
       const unit = sprite
-        ? this.createSpriteActor(sprite)
+        ? this.createSpriteActor(sprite, squad.owner)
         : new UnitActor({
             kind,
             palette: paletteFor(squad.owner),

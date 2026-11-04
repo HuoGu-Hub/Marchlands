@@ -118,17 +118,44 @@ export class SpriteUnit extends THREE.Object3D {
   }
 }
 
+/** 队伍标识用的柔光贴片，中心亮、边缘全透明。 */
+let haloTexture: THREE.Texture | null = null;
+
+function sharedHaloTexture(): THREE.Texture {
+  if (haloTexture) return haloTexture;
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  if (context) {
+    // 中心几乎透明、靠近边缘才亮，形成一圈轮廓光而不是整体染色。
+    const gradient = context.createRadialGradient(64, 64, 4, 64, 64, 62);
+    gradient.addColorStop(0, "rgba(255,255,255,0.06)");
+    gradient.addColorStop(0.5, "rgba(255,255,255,0.12)");
+    gradient.addColorStop(0.68, "rgba(255,255,255,0.7)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 128, 128);
+  }
+  haloTexture = new THREE.CanvasTexture(canvas);
+  haloTexture.colorSpace = THREE.SRGBColorSpace;
+  return haloTexture;
+}
+
 /** 把 SpriteUnit 包成兵团小兵，接口与 UnitActor / GlbUnitActor 一致。 */
 export class SpriteUnitActor extends THREE.Group implements UnitActorView {
   private readonly sprite: SpriteUnit;
   private readonly yawOfCamera: () => number;
-  private readonly forward = new THREE.Vector3();
+  private readonly halo: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null;
 
-  constructor(sprite: SpriteUnit, cameraYaw: () => number) {
+  constructor(sprite: SpriteUnit, cameraYaw: () => number, haloColor: number | null = null) {
     super();
     this.sprite = sprite;
     this.yawOfCamera = cameraYaw;
     this.add(sprite);
+
+    this.halo = haloColor === null ? null : makeHalo(sprite, haloColor);
+    if (this.halo) this.add(this.halo);
   }
 
   setMoving(_moving: boolean): void {
@@ -143,13 +170,46 @@ export class SpriteUnitActor extends THREE.Group implements UnitActorView {
     const parentYaw = this.parent ? parentYawOf(this.parent) : 0;
     const accumulated = parentYaw + this.rotation.y;
     this.sprite.setPose(accumulated, this.yawOfCamera(), accumulated);
-    void this.forward;
+    if (this.halo) {
+      this.halo.position.copy(this.sprite.mesh.position);
+      this.halo.position.z -= 0.02;
+      this.halo.rotation.y = this.sprite.mesh.rotation.y;
+    }
   }
 
   dispose(): void {
     this.remove(this.sprite);
     this.sprite.mesh.geometry.dispose();
+    if (this.halo) {
+      this.remove(this.halo);
+      this.halo.geometry.dispose();
+      this.halo.material.dispose();
+    }
   }
+}
+
+function makeHalo(
+  sprite: SpriteUnit,
+  color: number,
+): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> {
+  const mesh = sprite.mesh;
+  const width = mesh.geometry.parameters.width * 1.02;
+  const height = mesh.geometry.parameters.height * 1.0;
+  const halo = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({
+      map: sharedHaloTexture(),
+      color,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    }),
+  );
+  halo.frustumCulled = false;
+  halo.renderOrder = -1;
+  return halo;
 }
 
 const yawEuler = new THREE.Euler();
