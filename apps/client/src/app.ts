@@ -141,7 +141,11 @@ const TEMPLATE = `
     <div class="plan-hint" id="plan-hint"></div>
     <div class="hint">拖动地图 · 左键选择 · 双击或拖拽派兵 · Ctrl 切换多选 · 点“派遣”发兵 · 右键取消 · Q/E 旋转 · 滚轮缩放</div>
     <div class="match-intro" id="match-intro" hidden>
-      <div class="match-intro-cover" id="match-intro-cover"></div>
+      <div class="match-intro-shade" id="match-intro-shade"></div>
+      <div class="match-loading" id="match-loading">
+        <span class="match-spinner"></span>
+        <span class="match-loading-text">加载中</span>
+      </div>
       <div class="match-intro-count" id="match-intro-count">3</div>
       <div class="match-intro-label" id="match-intro-label">部署</div>
     </div>
@@ -901,21 +905,19 @@ export class App {
       boot();
       return;
     }
-    // 先让准备画面真正画一帧，再同步建场景，避免点击后立刻定住。
-    this.showMatchPreparing(config.mapId);
+    // 先让加载画面真正画一帧，再同步建场景，避免点击后立刻定住。
+    this.showMatchPreparing();
     requestAnimationFrame(() => requestAnimationFrame(boot));
   }
 
-  private showMatchPreparing(mapId: string): void {
+  private showMatchPreparing(): void {
     const intro = this.el("match-intro");
     intro.hidden = false;
     intro.classList.remove("done");
     intro.classList.add("on", "preparing");
-    const cover = this.levelCover(mapId);
-    const layer = this.el("match-intro-cover");
-    layer.style.backgroundImage = cover ? `url("${cover}")` : "none";
-    (this.el("match-intro-count") as HTMLElement).textContent = "布阵";
-    (this.el("match-intro-label") as HTMLElement).textContent = "";
+    (this.el("match-intro-shade") as HTMLElement).style.opacity = "1";
+    (this.el("match-intro-count") as HTMLElement).textContent = "3";
+    (this.el("match-intro-label") as HTMLElement).textContent = "部署";
   }
 
   private clearMatchPreparing(): void {

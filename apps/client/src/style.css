@@ -873,31 +873,30 @@ body.preview-mode #preview-canvas {
   gap: 10px;
   opacity: 0;
   transition: opacity 240ms ease;
-  background: radial-gradient(circle at 50% 46%, rgba(6, 10, 7, 0) 34%, rgba(6, 10, 7, 0.42) 100%);
 }
 
-.match-intro-cover {
+.match-intro.preparing {
+  transition: none;
+}
+
+.match-intro-shade {
   position: absolute;
   inset: 0;
-  background-position: center;
-  background-size: cover;
-  opacity: 0;
-  filter: saturate(0.72) brightness(0.34) blur(1px);
-  transform: scale(1.02);
-  transition: opacity 320ms ease;
-}
-
-.match-intro.preparing .match-intro-cover {
+  background:
+    radial-gradient(circle at 50% 46%, rgba(64, 96, 66, 0.22), transparent 46%),
+    #0a0f0b;
   opacity: 1;
 }
 
-.match-intro::before {
+.match-intro-shade::after {
   content: "";
   position: absolute;
-  width: min(440px, 48vw);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(5, 9, 6, 0.62) 0%, rgba(5, 9, 6, 0.3) 46%, transparent 72%);
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(214, 178, 106, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(214, 178, 106, 0.045) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(circle at 50% 50%, black, transparent 82%);
 }
 
 .match-intro.on {
@@ -908,21 +907,48 @@ body.preview-mode #preview-canvas {
   opacity: 0;
 }
 
-.match-intro.preparing .match-intro-count {
-  font-size: clamp(28px, 3vw, 40px);
-  letter-spacing: 0.24em;
-  text-indent: 0.24em;
-  will-change: opacity;
-  animation: intro-wait 1.3s ease-in-out infinite;
+.match-loading {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  opacity: 0;
+  visibility: hidden;
 }
 
-@keyframes intro-wait {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 1;
+.match-intro.preparing .match-loading {
+  opacity: 1;
+  visibility: visible;
+}
+
+.match-intro.preparing .match-intro-count,
+.match-intro.preparing .match-intro-label {
+  display: none;
+}
+
+.match-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(214, 178, 106, 0.18);
+  border-top-color: rgba(232, 205, 150, 0.95);
+  box-shadow: 0 0 18px rgba(214, 178, 106, 0.16);
+  will-change: transform;
+  animation: match-spin 1s linear infinite;
+}
+
+.match-loading-text {
+  color: rgba(236, 230, 214, 0.78);
+  font-size: 12px;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+}
+
+@keyframes match-spin {
+  to {
+    transform: rotate(1turn);
   }
 }
 
@@ -936,7 +962,7 @@ body.preview-mode #preview-canvas {
   line-height: 1;
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 0 2px rgba(5, 9, 6, 0.85), 0 1px 6px rgba(5, 9, 6, 0.45);
 }
 
 .match-intro-label {
@@ -947,7 +973,7 @@ body.preview-mode #preview-canvas {
   font-size: 12px;
   letter-spacing: 0.5em;
   text-indent: 0.5em;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 4px rgba(5, 9, 6, 0.55);
 }
 
 .city-name {

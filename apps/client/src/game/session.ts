@@ -99,6 +99,7 @@ export class GameSession {
   private introElapsed = 0;
   private introHideTimer = 0;
   private readonly introRoot: HTMLElement | null;
+  private readonly introShade: HTMLElement | null;
   private readonly introCount: HTMLElement | null;
   private readonly introLabel: HTMLElement | null;
 
@@ -120,6 +121,7 @@ export class GameSession {
     this.bindInput();
     this.updateHud();
     this.introRoot = options.hud.querySelector<HTMLElement>("#match-intro");
+    this.introShade = options.hud.querySelector<HTMLElement>("#match-intro-shade");
     this.introCount = options.hud.querySelector<HTMLElement>("#match-intro-count");
     this.introLabel = options.hud.querySelector<HTMLElement>("#match-intro-label");
     void this.scene.prewarmSquadModels(options.unitSkins ?? {});
@@ -175,6 +177,7 @@ export class GameSession {
     if (!home) return;
     this.introActive = true;
     this.introElapsed = 0;
+    if (this.introShade) this.introShade.style.opacity = "1";
     this.scene.startIntro(home.pos[0] / 10, home.pos[1] / 10, INTRO_MS);
     if (!this.introRoot) return;
     window.clearTimeout(this.introHideTimer);
@@ -187,6 +190,8 @@ export class GameSession {
   }
 
   private updateIntroUi(force = false): void {
+    const progress = Math.min(1, this.introElapsed / INTRO_MS);
+    if (this.introShade) this.introShade.style.opacity = String(Math.max(0, 1 - progress));
     if (!this.introCount) return;
     const remaining = INTRO_MS - this.introElapsed;
     const label = remaining > 2600 ? "3" : remaining > 1600 ? "2" : remaining > 600 ? "1" : "开始";
@@ -209,6 +214,7 @@ export class GameSession {
     this.introActive = false;
     this.scene.skipIntro();
     this.accumulator = 0;
+    if (this.introShade) this.introShade.style.opacity = "0";
     if (!this.introRoot) return;
     this.introRoot.classList.remove("on");
     this.introRoot.classList.add("done");
