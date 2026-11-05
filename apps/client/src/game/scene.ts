@@ -1422,9 +1422,8 @@ export class BattleScene {
     return view;
   }
 
-  /** 兵团外观只由玩家开场前的兵种皮肤设置决定；地图不再覆盖，敌方保留默认模型。 */
-  private skinFor(kind: UnitKind, owner: Owner): string | null {
-    if (owner !== 1) return null;
+  /** 兵团外观由皮肤设置全局决定，敌我共用同一套模型，只靠队伍色区分阵营。 */
+  private skinFor(kind: UnitKind, _owner: Owner): string | null {
     return this.unitSkins[kind] ?? null;
   }
 
@@ -1438,7 +1437,7 @@ export class BattleScene {
   /** 队伍标识：敌方叠一层浅红光，我方与中立不加。 */
   private createSpriteActor(sprite: SpriteSkinAsset, squadOwner: Owner): SpriteUnitActor {
     const inner = new SpriteUnit(sprite.atlas, sprite.texture, { height: sprite.height });
-    const halo = squadOwner === 2 ? 0xff7a5c : null;
+    const halo = squadOwner === 2 ? 0xff4a34 : null;
     const actor = new SpriteUnitActor(inner, () => this.yaw, halo);
     actor.setMoving(true);
     return actor;
