@@ -42,6 +42,8 @@ const CITY_LABEL_HEIGHT = 4.3;
 const SQUAD_PATH_LIFT = 0.3;
 const UNIT_SCALE = 1.15;
 const CAVALRY_SCALE = 0.95;
+/** 外部 GLB 单位统一缩放到这个身高，和程序化小兵、建筑保持同一档。 */
+const GLB_UNIT_HEIGHT = 1.15;
 const SQUAD_LABEL_HEIGHT = 1.55;
 /** 兵团按实际人数铺开，每行站位与行列间距，单位：米。 */
 const SQUAD_COLUMNS = 3;
@@ -1489,13 +1491,13 @@ export class BattleScene {
   ): void {
     const [x, z] = offsets[index] ?? [0, 0];
     unit.position.set(
-      x + (unitJitter(squadId, index, 1) - 0.5) * 0.16,
+      x + (unitJitter(squadId, index, 1) - 0.5) * 0.34,
       0,
-      z + (unitJitter(squadId, index, 2) - 0.5) * 0.16,
+      z + (unitJitter(squadId, index, 2) - 0.5) * 0.3,
     );
-    unit.rotation.y = (unitJitter(squadId, index, 3) - 0.5) * 0.5;
+    unit.rotation.y = (unitJitter(squadId, index, 3) - 0.5) * 0.8;
     unit.scale.setScalar(
-      (kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE) * (0.96 + unitJitter(squadId, index, 5) * 0.08),
+      (kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE) * (0.92 + unitJitter(squadId, index, 5) * 0.16),
     );
   }
 
@@ -1582,11 +1584,11 @@ export class BattleScene {
         // 外部兵团资产尺寸不可控，统一按包围盒缩放到身高 1.55 m
         const box = new THREE.Box3().setFromObject(built.object);
         const height = box.max.y - box.min.y;
-        const baseScale = height > 0.01 ? 1.55 / height : 1;
-        unit.scale.setScalar(baseScale * (0.96 + unitJitter(squad.id, index, 5) * 0.08));
-        // 每名士兵错开行走相位，避免整队同步迈步。
+        const baseScale = height > 0.01 ? GLB_UNIT_HEIGHT / height : 1;
+        unit.scale.setScalar(baseScale * (0.92 + unitJitter(squad.id, index, 5) * 0.16));
+        // 每名士兵错开相位与速度：只共用一条时钟，靠相位与时间缩放漂开。
         unit.setMoving(true);
-        unit.update(unitJitter(squad.id, index, 6) * 1100);
+        unit.setVariation(unitJitter(squad.id, index, 6) * 1600, 0.86 + unitJitter(squad.id, index, 7) * 0.28);
         this.prepareSquadUnit(unit);
         view.group.add(unit);
         view.units.push(unit);

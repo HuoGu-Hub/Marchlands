@@ -51,6 +51,10 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
   private current: THREE.AnimationAction | null = null;
   private attackAction: THREE.AnimationAction | null = null;
   private moving = false;
+  /** 每个小兵自己的播放速度，让同一队列的动作逐渐错开。 */
+  private timeScale = 1;
+  /** 相位偏移，切到待机时也要沿用，否则整队一站定就同步呼吸。 */
+  private phaseSeconds = 0;
 
   constructor(object: THREE.Object3D, animations: THREE.AnimationClip[]) {
     super();
@@ -82,6 +86,23 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
     this.mixer.update(0);
   }
 
+  /**
+   * 设置这个单位的播放相位与速度。
+   * 相位直接推进混音器，速度让每个小兵慢慢漂开，避免整队同频。
+   */
+  setVariation(phaseMs: number, speed = 1): void {
+    this.timeScale = Math.max(0.5, Math.min(1.5, speed));
+    this.phaseSeconds = Math.max(0, phaseMs) / 1000;
+    if (!this.mixer) return;
+    this.mixer.update(this.phaseSeconds);
+  }
+
+  /** 把剪辑推到各自的相位，避免切动作时全体归零。 */
+  private seedAction(action: THREE.AnimationAction): void {
+    const duration = action.getClip().duration;
+    if (duration > 0) action.time = this.phaseSeconds % duration;
+  }
+
   setMoving(moving: boolean): void {
     if (this.moving === moving) return;
     this.moving = moving;
@@ -89,6 +110,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
     const next = this.pickClip(moving);
     if (!next || next === this.current) return;
     next.reset();
+    this.seedAction(next);
     next.setEffectiveWeight(1);
     next.fadeIn(0.16);
     next.play();
@@ -111,7 +133,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
 
   update(deltaMs: number): void {
     if (!this.mixer) return;
-    this.mixer.update(Math.min(100, Math.max(0, deltaMs)) / 1000);
+    this.mixer.update((Math.min(100, Math.max(0, deltaMs)) * this.timeScale) / 1000);
     const attack = this.attackAction;
     if (!attack) return;
     if (attack.time < attack.getClip().duration - 0.02) return;
@@ -120,6 +142,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
     const next = this.pickClip(this.moving) ?? this.current;
     if (!next || next === attack) return;
     next.reset();
+    this.seedAction(next);
     next.setEffectiveWeight(1);
     next.fadeIn(0.16);
     next.play();
