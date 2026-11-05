@@ -90,6 +90,8 @@ export class GameSession {
   private planDragSources: CityId[] = [];
   private dragPreviewFrame = 0;
   private dragPreviewPoint: { x: number; y: number } | null = null;
+  private pathUpdateAt = 0;
+  private pathSelection = "";
   private suppressClick = false;
   private dragX = 0;
   private dragY = 0;
@@ -295,11 +297,13 @@ export class GameSession {
     const squad = this.getSquad(id);
     if (!squad || squad.owner !== 1) return;
     this.selectedSquad = squad.id;
+    this.scene.setSelectedSquad(squad.id);
     this.setSelection([]);
   }
 
   clearSelection(): void {
     this.selectedSquad = null;
+    this.scene.setSelectedSquad(null);
     this.setSelection([]);
   }
 
@@ -768,6 +772,12 @@ export class GameSession {
 
   /** 场上每支己方兵团都显示剩余路线，选中那支更亮。 */
   private updateSquadPaths(): void {
+    // 路线高亮只是辅助信息，按 5 Hz 刷新；每帧重栅格化几十条长路径会拖垮后期帧率。
+    const selection = this.selectedSquad ?? "";
+    const now = performance.now();
+    if (now - this.pathUpdateAt < 200 && selection === this.pathSelection) return;
+    this.pathUpdateAt = now;
+    this.pathSelection = selection;
     const nav = this.state.nav;
     if (!nav) {
       this.scene.setSquadPaths([], 100);

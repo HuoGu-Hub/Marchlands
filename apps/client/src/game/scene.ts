@@ -197,6 +197,8 @@ interface SquadView {
   shadow: THREE.Mesh;
   /** 抵达敌方据点后先挥击再销毁的时间点；未进入收尾阶段为 0。 */
   strikeUntil: number;
+  /** 远距离兵团降频更新动画时累计的时间。 */
+  animAccum: number;
 }
 
 export class BattleScene {
@@ -304,6 +306,8 @@ export class BattleScene {
   private frameTimeEma = 16.7;
   private adaptCooldown = 1500;
   private selectedIds: CityId[] = [];
+  private selectedSquadId: string | null = null;
+  private readonly pathHeights = new Map<number, number>();
   private disposed = false;
   private propBuildToken = 0;
   private propPoints: Array<{ x: number; z: number; radius: number }> = [];
@@ -410,6 +414,10 @@ export class BattleScene {
     this.updateRings();
   }
 
+  setSelectedSquad(id: string | null): void {
+    this.selectedSquadId = id;
+  }
+
   /** 场上每支己方兵团都用浅绿格子显示剩余路线；选中的那支更亮。 */
   setSquadPaths(
     paths: ReadonlyArray<{
@@ -455,7 +463,7 @@ export class BattleScene {
         const base = positions.length / 3;
         const lifted = corners.map(([px, pz]): [number, number, number] => [
           px,
-          this.terrain.heightAt(px, pz) + SQUAD_PATH_LIFT,
+          this.pathHeight(px, pz) + SQUAD_PATH_LIFT,
           pz,
         ]);
         for (const point of lifted) positions.push(...point);
@@ -1039,7 +1047,7 @@ export class BattleScene {
         this.cityViews.set(city.id, view);
       }
       const position = this.positions.get(city.id);
-      if (position) view.group.position.set(position.x, this.terrain.heightAt(position.x, position.z), position.z);
+      if (position) view.group.position.set(position.x, position.y, position.z);
       const siteVisual = this.visual?.sites[city.id];
       const visualKey = siteVisual
         ? [
@@ -1122,9 +1130,21 @@ export class BattleScene {
       this.squadSphere.center.set(point.x, view.group.position.y + 1, point.z);
       this.squadSphere.radius = 4.5;
       const visible = this.frustum.intersectsSphere(this.squadSphere);
-      for (const unit of view.units) {
-        unit.setMoving(moving);
-        if (visible) unit.update(delta);
+      // 近景兵团全速更新；远处兵团 15 Hz 更新，动作仍连续，但骨骼计算少四分之三。
+      const near = visible && this.camera.position.distanceToSquared(view.group.position) < 900;
+      const interval = near ? 0 : 66;
+      view.animAccum += delta;
+      if (!visible) {
+        view.animAccum = 0;
+        continue;
+      }
+      if (view.animAccum >= interval) {
+        const step = Math.min(120, view.animAccum);
+        view.animAccum = 0;
+        for (const unit of view.units) {
+          unit.setMoving(moving);
+          unit.update(step);
+        }
       }
     }
     if (import.meta.env.DEV) {
@@ -1327,8 +1347,9 @@ export class BattleScene {
     const kind = this.unitKindFor(squad.from);
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const unitAssetId = this.skinFor(kind, squad.owner);
-    const maxUnits =
-      unitAssetId && assetRegistry.has(unitAssetId) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const baseMax = unitAssetId && assetRegistry.has(unitAssetId) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const start = this.positions.get(squad.from);
+    const maxUnits = start ? this.squadLodCap(baseMax, start.x, start.z) : baseMax;
     const renderCount = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(renderCount, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
 
@@ -1369,6 +1390,7 @@ export class BattleScene {
       loading: false,
       shadow,
       strikeUntil: 0,
+      animAccum: 0,
     };
 
     if (unitAssetId && assetRegistry.has(unitAssetId)) {
@@ -1411,6 +1433,25 @@ export class BattleScene {
     }
   }
 
+  /** 路径格角高度只采样一次，路线每 200ms 重画时不再重复跑地形噪声。 */
+  private pathHeight(x: number, z: number): number {
+    const key = Math.round(x * 100) * 100000 + Math.round(z * 100);
+    const cached = this.pathHeights.get(key);
+    if (cached !== undefined) return cached;
+    const height = this.terrain.heightAt(x, z);
+    this.pathHeights.set(key, height);
+    return height;
+  }
+
+  /** 远处兵团少画几个代表，近处恢复满编；队标仍显示真实人数。 */
+  private squadLodCap(base: number, x: number, z: number): number {
+    const dx = this.camera.position.x - x;
+    const dz = this.camera.position.z - z;
+    const d2 = dx * dx + dz * dz;
+    const factor = d2 < 400 ? 1 : d2 < 1600 ? 0.5 : 0.3;
+    return Math.max(2, Math.round(base * factor));
+  }
+
   /** 站位带一点随机抖动和朝向偏差，避免整队像克隆人。 */
   private placeSquadUnit(
     unit: SquadUnit,
@@ -1450,7 +1491,12 @@ export class BattleScene {
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const spacingZ = kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z;
     const skin = this.skinFor(kind, squad.owner);
-    const maxUnits = skin && assetRegistry.has(skin) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const glbSkin = !!skin && assetRegistry.has(skin);
+    const baseMax = glbSkin ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const maxUnits =
+      this.selectedSquadId === squad.id
+        ? baseMax
+        : this.squadLodCap(baseMax, view.group.position.x, view.group.position.z);
     const target = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(target, spacing, spacingZ);
     let changed = false;
@@ -1461,18 +1507,24 @@ export class BattleScene {
       unit.dispose();
       changed = true;
     }
-    while (view.units.length < target) {
-      const index = view.units.length;
-      const unit = new UnitActor({
-        kind,
-        palette: paletteFor(squad.owner),
-        variant: index % 3,
-        phase: unitJitter(squad.id, index, 4) * Math.PI * 2,
-      });
-      this.prepareSquadUnit(unit);
-      view.group.add(unit);
-      view.units.push(unit);
+    if (glbSkin && view.units.length < target) {
+      // 放大回近景时补 GLB，而不是混入程序化小兵。
+      void this.populateGlbUnits(view, skin as string, squad, offsets, kind, view.units.length);
       changed = true;
+    } else {
+      while (view.units.length < target) {
+        const index = view.units.length;
+        const unit = new UnitActor({
+          kind,
+          palette: paletteFor(squad.owner),
+          variant: index % 3,
+          phase: unitJitter(squad.id, index, 4) * Math.PI * 2,
+        });
+        this.prepareSquadUnit(unit);
+        view.group.add(unit);
+        view.units.push(unit);
+        changed = true;
+      }
     }
     if (changed) {
       view.units.forEach((unit, index) => this.placeSquadUnit(unit, index, offsets, squad.id, kind));
@@ -1491,10 +1543,11 @@ export class BattleScene {
     squad: SquadState,
     offsets: Array<[number, number]>,
     kind: UnitKind,
+    startIndex = 0,
   ): Promise<void> {
     view.loading = true;
     try {
-      for (let index = 0; index < offsets.length; index += 1) {
+      for (let index = startIndex; index < offsets.length; index += 1) {
         // 每两三个小兵让出一帧，避免一个兵团在同一帧里克隆完造成卡顿。
         if (index > 0 && index % 3 === 0) {
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
