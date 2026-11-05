@@ -20,6 +20,20 @@
 
 程序化生成的内容：地面纹理、白灰墙与木梁、屋顶瓦片、石板、旗帜与单位、UI。
 
+## 据点建筑
+
+五个产兵建筑换成 Quaternius Ultimate Fantasy RTS 的模型，CC0：
+
+| 据点 | 源模型 |
+| --- | --- |
+| 野蛮人营地 | Barracks_FirstAge_Level1-3 |
+| 精锐战士营 | Barracks_SecondAge_Level1-3 |
+| 弓箭手营 | Archery_FirstAge_Level1-3 |
+| 游侠营地 | Archery_SecondAge_Level1-3 |
+| 法师塔 | Temple_SecondAge_Level1-3 |
+
+转换脚本见 `tools/asset-convert/rts-buildings.mjs`：屋顶材质 `Main` 改名 `team_roof` 参与阵营染色，整体缩放成正比、原点居中、底面贴地，输出到 `apps/client/src/assets/converted/buildings/`。
+
 ## 战斗表现
 
 - 箭矢：KayKit Adventurers 包内的 `arrow`，CC0，转成 `apps/client/src/assets/fx/arrow.glb`。
