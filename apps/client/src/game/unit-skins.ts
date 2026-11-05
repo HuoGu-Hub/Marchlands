@@ -21,29 +21,33 @@ export const CLASSIC_UNIT_SKINS: UnitSkinDef[] = [
   {
     key: "kaykit-barbarian",
     label: "野蛮人",
+    kind: "barbarian",
     traits: { river: true, flying: false, ranged: false },
   },
   {
     key: "kaykit-knight",
     label: "骑士",
+    kind: "warrior",
     traits: { river: false, flying: false, ranged: false },
   },
   {
     key: "kaykit-rogue-hooded",
     label: "弓箭手",
+    kind: "archer",
     traits: { river: true, flying: false, ranged: true },
   },
   {
     key: "kaykit-rogue",
     label: "游侠",
+    kind: "ranger",
     traits: { river: true, flying: false, ranged: false },
   },
   {
     key: "kaykit-mage",
     label: "法师",
+    kind: "mage",
     traits: { river: true, flying: true, ranged: true },
   },
-  { key: "monk", label: "武僧", traits: { river: true, flying: false, ranged: false } },
 ];
 
 export const ALL_UNIT_SKINS: UnitSkinDef[] = [...CLASSIC_UNIT_SKINS];

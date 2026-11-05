@@ -840,7 +840,7 @@ test("skin cards live on the home page and save the chosen look", async ({ page 
   await expect(page.locator("#skin-grid .skin-card img").first()).toHaveAttribute("src", /\/skins\//);
   await expect(page.locator("#skin-grid")).toHaveCSS("flex-wrap", "nowrap");
 
-  const target = page.locator("#skin-grid .skin-card").nth(1);
+  const target = page.locator("#skin-grid .skin-card").first();
   const key = await target.getAttribute("data-skin-key");
   expect(key).toBeTruthy();
   await target.click();
