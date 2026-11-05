@@ -14,6 +14,7 @@ import {
 } from "./grid";
 import { blockedTransit, buildRetargetPath } from "./routes";
 import { isProductionSiteKind, siteUnitKind } from "./types";
+import { unitProfile } from "./units";
 import {
   DEFAULT_RULESET,
   granarySpeedMilli,
@@ -472,6 +473,14 @@ function advanceSquads(state: SimState, events: SimEvent[]): void {
   if (state.squads.length === 0) return;
 
   const removed = new Set<string>();
+  resolveGraphClashes(state, events, removed);
+  // 交战中的兵团原地停下：整条时间轴往后推一 tick，路径进度不变。
+  for (const squad of state.squads) {
+    if (!squad.engagedWith) continue;
+    squad.legStartTick += 1;
+    squad.legEndTick += 1;
+    squad.arrivalTick += 1;
+  }
   for (const squad of state.squads.slice().sort(byId)) {
     if (removed.has(squad.id)) continue;
     while (squad.legEndTick <= state.tick) {
@@ -1027,21 +1036,46 @@ function resolveGridOutposts(state: SimState, events: SimEvent[], removed: Set<s
 
 const SQUAD_COMBAT_COLUMNS = 3;
 const SQUAD_COMBAT_ROW_CM = 68;
-const SOLDIER_ATTACK_RANGE_CM = 120;
 const SQUAD_DISENGAGE_CM = 480;
+/** 脱离交战的余量：双方射程之外再留一段，避免边界上来回抖。 */
+const SQUAD_DISENGAGE_MARGIN_CM = 160;
 
 /** 编队纵深：行数越多，后排越晚进入攻击距离。 */
 function squadDepthCm(count: number): number {
   return (Math.ceil(Math.max(1, count) / SQUAD_COMBAT_COLUMNS) - 1) * SQUAD_COMBAT_ROW_CM;
 }
 
-/** 距离对方前排 gap 厘米时，己方能在攻击范围内的士兵数。 */
-function engagedSoldiers(count: number, gapCm: number): number {
+/**
+ * 距离对方前排 gap 厘米时，己方能在攻击范围内的士兵数。
+ * rangeCm 是这个兵种的交战距离，远程兵种的射程能覆盖整个纵深。
+ */
+function engagedSoldiers(count: number, gapCm: number, rangeCm: number): number {
   if (count <= 0) return 0;
   const rows = Math.ceil(count / SQUAD_COMBAT_COLUMNS);
-  const reachableRows =
-    Math.floor((SOLDIER_ATTACK_RANGE_CM - Math.max(0, gapCm)) / SQUAD_COMBAT_ROW_CM) + 1;
+  const reachableRows = Math.floor((rangeCm - Math.max(0, gapCm)) / SQUAD_COMBAT_ROW_CM) + 1;
   return Math.min(count, Math.max(0, Math.min(rows, reachableRows)) * SQUAD_COMBAT_COLUMNS);
+}
+
+/** 兵团所属兵种的交战距离，缺省按近战算。 */
+function squadRangeCm(squad: SquadState): number {
+  return unitProfile(squad.unitKind ?? "barbarian").attackRangeCm;
+}
+
+/** 兵团当前在地图上的厘米坐标；路网模式按边的进度插值。 */
+function squadPosition(state: SimState, squad: SquadState): [number, number] | null {
+  if (squad.xCm !== undefined && squad.zCm !== undefined) return [squad.xCm, squad.zCm];
+  const last = squad.path.length - 1;
+  if (last <= 0) return null;
+  const index = Math.min(squad.pathIndex, last - 1);
+  const from = findCity(state, squad.path[index]);
+  const to = findCity(state, squad.path[index + 1]);
+  if (!from || !to) return null;
+  const span = Math.max(1, squad.legEndTick - squad.legStartTick);
+  const t = Math.min(1, Math.max(0, (state.tick - squad.legStartTick) / span));
+  return [
+    from.pos[0] * 10 + (to.pos[0] - from.pos[0]) * 10 * t,
+    from.pos[1] * 10 + (to.pos[1] - from.pos[1]) * 10 * t,
+  ];
 }
 
 /**
@@ -1060,7 +1094,8 @@ function resolveGridClashes(state: SimState, events: SimEvent[], removed: Set<st
       squad.zCm === undefined ||
       other.xCm === undefined ||
       other.zCm === undefined ||
-      gridDistance([squad.xCm, squad.zCm], [other.xCm, other.zCm]) > SQUAD_DISENGAGE_CM
+      gridDistance([squad.xCm, squad.zCm], [other.xCm, other.zCm]) >
+        Math.max(squadRangeCm(squad), squadRangeCm(other)) + SQUAD_DISENGAGE_MARGIN_CM
     ) {
       delete squad.engagedWith;
     }
@@ -1074,12 +1109,14 @@ function resolveGridClashes(state: SimState, events: SimEvent[], removed: Set<st
       if (attacker.xCm === undefined || attacker.zCm === undefined) continue;
       if (defender.xCm === undefined || defender.zCm === undefined) continue;
       const distance = gridDistance([attacker.xCm, attacker.zCm], [defender.xCm, defender.zCm]);
-      if (distance > SQUAD_DISENGAGE_CM) continue;
+      const rangeAttack = squadRangeCm(attacker);
+      const rangeDefense = squadRangeCm(defender);
+      if (distance > Math.max(rangeAttack, rangeDefense) + SQUAD_DISENGAGE_MARGIN_CM) continue;
 
       const halfDepth = (squadDepthCm(attacker.count) + squadDepthCm(defender.count)) / 2;
       const gap = Math.max(0, distance - halfDepth);
-      const engagedAttack = engagedSoldiers(attacker.count, gap);
-      const engagedDefense = engagedSoldiers(defender.count, gap);
+      const engagedAttack = engagedSoldiers(attacker.count, gap, rangeAttack);
+      const engagedDefense = engagedSoldiers(defender.count, gap, rangeDefense);
       if (engagedAttack === 0 && engagedDefense === 0) continue;
 
       attacker.engagedWith = defender.id;
@@ -1120,3 +1157,98 @@ function resolveGridClashes(state: SimState, events: SimEvent[], removed: Set<st
     }
   }
 }
+
+/**
+ * 路网模式下敌对兵团在射程内自动交战：双方原地停下，
+ * 只有够得着对方的士兵输出，射程长的兵种可以先手打到对方。
+ */
+function resolveGraphClashes(state: SimState, events: SimEvent[], removed: Set<string>): void {
+  if (state.squads.length < 2) return;
+  const squads = state.squads.filter((squad) => !removed.has(squad.id)).sort(byId);
+
+  for (const squad of squads) {
+    if (!squad.engagedWith) continue;
+    const other = squads.find((entry) => entry.id === squad.engagedWith);
+    if (!other || other.owner === squad.owner) {
+      delete squad.engagedWith;
+      continue;
+    }
+    const from = squadPosition(state, squad);
+    const to = squadPosition(state, other);
+    if (!from || !to) {
+      delete squad.engagedWith;
+      continue;
+    }
+    const distance = Math.hypot(from[0] - to[0], from[1] - to[1]);
+    if (distance > Math.max(squadRangeCm(squad), squadRangeCm(other)) + SQUAD_DISENGAGE_MARGIN_CM) {
+      delete squad.engagedWith;
+      delete other.engagedWith;
+    }
+  }
+
+  for (let a = 0; a < squads.length; a += 1) {
+    const attacker = squads[a];
+    if (removed.has(attacker.id) || attacker.engagedWith) continue;
+    const attackerPoint = squadPosition(state, attacker);
+    if (!attackerPoint) continue;
+    for (let b = a + 1; b < squads.length; b += 1) {
+      const defender = squads[b];
+      if (removed.has(defender.id) || defender.engagedWith) continue;
+      if (attacker.owner === defender.owner) continue;
+      const defenderPoint = squadPosition(state, defender);
+      if (!defenderPoint) continue;
+
+      const distance = Math.hypot(
+        attackerPoint[0] - defenderPoint[0],
+        attackerPoint[1] - defenderPoint[1],
+      );
+      const rangeAttack = squadRangeCm(attacker);
+      const rangeDefense = squadRangeCm(defender);
+      if (distance > Math.max(rangeAttack, rangeDefense) + SQUAD_DISENGAGE_MARGIN_CM) continue;
+
+      const halfDepth = (squadDepthCm(attacker.count) + squadDepthCm(defender.count)) / 2;
+      const gap = Math.max(0, distance - halfDepth);
+      const engagedAttack = engagedSoldiers(attacker.count, gap, rangeAttack);
+      const engagedDefense = engagedSoldiers(defender.count, gap, rangeDefense);
+      if (engagedAttack === 0 && engagedDefense === 0) continue;
+
+      attacker.engagedWith = defender.id;
+      defender.engagedWith = attacker.id;
+      const damageAttack = attackValue(engagedAttack, attacker.strengthMilli);
+      const damageDefense = attackValue(engagedDefense, defender.strengthMilli);
+      const attackerLoss = Math.min(
+        attacker.count,
+        damageDefense > 0 ? Math.max(1, Math.floor(damageDefense / 30)) : 0,
+      );
+      const defenderLoss = Math.min(
+        defender.count,
+        damageAttack > 0 ? Math.max(1, Math.floor(damageAttack / 30)) : 0,
+      );
+      attacker.count -= attackerLoss;
+      defender.count -= defenderLoss;
+      addLoss(state, attacker.owner, attackerLoss);
+      addLoss(state, defender.owner, defenderLoss);
+
+      if (attacker.count <= 0) {
+        removed.add(attacker.id);
+        delete defender.engagedWith;
+      }
+      if (defender.count <= 0) {
+        removed.add(defender.id);
+        delete attacker.engagedWith;
+      }
+      events.push({
+        type: "squadClashed",
+        attacker: attacker.id,
+        defender: defender.id,
+        attackerOwner: attacker.owner,
+        defenderOwner: defender.owner,
+        attackerLoss,
+        defenderLoss,
+        defenderDestroyed: defender.count <= 0,
+      });
+      if (removed.has(attacker.id)) break;
+    }
+  }
+}
+

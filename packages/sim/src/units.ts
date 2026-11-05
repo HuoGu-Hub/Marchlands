@@ -26,6 +26,8 @@ export interface UnitProfile {
   readonly surfaces: ReadonlySet<number>;
   /** 相邻格最大高度差，厘米。 */
   readonly maxStepCm: number;
+  /** 交战距离：这个兵种能把伤害打到多远的敌人身上，厘米。 */
+  readonly attackRangeCm: number;
   /** 占地：1x1 或 2x1。 */
   readonly footprint: "1x1" | "2x1";
   /** 盾兵转弯需要 2x2 空地。 */
@@ -58,6 +60,7 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     label: "野蛮人",
     surfaces: surfacesFor(UNIT_TRAITS.barbarian),
     maxStepCm: 60,
+    attackRangeCm: 110,
     footprint: "1x1",
     turnFootprint: "1x1",
   },
@@ -66,6 +69,7 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     label: "精锐战士",
     surfaces: surfacesFor(UNIT_TRAITS.warrior),
     maxStepCm: 50,
+    attackRangeCm: 130,
     footprint: "2x1",
     turnFootprint: "2x2",
   },
@@ -74,6 +78,7 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     label: "游侠",
     surfaces: surfacesFor(UNIT_TRAITS.ranger),
     maxStepCm: 60,
+    attackRangeCm: 140,
     footprint: "1x1",
     turnFootprint: "1x1",
   },
@@ -82,6 +87,7 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     label: "弓箭手",
     surfaces: surfacesFor(UNIT_TRAITS.archer),
     maxStepCm: 60,
+    attackRangeCm: 380,
     footprint: "1x1",
     turnFootprint: "1x1",
   },
@@ -90,6 +96,7 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     label: "法师",
     surfaces: surfacesFor(UNIT_TRAITS.mage),
     maxStepCm: 80,
+    attackRangeCm: 460,
     footprint: "1x1",
     turnFootprint: "1x1",
   },

@@ -15,11 +15,11 @@ export const UNIT_NAMES: Record<UnitKind, string> = {
 };
 
 export const UNIT_DESCRIPTIONS: Record<UnitKind, string> = {
-  barbarian: "战斧 · 兽皮",
-  warrior: "重甲 · 剑盾",
-  ranger: "双刃 · 轻装",
-  archer: "十字弩 · 兜帽",
-  mage: "法杖 · 奥术",
+  barbarian: "战斧 · 兽皮 · 交战 1.1 米",
+  warrior: "重甲 · 剑盾 · 交战 1.3 米",
+  ranger: "双刃 · 轻装 · 交战 1.4 米",
+  archer: "十字弩 · 兜帽 · 交战 3.8 米",
+  mage: "法杖 · 奥术 · 交战 4.6 米",
 };
 
 const CACHE = new Map<string, THREE.MeshStandardMaterial>();
