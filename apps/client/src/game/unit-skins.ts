@@ -25,6 +25,7 @@ export const FRONTIER_UNIT_SKINS: UnitSkinDef[] = [
 
 /** 通用角色皮肤，可替换任意兵种。 */
 export const CLASSIC_UNIT_SKINS: UnitSkinDef[] = [
+  { key: "kaykit-knight", label: "冒险家 · 骑士", family: "classic" },
   { key: "warrior", label: "剑士", family: "classic" },
   { key: "cleric", label: "祭司", family: "classic" },
   { key: "monk", label: "武僧", family: "classic" },
