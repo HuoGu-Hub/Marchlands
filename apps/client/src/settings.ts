@@ -24,11 +24,10 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "zh-CN",
   difficulty: "normal",
   unitSkins: {
-    infantry: "builtin:unit.frontier-infantry-A",
-    shield: "builtin:unit.frontier-shield-A",
-    cavalry: "builtin:unit.frontier-cavalry-A",
-    archer: "builtin:unit.frontier-archer-A",
-    elite: "builtin:unit.frontier-elite-A",
+    infantry: "builtin:unit.kaykit-barbarian",
+    shield: "builtin:unit.kaykit-knight",
+    archer: "builtin:unit.kaykit-rogue-hooded",
+    elite: "builtin:unit.kaykit-rogue",
   },
 };
 
