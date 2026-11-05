@@ -16,31 +16,31 @@ export interface UnitSkinDef {
   traits?: UnitTraits;
 }
 
-/** 冒险家角色皮肤：属性写死，只能装到对应属性的兵种上。 */
+/** 角色皮肤：属性写死，只能装到对应属性的兵种上。 */
 export const CLASSIC_UNIT_SKINS: UnitSkinDef[] = [
   {
     key: "kaykit-barbarian",
-    label: "冒险家 · 野蛮人",
+    label: "野蛮人",
     traits: { river: true, flying: false, ranged: false },
   },
   {
     key: "kaykit-knight",
-    label: "冒险家 · 骑士",
+    label: "骑士",
     traits: { river: false, flying: false, ranged: false },
   },
   {
     key: "kaykit-rogue-hooded",
-    label: "冒险家 · 兜帽游侠",
+    label: "弓箭手",
     traits: { river: true, flying: false, ranged: true },
   },
   {
     key: "kaykit-rogue",
-    label: "冒险家 · 游侠",
+    label: "游侠",
     traits: { river: true, flying: false, ranged: false },
   },
   {
     key: "kaykit-mage",
-    label: "冒险家 · 法师",
+    label: "法师",
     traits: { river: true, flying: true, ranged: true },
   },
   { key: "monk", label: "武僧", traits: { river: true, flying: false, ranged: false } },
