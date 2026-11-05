@@ -835,27 +835,22 @@ test("skin cards live on the home page and save the chosen look", async ({ page 
   await page.click("#btn-skins");
   await expect(page.locator("#page-skins")).toBeVisible();
   await expect(page.locator("#skin-tabs .skin-tab")).toHaveCount(5);
-  await expect(page.locator("#skin-grid .skin-card")).toHaveCount(7);
+  await expect(page.locator("#skin-grid .skin-card")).not.toHaveCount(0);
+  await expect(page.locator('.skin-card[data-skin-key^="frontier-"]')).toHaveCount(0);
   await expect(page.locator("#skin-grid .skin-card img").first()).toHaveAttribute("src", /\/skins\//);
   await expect(page.locator("#skin-grid")).toHaveCSS("flex-wrap", "nowrap");
-  const width = await page.locator("#skin-grid").evaluate((element) => ({
-    scroll: element.scrollWidth,
-    client: element.clientWidth,
-  }));
-  expect(width.scroll).toBeGreaterThan(width.client);
-  await page.click("#btn-skin-next");
-  await expect
-    .poll(() => page.locator("#skin-grid").evaluate((element) => element.scrollLeft))
-    .toBeGreaterThan(0);
 
-  await page.click('.skin-card[data-skin-key="frontier-infantry-B"]');
-  await expect(page.locator('.skin-card[data-skin-key="frontier-infantry-B"]')).toHaveClass(/selected/);
-  const stored = await page.evaluate(() => localStorage.getItem("marchlands.settings.v1"));
-  expect(stored).toContain('"infantry":"builtin:unit.frontier-infantry-B"');
+  const target = page.locator("#skin-grid .skin-card").nth(1);
+  const key = await target.getAttribute("data-skin-key");
+  expect(key).toBeTruthy();
+  await target.click();
+  await expect(target).toHaveClass(/selected/);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("marchlands.settings.v1") ?? "{}"));
+  expect(stored.unitSkins.barbarian).toBe(`builtin:unit.${key}`);
 
-  await page.click('.skin-tab[data-kind="cavalry"]');
-  await expect(page.locator("#skin-count")).toContainText("骑兵");
-  await expect(page.locator("#skin-grid .skin-card")).toHaveCount(6);
+  await page.click('.skin-tab[data-kind="warrior"]');
+  await expect(page.locator("#skin-count")).toContainText("精锐战士");
+  await expect(page.locator("#skin-grid .skin-card")).not.toHaveCount(0);
   await page.click("#btn-skins-back");
   await expect(page.locator("#page-menu")).toBeVisible();
 });

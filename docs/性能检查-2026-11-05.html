@@ -49,7 +49,7 @@
   <h1>Marchlands 运行时性能检查</h1>
   <p class="meta">检查日期 2026-11-05 · 范围：浏览器 / Electron 客户端对局与编辑器 · 不包含 Electron 主进程与联网服务</p>
 
-  <p class="lede">结论：当前最主要的瓶颈不是模拟逻辑，而是<strong>边军 GLB 的绘制调用数量</strong>和<strong>每帧重复的阴影、布局与 DOM 更新</strong>。前者随兵团数量线性放大，后期会直接压垮中低端显卡；后两者在选中建筑、拖拽和打开面板时最明显。先处理前三条，收益最大。</p>
+  <p class="lede">结论：边军 GLB 已于 2026-11-05 删除，第 1 条不再适用于当前版本；剩余最明显的问题是<strong>每帧重复的静态阴影、布局读取和 DOM 更新</strong>，在选中建筑、拖拽和打开面板时最容易察觉。先处理第 2、3 条，收益最大。</p>
 
   <h2>假设的负载</h2>
   <table>
@@ -57,7 +57,7 @@
     <tbody>
       <tr><td>运行环境</td><td>桌面浏览器或 Electron，60 Hz 屏幕，中端独显 / 核显</td></tr>
       <tr><td>地图</td><td>60 × 60 网格，20 到 30 座据点</td></tr>
-      <tr><td>对局阶段</td><td>后期 15 到 25 支兵团同时在场，双方都可能使用边军皮肤</td></tr>
+      <tr><td>对局阶段</td><td>后期 15 到 25 支兵团同时在场，双方都使用当前选中的冒险家皮肤</td></tr>
       <tr><td>操作</td><td>选中建筑、拖拽派兵、缩放镜头、切换编组</td></tr>
     </tbody>
   </table>
@@ -66,7 +66,7 @@
   <table>
     <thead><tr><th>#</th><th>问题</th><th>位置</th><th>代价</th><th>建议</th></tr></thead>
     <tbody>
-      <tr><td class="num">1</td><td>边军 GLB 每个小兵几十到近百次绘制调用</td><td><code>scene.ts</code></td><td>GPU 绘制调用随兵团线性增长</td><td>合并网格 / 降低边军显示人数 / LOD</td></tr>
+      <tr><td class="num">1</td><td>边军 GLB 每个小兵几十到近百次绘制调用</td><td><code>scene.ts</code></td><td>已删除，不再适用</td><td>仅保留作为外部高网格角色的参考</td></tr>
       <tr><td class="num">2</td><td>静态阴影贴图每帧重画</td><td><code>scene.ts</code></td><td>建筑与道具的阴影 pass 每帧重复</td><td>关闭自动更新，变更时标脏</td></tr>
       <tr><td class="num">3</td><td>每帧读取布局 + 每 tick 改城市面板</td><td><code>route-overlay.ts</code>、<code>app.ts</code></td><td>强制同步布局，主线程抖动</td><td>缓存矩形，面板做脏检查</td></tr>
       <tr><td class="num">4</td><td>每帧重建兵团路径键与格子</td><td><code>session.ts</code>、<code>scene.ts</code></td><td>格子多、兵团多时 GC 上升</td><td>按 tick 更新，缓存路径签名</td></tr>
@@ -81,9 +81,9 @@
   <h2>详细发现</h2>
 
   <div class="finding">
-    <h3><span class="tag high">高</span>1. 边军 GLB 的绘制调用数量过高</h3>
+    <h3><span class="tag low">已移除</span>1. 边军 GLB 的绘制调用数量过高</h3>
     <p><strong>位置：</strong><code>apps/client/src/game/scene.ts:61</code>、<code>:1415</code>、<code>:1610</code></p>
-    <p class="note">命名说明：“边军”指 <code>assets/characters/frontier-*.glb</code> 这组皮肤，不是游戏里的独立阵营或兵种。当前默认皮肤已切到冒险家（KayKit）；只有手动选择边军皮肤时才会触发这一条。</p>
+    <p class="note">这条已于 2026-11-05 处理：边军皮肤、对应 GLB、卡片图和展示场景均已从项目删除。下表保留，作为以后重新引入高网格角色时的参考。</p>
     <p><strong>事实：</strong>边军 GLB 不是合并后的角色，而是一堆独立网格。读取资产 JSON 后确认：</p>
     <table>
       <thead><tr><th>资产</th><th>网格节点</th><th>每队 8 人</th><th>每队绘制调用</th></tr></thead>
@@ -177,12 +177,12 @@
 
   <h2>建议顺序</h2>
   <ol>
-    <li>先做第 1 条：合并边军网格，或把边军每队显示人数降到 4；这是唯一会随兵团数量线性恶化的问题。</li>
-    <li>再做第 2、3 条：关闭静态阴影自动更新，消除每帧布局读取和面板写入。改动小，收益直接。</li>
-    <li>最后做第 4 到 7 条：按 tick 更新路径、缓存城市高度和标签、缓存可达范围、复用编辑器快速拾取。</li>
+    <li>先做第 2、3 条：关闭静态阴影自动更新，消除每帧布局读取和面板写入。改动小，收益直接。</li>
+    <li>再做第 4 到 7 条：按 tick 更新路径、缓存城市高度和标签、缓存可达范围、复用编辑器快速拾取。</li>
+    <li>第 1 条已随边军皮肤删除而消失；只有在重新引入外部高网格角色时才需要按表处理。</li>
   </ol>
 
-  <p class="note">判定：当前状态可以跑，但后期兵团数量上来后，边军皮肤的绘制调用会先成为硬瓶颈；阴影和布局问题会让选中、拖拽和缩放的手感变差。</p>
+  <p class="note">判定：边军删除后，当前主要看阴影重复绘制与每帧布局、DOM 写入；它们会让选中、拖拽和缩放的手感变差，但改动都很小。</p>
 </main>
 </body>
 </html>

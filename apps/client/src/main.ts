@@ -8,7 +8,6 @@ import { runRoadShowcase } from "./game/road-showcase";
 import { runSwitchDemo } from "./game/switch-demo";
 import { runUnitGallery } from "./game/unit-gallery";
 import { runTownShowcase } from "./game/town-showcase";
-import { runFrontierUnitShowcase } from "./game/frontier-unit-showcase";
 import { runSpriteShowcase } from "./game/sprite-showcase";
 
 const host = document.getElementById("app");
@@ -39,10 +38,8 @@ if (scene === "map-preview" && previewMap) {
 } else if (scene === "units") {
   runUnitGallery(host);
 } else if (scene === "frontier-battle") {
-  // 直接进真实对局，开场即用边军兵种皮肤；?map= 可换地图
+  // 直接进真实对局；?map= 可换地图
   new App(host, { autoStart: true }).start();
-} else if (scene === "frontier-units") {
-  runFrontierUnitShowcase(host);
 } else if (scene === "sprite") {
   runSpriteShowcase(host);
 } else if (scene === "convert") {

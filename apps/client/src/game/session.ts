@@ -126,7 +126,6 @@ export class GameSession {
     this.introShade = options.hud.querySelector<HTMLElement>("#match-intro-shade");
     this.introCount = options.hud.querySelector<HTMLElement>("#match-intro-count");
     this.introLabel = options.hud.querySelector<HTMLElement>("#match-intro-label");
-    void this.scene.prewarmSquadModels(options.unitSkins ?? {});
   }
 
   private slowRules() {
@@ -253,7 +252,6 @@ export class GameSession {
     if (home) this.select(home.id);
     this.updateHud();
     this.updatePlanUi();
-    void this.scene.prewarmSquadModels(this.options.unitSkins ?? {});
     this.beginIntro();
   }
 

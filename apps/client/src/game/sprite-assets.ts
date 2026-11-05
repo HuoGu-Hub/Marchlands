@@ -16,22 +16,32 @@ const DEFINITIONS: Record<string, { file: string; height: number }> = {
 };
 
 const loaded = new Map<string, SpriteSkinAsset>();
-let pending: Promise<void> | null = null;
+const loads = new Map<string, Promise<SpriteSkinAsset | null>>();
 
-/** 预加载全部序列帧资产。失败时对应皮肤回退程序化模型。 */
-export function loadSpriteAssets(): Promise<void> {
+/** 只加载当前对局真正使用的序列帧皮肤，避免把没用到的图集也读进来。 */
+export function loadSpriteAsset(id: string): Promise<SpriteSkinAsset | null> {
+  const existing = loaded.get(id);
+  if (existing) return Promise.resolve(existing);
+  const pending = loads.get(id);
   if (pending) return pending;
-  pending = Promise.all(
-    Object.entries(DEFINITIONS).map(async ([id, def]) => {
-      try {
-        const { atlas, texture } = await loadSpriteAtlas(def.file);
-        loaded.set(id, { atlas, texture, height: def.height });
-      } catch {
-        // 资产缺失时保持未加载，场景会退回程序化小兵
-      }
-    }),
-  ).then(() => undefined);
-  return pending;
+  const def = DEFINITIONS[id];
+  if (!def) return Promise.resolve(null);
+  const load = loadSpriteAtlas(def.file)
+    .then(({ atlas, texture }) => {
+      const asset: SpriteSkinAsset = { atlas, texture, height: def.height };
+      loaded.set(id, asset);
+      return asset;
+    })
+    .catch(() => null)
+    .finally(() => {
+      loads.delete(id);
+    });
+  loads.set(id, load);
+  return load;
+}
+
+export function isSpriteAsset(id: string | null | undefined): boolean {
+  return !!id && id in DEFINITIONS;
 }
 
 export function spriteAsset(id: string | null | undefined): SpriteSkinAsset | null {

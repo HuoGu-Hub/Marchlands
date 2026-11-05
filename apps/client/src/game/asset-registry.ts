@@ -16,7 +16,7 @@ import {
 import { deleteStoredPack, listStoredPacks, saveStoredPack } from "./asset-pack-store";
 import { buildTerrainAsset, TERRAIN_ASSETS } from "./visual-assets";
 import type { TerrainAssetKind } from "./visual-assets";
-import { CLASSIC_UNIT_SKINS as UNIT_SKINS, FRONTIER_UNIT_SKINS } from "./unit-skins";
+import { CLASSIC_UNIT_SKINS as UNIT_SKINS } from "./unit-skins";
 
 const BUILDING_URLS = import.meta.glob("../assets/converted/buildings/*.glb", {
   query: "?inline",
@@ -413,24 +413,6 @@ export class AssetRegistry {
       });
     }
 
-    for (const skin of FRONTIER_UNIT_SKINS) {
-      this.addBuiltin({
-        id: `builtin:unit.${skin.key}`,
-        kind: "unit",
-        label: skin.label,
-        tags: ["兵团皮肤", "边军"],
-        scale: 1,
-        rotation: 0,
-        footprint: 1.2,
-        height: 1.6,
-        source: "builtin",
-        build: async () => {
-          const template = await this.characterTemplate(skin.key);
-          if (!template) throw new Error(`单位皮肤模型缺失：${skin.key}`);
-          return cloneSkeleton(template.object);
-        },
-      });
-    }
     return true;
   }
 

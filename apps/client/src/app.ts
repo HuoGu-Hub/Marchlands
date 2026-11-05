@@ -1201,12 +1201,7 @@ export class App {
     const name = document.createElement("b");
     name.textContent = skin.label;
     const tag = document.createElement("small");
-    const family =
-      skin.family === "frontier"
-        ? `边军 · ${skin.variant === "A" ? "老兵" : "新募"}`
-        : skin.family === "sprite"
-          ? "序列帧"
-          : "通用角色";
+    const family = skin.family === "sprite" ? "序列帧" : "通用角色";
     const tags = skin.traits ? traitTags(skin.traits) : [];
     tag.textContent = tags.length > 0 ? `${family} · ${tags.join(" · ")}` : family;
     copy.append(name, tag);

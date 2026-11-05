@@ -7,9 +7,8 @@ import { assetRegistry } from "./asset-registry";
 import { buildBuilding, paletteFor } from "./buildings";
 import { siteBuildingKind, siteDefaultAsset, producingUnitKind } from "./site-kind";
 import { GlbUnitActor } from "./unit-glb";
-import type { UnitActorView } from "./unit-glb";
 import { SpriteUnit, SpriteUnitActor } from "./sprite-unit";
-import { loadSpriteAssets, spriteAsset } from "./sprite-assets";
+import { isSpriteAsset, loadSpriteAsset, spriteAsset } from "./sprite-assets";
 import type { SpriteSkinAsset } from "./sprite-assets";
 import { UnitActor } from "./unit-actor";
 import { buildTerrain } from "./terrain";
@@ -353,7 +352,6 @@ export class BattleScene {
     this.map = map;
     this.visual = visual;
     this.unitSkins = unitSkins;
-    void loadSpriteAssets();
     for (const material of [
       this.squadFillMaterial,
       this.squadFillSelectedMaterial,
@@ -999,80 +997,6 @@ export class BattleScene {
     if (this.intro.elapsed >= this.intro.duration) this.intro = null;
   }
 
-  /** 预编译兵团皮肤与小兵的着色器，避免第一次出兵时现场编译造成卡顿。 */
-  async prewarmSquadModels(unitSkins: Record<string, string>): Promise<void> {
-    if (this.disposed) return;
-    const temp = new THREE.Group();
-    temp.position.set(0, -1000, 0);
-    const actors: UnitActorView[] = [];
-    const spare: THREE.Object3D[] = [];
-    const kinds: UnitKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
-    for (const kind of kinds) {
-      const actor = new UnitActor({ kind, palette: paletteFor(1), variant: 0, phase: 0 });
-      temp.add(actor);
-      actors.push(actor);
-    }
-    await loadSpriteAssets();
-    const seen = new Set<string>();
-    for (const assetId of Object.values(unitSkins)) {
-      const sprite = spriteAsset(assetId);
-      if (sprite) {
-        const actor = this.createSpriteActor(sprite, 1);
-        temp.add(actor);
-        actors.push(actor);
-        continue;
-      }
-      if (!assetId || seen.has(assetId) || !assetRegistry.has(assetId)) continue;
-      seen.add(assetId);
-      try {
-        const built = await assetRegistry.buildAnimated(assetId, { owner: 1 });
-        const actor = new GlbUnitActor(built.object, built.animations);
-        temp.add(actor);
-        actors.push(actor);
-      } catch {
-        // 皮肤缺失时对局仍走程序化小兵
-      }
-    }
-    const routeFill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.squadFillMaterial);
-    temp.add(routeFill);
-    spare.push(routeFill);
-    const routeEdge = new THREE.LineSegments(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, 0, 0), new THREE.Vector3(0.5, 0, 0)]),
-      this.squadEdgeMaterial,
-    );
-    temp.add(routeEdge);
-    spare.push(routeEdge);
-    const labelCanvas = document.createElement("canvas");
-    labelCanvas.width = 64;
-    labelCanvas.height = 64;
-    const labelTexture = new THREE.CanvasTexture(labelCanvas);
-    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture, transparent: true, depthTest: false }));
-    temp.add(label);
-    spare.push(label);
-    const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 12),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false }),
-    );
-    temp.add(shadow);
-    spare.push(shadow);
-
-    temp.traverse((object) => {
-      object.frustumCulled = false;
-    });
-    this.scene.add(temp);
-    try {
-      await this.renderer.compileAsync(this.scene, this.camera);
-      // 编译只建程序；真正渲染一帧才会把共享几何与贴图传到 GPU。
-      this.renderer.render(this.scene, this.camera);
-    } catch {
-      // 并行编译失败时退回首次渲染编译
-    }
-    this.scene.remove(temp);
-    for (const actor of actors) actor.dispose();
-    for (const object of spare) disposeObject(object);
-    labelTexture.dispose();
-  }
-
   /** 编辑器容器尺寸变化。 */
   resizeEditor(): void {
     this.resize();
@@ -1407,8 +1331,9 @@ export class BattleScene {
     const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const unitAssetId = this.skinFor(kind, squad.owner);
     const sprite = spriteAsset(unitAssetId);
+    const spriteSkin = isSpriteAsset(unitAssetId);
     const maxUnits =
-      sprite || (unitAssetId && assetRegistry.has(unitAssetId)) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+      spriteSkin || (unitAssetId && assetRegistry.has(unitAssetId)) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
     const renderCount = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(renderCount, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
 
@@ -1453,6 +1378,14 @@ export class BattleScene {
 
     if (sprite) {
       this.populateSpriteUnits(view, sprite, squad, offsets, kind);
+    } else if (spriteSkin && unitAssetId) {
+      view.loading = true;
+      void loadSpriteAsset(unitAssetId).then((asset) => {
+        if (view.disposed || this.disposed) return;
+        view.loading = false;
+        if (asset) this.populateSpriteUnits(view, asset, squad, offsets, kind);
+        else this.populateProceduralUnits(view, squad, offsets, kind);
+      });
     } else if (unitAssetId && assetRegistry.has(unitAssetId)) {
       void this.populateGlbUnits(view, unitAssetId, squad, offsets, kind);
     } else {

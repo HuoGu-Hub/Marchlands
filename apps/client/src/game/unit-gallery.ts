@@ -25,7 +25,7 @@ export function runUnitGallery(host: HTMLElement): void {
     '    <div class="chip">单位库 <b>5 类 × 3 阵营</b></div>',
     '    <div class="chip">阵营色 <b>披风 / 盾面 / 旗帜</b></div>',
     '    <div class="chip">动作 <b>行走 / 挥击</b></div>',
-    '    <div class="chip">造型 <b>边军 v5</b></div>',
+    '    <div class="chip">造型 <b>程序化 v5</b></div>',
     '  </div>',
     '  <div class="hint">Q / E 旋转 · 滚轮缩放 · 空格挥击</div>',
     '</div>',

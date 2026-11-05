@@ -7,30 +7,15 @@ export type UnitSkinKind = UnitKind;
 export interface UnitSkinDef {
   key: string;
   label: string;
-  family: "frontier" | "classic" | "sprite";
-  /** 边军皮肤绑定兵种；经典皮肤不绑定。 */
+  family: "classic" | "sprite";
+  /** 绑定兵种的皮肤；通用皮肤不绑定。 */
   kind?: UnitSkinKind;
-  variant?: "A" | "B";
   /**
    * 皮肤声明的通行属性。装了它的兵种必须属性完全一致；
    * 不声明表示历史资产，未做限制。
    */
   traits?: UnitTraits;
 }
-
-/** 边军兵种皮肤：key 对应 assets/characters 下的 GLB 文件名，含老兵 A / 新募 B 两版。 */
-export const FRONTIER_UNIT_SKINS: UnitSkinDef[] = [
-  { key: "frontier-infantry-A", label: "边军步兵 · 老兵", family: "frontier", kind: "barbarian", variant: "A", traits: { river: true, flying: false, ranged: false } },
-  { key: "frontier-infantry-B", label: "边军步兵 · 新募", family: "frontier", kind: "barbarian", variant: "B", traits: { river: true, flying: false, ranged: false } },
-  { key: "frontier-shield-A", label: "边军盾兵 · 老兵", family: "frontier", kind: "warrior", variant: "A", traits: { river: false, flying: false, ranged: false } },
-  { key: "frontier-shield-B", label: "边军盾兵 · 新募", family: "frontier", kind: "warrior", variant: "B", traits: { river: false, flying: false, ranged: false } },
-  { key: "frontier-cavalry-A", label: "边军骑兵 · 老兵", family: "frontier", kind: "ranger", variant: "A", traits: { river: true, flying: false, ranged: false } },
-  { key: "frontier-cavalry-B", label: "边军骑兵 · 新募", family: "frontier", kind: "ranger", variant: "B", traits: { river: true, flying: false, ranged: false } },
-  { key: "frontier-archer-A", label: "边军弓兵 · 老兵", family: "frontier", kind: "archer", variant: "A", traits: { river: true, flying: false, ranged: true } },
-  { key: "frontier-archer-B", label: "边军弓兵 · 新募", family: "frontier", kind: "archer", variant: "B", traits: { river: true, flying: false, ranged: true } },
-  { key: "frontier-elite-A", label: "边军精兵 · 老兵", family: "frontier", kind: "mage", variant: "A", traits: { river: true, flying: true, ranged: true } },
-  { key: "frontier-elite-B", label: "边军精兵 · 新募", family: "frontier", kind: "mage", variant: "B", traits: { river: true, flying: true, ranged: true } },
-];
 
 /** 冒险家角色皮肤：属性写死，只能装到对应属性的兵种上。 */
 export const CLASSIC_UNIT_SKINS: UnitSkinDef[] = [
@@ -77,7 +62,6 @@ export const SPRITE_UNIT_SKINS: UnitSkinDef[] = [
 ];
 
 export const ALL_UNIT_SKINS: UnitSkinDef[] = [
-  ...FRONTIER_UNIT_SKINS,
   ...CLASSIC_UNIT_SKINS,
   ...SPRITE_UNIT_SKINS,
 ];

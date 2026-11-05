@@ -3,12 +3,10 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GlbUnitActor } from "./unit-glb";
 import { paletteFor } from "./buildings";
-import { UnitActor } from "./unit-actor";
-import type { UnitKind } from "./unit-models";
 
 /**
  * 单个兵团皮肤的正面照。
- * ?scene=unit-portrait&skin=frontier-infantry-A
+ * ?scene=unit-portrait&skin=kaykit-barbarian
  * 供 tools/portraits 批量截成卡片图。
  */
 
@@ -133,29 +131,6 @@ export function runUnitPortrait(host: HTMLElement, key: string): void {
       (window as unknown as Record<string, unknown>).__mlPortraitReady = true;
     });
   };
-
-  const frontier = /^frontier-(infantry|shield|cavalry|archer|elite)-([AB])$/.exec(key);
-  if (frontier) {
-    // 边军 GLB 的骨骼导出仍有问题，卡片先用同兵种的程序化正面照占位。
-    const kind = frontier[1] as UnitKind;
-    const actor = new UnitActor({ kind, palette: paletteFor(1), variant: frontier[2] === "B" ? 1 : 0, phase: 0.7 });
-    if (kind === "ranger") actor.rotation.y = -0.55;
-    actor.update(900);
-    actor.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(actor);
-    const size = box.getSize(new THREE.Vector3());
-    const targetHeight = kind === "ranger" ? 2.05 : 1.72;
-    actor.scale.setScalar(targetHeight / Math.max(0.001, size.y));
-    actor.updateMatrixWorld(true);
-    const scaled = new THREE.Box3().setFromObject(actor);
-    actor.position.x -= (scaled.min.x + scaled.max.x) / 2;
-    actor.position.z -= (scaled.min.z + scaled.max.z) / 2;
-    actor.position.y -= scaled.min.y;
-    actor.updateMatrixWorld(true);
-    scene.add(actor);
-    finish();
-    return;
-  }
 
   const url = urlFor(key);
   if (!url) {

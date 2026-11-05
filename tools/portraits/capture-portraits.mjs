@@ -14,16 +14,11 @@ const outDir = path.join(root, "apps/client/public/skins");
 const baseUrl = process.env.PORTRAIT_BASE_URL ?? "http://127.0.0.1:5188";
 
 const KEYS = [
-  "frontier-infantry-A",
-  "frontier-infantry-B",
-  "frontier-shield-A",
-  "frontier-shield-B",
-  "frontier-cavalry-A",
-  "frontier-cavalry-B",
-  "frontier-archer-A",
-  "frontier-archer-B",
-  "frontier-elite-A",
-  "frontier-elite-B",
+  "kaykit-barbarian",
+  "kaykit-knight",
+  "kaykit-rogue-hooded",
+  "kaykit-rogue",
+  "kaykit-mage",
   "warrior",
   "cleric",
   "monk",
