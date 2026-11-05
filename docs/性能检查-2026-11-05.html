@@ -83,6 +83,7 @@
   <div class="finding">
     <h3><span class="tag high">高</span>1. 边军 GLB 的绘制调用数量过高</h3>
     <p><strong>位置：</strong><code>apps/client/src/game/scene.ts:61</code>、<code>:1415</code>、<code>:1610</code></p>
+    <p class="note">命名说明：“边军”指 <code>assets/characters/frontier-*.glb</code> 这组皮肤，不是游戏里的独立阵营或兵种。当前默认皮肤已切到冒险家（KayKit）；只有手动选择边军皮肤时才会触发这一条。</p>
     <p><strong>事实：</strong>边军 GLB 不是合并后的角色，而是一堆独立网格。读取资产 JSON 后确认：</p>
     <table>
       <thead><tr><th>资产</th><th>网格节点</th><th>每队 8 人</th><th>每队绘制调用</th></tr></thead>
