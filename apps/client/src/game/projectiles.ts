@@ -143,6 +143,15 @@ export class ProjectileField {
       holder.add(model);
       object = holder;
     } else {
+      // 法球 = 实体核心 + 加色光晕，光晕贴图来自 Kenney 粒子包。
+      const holder = new THREE.Group();
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(0.13, 16, 12),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(TEAM_COLORS[owner] ?? 0x9fd4ff).lerp(new THREE.Color(0xffffff), 0.55),
+          toneMapped: false,
+        }),
+      );
       const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({
           map: this.glow,
@@ -153,8 +162,10 @@ export class ProjectileField {
           toneMapped: false,
         }),
       );
-      sprite.scale.setScalar(1.05);
-      object = sprite;
+      sprite.scale.setScalar(0.95);
+      holder.add(core, sprite);
+      object = holder;
+      (object as THREE.Group).userData.glow = sprite;
     }
     object.visible = false;
     this.group.add(object);
@@ -167,7 +178,7 @@ export class ProjectileField {
       duration: Math.min(duration + distance * 40, 900),
       arc: kind === "arrow" ? Math.min(1.4, distance * 0.12) : 0.1,
       kind,
-      ...(kind === "bolt" ? { bolt: object as THREE.Sprite } : {}),
+      ...(kind === "bolt" ? { bolt: (object as THREE.Group).userData.glow as THREE.Sprite } : {}),
     });
   }
 
