@@ -237,6 +237,7 @@ export class EditorNext {
   private compiled: CompileResult = compileDocument(this.doc, { validateNavigation: false });
   private preview: SimState | null = null;
   private scene: BattleScene | null = null;
+  private terrainPassability = false;
   private orbit: OrbitControls | null = null;
   private gizmo: TransformControls | null = null;
   private editorRoot: THREE.Group | null = null;
@@ -436,6 +437,7 @@ export class EditorNext {
       return;
     }
     this.scene.setEditorMode(true);
+    this.scene.setNavPreview(this.terrainPassability);
     if (this.preview) this.scene.update(this.preview, 0);
     const camera = this.scene.getEditorCamera();
     const scene3 = this.scene.getEditorScene();
@@ -1380,6 +1382,25 @@ export class EditorNext {
         updateDocument(this.doc, { squadCombat: !this.doc.squadCombat }),
         "已切换敌对兵团交战",
       );
+      this.renderInspector();
+    });
+    const climb = this.doc.climbCm ?? 60;
+    this.addNumber(
+      "通行高低差（厘米/格）",
+      climb,
+      (value) => {
+        const next = Math.max(10, Math.min(200, Math.round(value)));
+        this.commit(updateDocument(this.doc, { climbCm: next }), "已修改通行高低差", { rebuild: true });
+      },
+      { min: 10, max: 200, step: 5, precision: 0 },
+    );
+    const climbNote = document.createElement("div");
+    climbNote.className = "mlnx-sub";
+    climbNote.textContent = `1 米格高差 ${climb} 厘米，约 ${(Math.atan(climb / 100) * 180 / Math.PI).toFixed(1)}°；黄色格超过该高差`;
+    this.inspectorEl.appendChild(climbNote);
+    this.addButton(`地形通行显示：${this.terrainPassability ? "开" : "关"}`, () => {
+      this.terrainPassability = !this.terrainPassability;
+      this.scene?.setNavPreview(this.terrainPassability);
       this.renderInspector();
     });
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;

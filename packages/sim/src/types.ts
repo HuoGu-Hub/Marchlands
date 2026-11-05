@@ -126,6 +126,8 @@ export interface MapDef {
   startGold?: number;
   /** undefined: 旧地图不限制；open/friendly: 中立建筑默认开放/关闭；被占领后均为友方通行。 */
   transit?: "open" | "friendly";
+  /** 每米格可通行的最大高低差，厘米；缺省使用兵种档案。 */
+  climbCm?: number;
   /** 开启后敌对兵团进入攻击范围会停下交战；缺省关闭。 */
   squadCombat?: boolean;
 }

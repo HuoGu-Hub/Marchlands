@@ -49,6 +49,7 @@ export function createUnitNavGrid(
   const grid = map.grid;
   const count = grid.width * grid.height;
   const profile = unitProfile(kind);
+  const maxStepCm = map.climbCm ?? profile.maxStepCm;
   const blocked = decodeBitmapBase64(grid.blocked, count);
   const override = decodeBitmapBase64(grid.walkableOverride, count);
   const surfaces = decodeUint8Base64(grid.surface, count);
@@ -80,8 +81,8 @@ export function createUnitNavGrid(
     blocked,
     walkableOverride: override,
     rules: {
-      maxStepCm: profile.maxStepCm,
-      maxSlopePermille: Math.max(1000, Math.round((profile.maxStepCm / grid.cellSizeCm) * 1000)),
+      maxStepCm,
+      maxSlopePermille: Math.max(1000, Math.round((maxStepCm / grid.cellSizeCm) * 1000)),
     },
   });
 }

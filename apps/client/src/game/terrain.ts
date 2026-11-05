@@ -324,6 +324,7 @@ function navGridOf(map: MapDef): NavGrid | null {
   if (map.navigation !== "grid" || !map.grid) return null;
   const grid = map.grid;
   const cells = grid.width * grid.height;
+  const climbCm = map.climbCm ?? 60;
   return new NavGrid({
     cellSizeCm: grid.cellSizeCm,
     width: grid.width,
@@ -332,6 +333,10 @@ function navGridOf(map: MapDef): NavGrid | null {
     surface: decodeUint8Base64(grid.surface, cells),
     blocked: decodeBitmapBase64(grid.blocked, cells),
     walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
+    rules: {
+      maxStepCm: climbCm,
+      maxSlopePermille: Math.max(1000, Math.round((climbCm / grid.cellSizeCm) * 1000)),
+    },
   });
 }
 

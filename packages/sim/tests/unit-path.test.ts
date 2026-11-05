@@ -56,6 +56,18 @@ describe("unit grid routing", () => {
     expect(planGridRoute(map, elite, center(map, 0, 0), center(map, 1, 0), 40, "elite")).not.toBeNull();
   });
 
+  it("uses the map climb override for every unit", () => {
+    const map = gridMap(2, 1, [0, 70], [Surface.Grass, Surface.Grass]);
+    map.climbCm = 50;
+    const tight = createUnitNavGrid(map, [], 1, "infantry");
+    if (!tight) throw new Error("missing nav");
+    expect(planGridRoute(map, tight, center(map, 0, 0), center(map, 1, 0), 40, "infantry")).toBeNull();
+    map.climbCm = 80;
+    const loose = createUnitNavGrid(map, [], 1, "infantry");
+    if (!loose) throw new Error("missing nav");
+    expect(planGridRoute(map, loose, center(map, 0, 0), center(map, 1, 0), 40, "infantry")).not.toBeNull();
+  });
+
   it("filters surfaces by unit profile", () => {
     const map = gridMap(2, 1, [0, 0], [Surface.Grass, Surface.DeepWater]);
     const infantry = createUnitNavGrid(map, [], 1, "infantry");

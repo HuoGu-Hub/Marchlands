@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地形高低差校准</title>
+<style>
+  :root {
+    --bg: #0d1310;
+    --panel: #141b16;
+    --line: #263129;
+    --line-2: #35443a;
+    --text: #e9e2d0;
+    --muted: #98a294;
+    --gold: #c9a85c;
+    --gold-2: #d8b25e;
+    --green: #7ec98b;
+    --red: #d0715a;
+    --amber: #d0a04a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font: 14px/1.55 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .top { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; padding: 26px 34px 18px; border-bottom: 1px solid var(--line); }
+  .top h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: .02em; }
+  .top-meta { color: var(--muted); font-size: 12px; letter-spacing: .04em; }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 34px 60px; display: grid; gap: 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; }
+  .panel h2 { margin: 0 0 14px; font-size: 14px; font-weight: 600; color: var(--gold); letter-spacing: .04em; }
+  .control { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 26px; align-items: center; }
+  .readout { display: flex; align-items: baseline; gap: 8px; }
+  .readout b { font: 600 54px/1 "Segoe UI", sans-serif; color: var(--gold-2); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .readout span { color: var(--muted); font-size: 13px; }
+  .readout-sub { margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .readout-sub b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .slider-row { display: flex; flex-direction: column; gap: 10px; }
+  input[type=range] { width: 100%; height: 26px; accent-color: var(--gold); background: transparent; cursor: pointer; }
+  .ticks { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .presets button { background: #18211b; color: var(--text); border: 1px solid var(--line-2); border-radius: 5px; padding: 6px 12px; font: 12px/1 "Segoe UI", sans-serif; cursor: pointer; }
+  .presets button:hover { border-color: var(--gold); color: var(--gold-2); }
+  .presets button.active { border-color: var(--gold); color: #111; background: var(--gold); }
+  .view { padding: 10px; }
+  .view svg { display: block; width: 100%; height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; padding: 0 12px 8px; color: var(--muted); font-size: 12px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); font-weight: 400; }
+  th { color: var(--muted); font-size: 12px; letter-spacing: .04em; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .pass { color: var(--green); }
+  .fail { color: var(--red); }
+  .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 6px; background: #111813; padding: 8px; cursor: pointer; }
+  .card:hover { border-color: var(--line-2); }
+  .card.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+  .card svg { display: block; width: 100%; height: auto; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+  .card-head b { font-size: 14px; font-weight: 600; color: var(--text); }
+  .card-head span { color: var(--muted); font-size: 11px; }
+  .card-desc { margin-top: 4px; color: var(--muted); font-size: 11px; }
+  .note ol { margin: 0; padding-left: 20px; color: var(--muted); }
+  .note li { margin: 4px 0; }
+  .note code { color: var(--gold-2); background: #1b241d; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .note b { color: var(--text); font-weight: 600; }
+  .foot { color: var(--muted); font-size: 12px; padding: 0 4px; }
+  @media (max-width: 820px) {
+    .control { grid-template-columns: 1fr; }
+    .top { padding: 20px; }
+    main { padding: 16px 16px 40px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>地形高低差校准</h1>
+  <div class="top-meta">1 米网格 · 相邻格高差</div>
+</header>
+<main>
+  <section class="panel control">
+    <div>
+      <div class="readout"><b id="value">60</b><span>cm / 格</span></div>
+      <div class="readout-sub">坡度 <b id="deg">31.0°</b> · 横向 1 米</div>
+    </div>
+    <div class="slider-row">
+      <input id="slider" type="range" min="10" max="120" step="1" value="60" aria-label="每米格允许的高低差">
+      <div class="ticks"><span>10</span><span>40</span><span>70</span><span>100</span><span>120</span></div>
+      <div class="presets" id="presets"></div>
+    </div>
+  </section>
+
+  <section class="panel view">
+    <div id="big"></div>
+    <div class="legend">
+      <span><i style="background:#4f6b4a"></i>地面</span>
+      <span><i style="background:#c9a85c"></i>1 米内的高差</span>
+      <span><i style="background:#d8b25e"></i>当前阈值</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>兵团档案</h2>
+    <table>
+      <thead><tr><th>兵种</th><th>默认上限</th><th>地图设置</th><th>相对默认</th></tr></thead>
+      <tbody id="unitRows"></tbody>
+    </table>
+    <div class="foot" style="margin-top:10px">地图设置里填了数值时，所有兵种都按该数值；留空则使用各兵种默认上限。</div>
+  </section>
+
+  <section class="panel">
+    <h2>坡度参考</h2>
+    <div class="gallery-grid" id="gallery"></div>
+  </section>
+
+  <section class="panel note">
+    <h2>在地图里调整</h2>
+    <ol>
+      <li>编辑器默认版：不选中任何物体，在右侧“地图设置”里找到 <code>通行高低差（厘米/格）</code>，改成上面的数值。</li>
+      <li>点击 <code>地形通行显示：开</code>，地图上会显示可走性：<b>黄色格</b>是超过该高差、兵团无法直接走过的格；<b>红色格</b>是阻挡；绿色/路面是可走。</li>
+      <li>经典编辑器：地图设置里的同一个字段，配合 <code>显示可走范围</code> 查看。</li>
+      <li>数值改完会立刻重算可达范围和寻路；游戏内该地图的兵团移动使用同一个值。</li>
+    </ol>
+  </section>
+</main>
+<script>
+  const UNITS = [
+    { name: "步兵", cm: 60 },
+    { name: "盾兵", cm: 50 },
+    { name: "骑兵", cm: 40 },
+    { name: "弓兵", cm: 60 },
+    { name: "精兵", cm: 80 },
+  ];
+  const GALLERY = [
+    { cm: 10, desc: "几乎平地" },
+    { cm: 20, desc: "缓坡" },
+    { cm: 30, desc: "明显斜坡" },
+    { cm: 40, desc: "陡坡" },
+    { cm: 50, desc: "很陡的土坡" },
+    { cm: 60, desc: "台阶 / 陡坡" },
+    { cm: 80, desc: "矮崖 / 岩壁" },
+    { cm: 100, desc: "悬崖" },
+    { cm: 120, desc: "近垂直岩壁" },
+  ];
+  const state = { cm: 60 };
+
+  const deg = (cm) => (Math.atan(cm / 100) * 180 / Math.PI);
+  const fmt = (n) => (Math.round(n * 10) / 10).toFixed(1);
+
+  function bigSvg(cm) {
+    const W = 900, H = 690;
+    const S = 200;
+    const run = S;
+    const rise = (cm / 100) * S;
+    const ground = 610;
+    const x0 = 130, x1 = x0 + run, x2 = x1 + run;
+    const top = ground - rise;
+    const humanH = 1.7 * S;
+    const hx = x1 + run * 0.52;
+    const angle = deg(cm);
+    const arcR = Math.max(38, Math.min(92, run * 0.42));
+    const arc = `M ${x1 + arcR} ${ground} A ${arcR} ${arcR} 0 0 0 ${x1 + arcR * Math.cos(angle * Math.PI / 180)} ${ground - arcR * Math.sin(angle * Math.PI / 180)}`;
+    const humanTop = top - humanH;
+    return `
+<svg viewBox="0 120 900 540" role="img" aria-label="${cm} 厘米高差示意">
+  <defs>
+    <linearGradient id="gGround" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#33452f"/><stop offset="1" stop-color="#1b241c"/>
+    </linearGradient>
+    <linearGradient id="gFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6b5236"/><stop offset="1" stop-color="#3b2f22"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="${W}" height="${H}" fill="#0f1511"/>
+  <line x1="60" y1="${ground}" x2="${W - 60}" y2="${ground}" stroke="#263129" stroke-width="1" stroke-dasharray="3 6"/>
+  <rect x="${x0}" y="${ground}" width="${run}" height="${H - ground}" fill="url(#gGround)"/>
+  <rect x="${x1}" y="${top}" width="${run}" height="${H - top}" fill="url(#gGround)"/>
+  <rect x="${x0}" y="${ground - 1}" width="${run}" height="3" fill="#5d7a51"/>
+  <rect x="${x1}" y="${top - 1}" width="${run}" height="3" fill="#5d7a51"/>
+  <rect x="${x1 - 1}" y="${top}" width="3" height="${rise}" fill="#7d5f3d"/>
+  <path d="M ${x1} ${ground} L ${x2} ${top}" stroke="#c9a85c" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <path d="${arc}" fill="none" stroke="#d8b25e" stroke-width="1.2"/>
+  <text x="${x1 + arcR + 8}" y="${ground - 8}" fill="#d8b25e" font-size="14" font-family="Segoe UI, sans-serif">${fmt(angle)}°</text>
+  <line x1="${x1}" y1="${top}" x2="${x2}" y2="${top}" stroke="#7d5f3d" stroke-width="1"/>
+  <line x1="${x0}" y1="${ground}" x2="${x0}" y2="${ground + 26}" stroke="#7a8276"/>
+  <line x1="${x1}" y1="${ground}" x2="${x1}" y2="${ground + 26}" stroke="#7a8276"/>
+  <text x="${x0 + run / 2 - 18}" y="${ground + 18}" fill="#98a294" font-size="13" font-family="Segoe UI, sans-serif">1 米</text>
+  <line x1="${x1 - 24}" y1="${ground}" x2="${x1 - 24}" y2="${top}" stroke="#c9a85c" stroke-width="1"/>
+  <line x1="${x1 - 30}" y1="${ground}" x2="${x1 - 18}" y2="${ground}" stroke="#c9a85c" stroke-width="1"/>
+  <line x1="${x1 - 30}" y1="${top}" x2="${x1 - 18}" y2="${top}" stroke="#c9a85c" stroke-width="1"/>
+  <text x="${x1 - 40}" y="${(ground + top) / 2}" text-anchor="end" fill="#d8b25e" font-size="14" font-family="Segoe UI, sans-serif">${cm} cm</text>
+  <g transform="translate(${hx}, ${top})" fill="none" stroke="#d8cfb8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="${-humanH + 9}" r="9" fill="#d8cfb8" stroke="none"/>
+    <path d="M 0 ${-humanH + 18} L 0 ${-humanH * 0.46}"/>
+    <path d="M -15 ${-humanH * 0.62} L 0 ${-humanH * 0.55} L 15 ${-humanH * 0.62}"/>
+    <path d="M 0 ${-humanH * 0.46} L -11 0 M 0 ${-humanH * 0.46} L 12 0"/>
+  </g>
+  <text x="${hx + 22}" y="${top - humanH * 0.5}" fill="#98a294" font-size="12" font-family="Segoe UI, sans-serif">人高 1.7 米</text>
+  <text x="${x0 + run + 26}" y="${top + 26}" fill="#98a294" font-size="12" font-family="Segoe UI, sans-serif">高差 ${cm} 厘米</text>
+</svg>`;
+  }
+
+  function cardSvg(cm) {
+    const W = 160, H = 104;
+    const run = 64, ground = 86;
+    const rise = Math.max(4, (cm / 120) * 64);
+    const x0 = 24, x1 = x0 + run, x2 = x1 + run;
+    const top = ground - rise;
+    return `
+<svg viewBox="0 0 ${W} ${H}" aria-hidden="true">
+  <rect x="0" y="0" width="${W}" height="${H}" fill="#0f1511"/>
+  <line x1="8" y1="${ground}" x2="${W - 8}" y2="${ground}" stroke="#263129" stroke-dasharray="3 5"/>
+  <rect x="${x0}" y="${ground}" width="${run}" height="${H - ground}" fill="#2b3a2a"/>
+  <rect x="${x1}" y="${top}" width="${run}" height="${H - top}" fill="#2b3a2a"/>
+  <rect x="${x1 - 1}" y="${top}" width="2" height="${rise}" fill="#7d5f3d"/>
+  <path d="M ${x1} ${ground} L ${x2} ${top}" stroke="#c9a85c" stroke-width="1.2" stroke-dasharray="4 4"/>
+</svg>`;
+  }
+
+  function render() {
+    const cm = state.cm;
+    document.getElementById("value").textContent = String(cm);
+    document.getElementById("deg").textContent = fmt(deg(cm)) + "°";
+    document.getElementById("big").innerHTML = bigSvg(cm);
+
+    const rows = UNITS.map((unit) => {
+      const delta = cm - unit.cm;
+      const label = delta > 0 ? "更宽" : delta < 0 ? "更严" : "相同";
+      const cls = delta > 0 ? "pass" : delta < 0 ? "fail" : "";
+      return `<tr><td>${unit.name}</td><td class="num">${unit.cm} cm</td><td class="num">${cm} cm</td><td class="${cls}">${label}</td></tr>`;
+    }).join("");
+    document.getElementById("unitRows").innerHTML = rows;
+
+    const gallery = document.getElementById("gallery");
+    gallery.innerHTML = GALLERY.map((item) => `
+      <div class="card ${item.cm === cm ? "active" : ""}" data-cm="${item.cm}" role="button" tabindex="0">
+        <div class="card-head"><b>${item.cm} cm</b><span>${fmt(deg(item.cm))}°</span></div>
+        ${cardSvg(item.cm)}
+        <div class="card-desc">${item.desc}</div>
+      </div>
+    `).join("");
+    gallery.querySelectorAll(".card").forEach((card) => {
+      const pick = () => setValue(Number(card.dataset.cm));
+      card.addEventListener("click", pick);
+      card.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(); } });
+    });
+
+    const presets = document.getElementById("presets");
+    presets.innerHTML = [40, 50, 60, 80].map((v) => `<button data-value="${v}" class="${v === cm ? "active" : ""}">${v}</button>`).join("");
+    presets.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => setValue(Number(button.dataset.value)));
+    });
+
+    const slider = document.getElementById("slider");
+    slider.value = String(cm);
+  }
+
+  function setValue(value) {
+    state.cm = Math.max(10, Math.min(120, Math.round(value)));
+    render();
+  }
+
+  document.getElementById("slider").addEventListener("input", (event) => setValue(Number(event.target.value)));
+  render();
+</script>
+</body>
+</html>

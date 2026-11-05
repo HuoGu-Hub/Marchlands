@@ -812,6 +812,7 @@ export class EditorController {
     if (this.navCache && this.navCache.hash === hash) return this.navCache.grid;
     const grid = map.grid;
     const cells = grid.width * grid.height;
+    const climbCm = map.climbCm ?? 60;
     const nav = new NavGrid({
       cellSizeCm: grid.cellSizeCm,
       width: grid.width,
@@ -820,6 +821,10 @@ export class EditorController {
       surface: decodeUint8Base64(grid.surface, cells),
       blocked: decodeBitmapBase64(grid.blocked, cells),
       walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
+      rules: {
+        maxStepCm: climbCm,
+        maxSlopePermille: Math.max(1000, Math.round((climbCm / grid.cellSizeCm) * 1000)),
+      },
     });
     this.navCache = { hash, grid: nav };
     return nav;
@@ -2206,6 +2211,8 @@ export class EditorController {
   }
 
   private mapSettingsHtml(): string {
+    const climb = this.doc.climbCm ?? 60;
+    const climbDeg = ((Math.atan(climb / 100) * 180) / Math.PI).toFixed(1);
     const errors = this.compiled.diagnostics.filter((entry) => entry.severity === "error").length;
     const missing = this.doc.visual.props.filter((prop) => !assetRegistry.has(prop.assetId)).length;
     const bounds = documentBounds(this.doc);
@@ -2232,6 +2239,8 @@ export class EditorController {
           ${option("open", this.doc.transit, "开放通行")}
         </select>
       </label>
+      <label class="ml-ed-field"><span>通行高低差（cm/格）</span><input data-field="climbCm" type="number" min="10" max="200" step="5" value="${climb}"></label>
+      <div class="ml-ed-meta">1 米格高差 ${climb} 厘米，约 ${climbDeg}°；导航预览中黄色格超过该高差</div>
       <div class="ml-ed-section-label">地貌</div>
       <label class="ml-ed-field"><span>风格</span>
         <select data-field="terrainStyle">
@@ -2461,6 +2470,11 @@ export class EditorController {
     }
     if (field === "transit") {
       this.commit(updateDocument(this.doc, { transit: value === "open" ? "open" : "friendly" }), "已修改通行规则");
+      return;
+    }
+    if (field === "climbCm") {
+      const climb = Math.max(10, Math.min(200, Math.round(Number(value) || 60)));
+      this.commit(updateDocument(this.doc, { climbCm: climb }), "已修改通行高低差");
       return;
     }
     if (field === "terrainStyle") {

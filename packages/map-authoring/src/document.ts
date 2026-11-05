@@ -95,6 +95,7 @@ export function createStarterDocument(): MapDocument {
     startGold: 0,
     transit: "friendly",
     squadCombat: false,
+    climbCm: 60,
     visual: createDefaultVisual(),
   };
   document.visual = createStarterVisual(document);
@@ -123,6 +124,7 @@ export function createGridDocument(): MapDocument {
     startGold: 0,
     transit: "open",
     squadCombat: false,
+    climbCm: 60,
     visual: createDefaultVisual(),
   };
   document.visual = createStarterVisual(document);
@@ -597,6 +599,7 @@ export function fromMapDef(map: MapDef): MapDocument {
     startGold: map.startGold ?? 0,
     transit: map.transit ?? "open",
     squadCombat: map.squadCombat ?? false,
+    ...(map.climbCm !== undefined ? { climbCm: map.climbCm } : {}),
     visual,
   };
 }
@@ -691,6 +694,10 @@ export function parseDocument(input: unknown): ParsedDocument {
           : 0,
       transit: input.transit === "open" ? "open" : "friendly",
       squadCombat: input.squadCombat === true,
+      climbCm:
+        typeof input.climbCm === "number" && Number.isFinite(input.climbCm)
+          ? Math.max(10, Math.min(200, Math.round(input.climbCm)))
+          : undefined,
       visual: visualFromUnknown(
         input.visual,
         20261102,
@@ -1027,6 +1034,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
     startGold: document.startGold ?? 0,
     transit: document.transit,
     ...(document.squadCombat ? { squadCombat: true } : {}),
+    ...(document.climbCm !== undefined ? { climbCm: document.climbCm } : {}),
   };
   map.mapHash = mapHashOf(map);
 
