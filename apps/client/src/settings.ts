@@ -27,7 +27,8 @@ export const DEFAULT_SETTINGS: Settings = {
     infantry: "builtin:unit.kaykit-barbarian",
     shield: "builtin:unit.kaykit-knight",
     archer: "builtin:unit.kaykit-rogue-hooded",
-    elite: "builtin:unit.kaykit-rogue",
+    cavalry: "builtin:unit.kaykit-rogue",
+    elite: "builtin:unit.kaykit-mage",
   },
 };
 

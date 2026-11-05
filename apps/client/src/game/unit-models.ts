@@ -7,19 +7,19 @@ export type UnitKind = "infantry" | "shield" | "cavalry" | "archer" | "elite";
 export const UNIT_KINDS: UnitKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
 
 export const UNIT_NAMES: Record<UnitKind, string> = {
-  infantry: "步兵",
-  shield: "盾兵",
-  cavalry: "骑兵",
-  archer: "弓兵",
-  elite: "精兵",
+  infantry: "野蛮人",
+  shield: "精锐战士",
+  cavalry: "游侠",
+  archer: "弓箭手",
+  elite: "法师",
 };
 
 export const UNIT_DESCRIPTIONS: Record<UnitKind, string> = {
-  infantry: "单刀 · 札甲",
-  shield: "重甲 · 大盾",
-  cavalry: "长枪 · 战马",
-  archer: "弓箭 · 轻甲",
-  elite: "精甲 · 羽饰",
+  infantry: "战斧 · 兽皮",
+  shield: "重甲 · 剑盾",
+  cavalry: "双刃 · 轻装",
+  archer: "十字弩 · 兜帽",
+  elite: "法杖 · 奥术",
 };
 
 const CACHE = new Map<string, THREE.MeshStandardMaterial>();

@@ -19,6 +19,7 @@ import { mapSketch } from "./game/map-sketch";
 import { GameSession } from "./game/session";
 import { UNIT_KINDS, UNIT_NAMES } from "./game/unit-models";
 import { skinsForKind, unitSkinAssetId } from "./game/unit-skins";
+import { UNIT_TRAITS, traitTags } from "./game/unit-traits";
 import type { UnitSkinDef, UnitSkinKind } from "./game/unit-skins";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
@@ -1078,6 +1079,8 @@ export class App {
         button.setAttribute("role", "tab");
         button.setAttribute("aria-selected", String(kind === this.skinKind));
         button.textContent = UNIT_NAMES[kind];
+        const tags = traitTags(UNIT_TRAITS[kind]);
+        button.title = tags.length > 0 ? tags.join(" · ") : "无特殊属性";
         button.addEventListener("click", () => {
           this.skinKind = kind;
           this.renderSkins(true);
@@ -1198,12 +1201,14 @@ export class App {
     const name = document.createElement("b");
     name.textContent = skin.label;
     const tag = document.createElement("small");
-    tag.textContent =
+    const family =
       skin.family === "frontier"
         ? `边军 · ${skin.variant === "A" ? "老兵" : "新募"}`
         : skin.family === "sprite"
           ? "序列帧"
           : "通用角色";
+    const tags = skin.traits ? traitTags(skin.traits) : [];
+    tag.textContent = tags.length > 0 ? `${family} · ${tags.join(" · ")}` : family;
     copy.append(name, tag);
     card.append(media, copy);
     card.addEventListener("click", () => this.chooseSkin(skin));
