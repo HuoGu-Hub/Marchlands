@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Marchlands · 美术路线取舍</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 48px 24px 80px;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: #1d2320; background: #f6f5f1; line-height: 1.72;
+  }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: .5px; }
+  .meta { color: #6b7069; font-size: 13px; margin: 0 0 26px; }
+  h2 { font-size: 17px; margin: 40px 0 12px; padding-bottom: 7px; border-bottom: 1px solid #d9d6cc; }
+  h3 { font-size: 14px; margin: 22px 0 8px; color: #35403a; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: #fff; margin: 6px 0 4px; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid #e6e3da; vertical-align: top; }
+  th { background: #efece3; font-weight: 600; white-space: nowrap; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.routes { table-layout: fixed; }
+  table.routes th:first-child, table.routes td:first-child { width: 21%; }
+  table.routes th:nth-child(2), table.routes td:nth-child(2) { width: 33%; }
+  code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.4px; background: #eceae2; padding: 1px 5px; border-radius: 3px; }
+  ul, ol { padding-left: 22px; margin: 8px 0; }
+  li { margin: 5px 0; }
+  .lede { font-size: 15px; background: #fff; border-left: 3px solid #7b8f6a; padding: 14px 18px; margin: 0 0 8px; }
+  .warn { color: #8a3b32; font-weight: 600; }
+  .ok { color: #2f6b3a; font-weight: 600; }
+  .note { font-size: 13px; color: #5d6360; margin: 4px 0 0; }
+  figure { margin: 14px 0 6px; }
+  figure img { width: 100%; display: block; border: 1px solid #ddd9cf; background: #fff; }
+  figcaption { font-size: 12.5px; color: #5d6360; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>美术路线取舍</h1>
+  <p class="meta">2026-11-05 · 基于当前仓库实测，不是推测</p>
+
+  <p class="lede">问题不在"生成得不够好"。现在同时跑着四条互不兼容的路线，而且渲染没有合批：场上一个兵团都没有，一帧就要提交 1606 次绘制。再换一套美术，也是挂在同一根管子上。</p>
+
+  <h2>先看数字</h2>
+  <table>
+    <thead><tr><th>场景</th><th>画面里有什么</th><th class="num">一帧 draw call</th><th>折算</th></tr></thead>
+    <tbody>
+      <tr><td><code>?scene=units</code></td><td>15 个程序化小兵</td><td class="num">650</td><td>约 43 次/人</td></tr>
+      <tr><td><code>?scene=buildings</code></td><td>24 座建筑</td><td class="num">157</td><td>约 6.5 次/座</td></tr>
+      <tr><td><code>?scene=sprite</code></td><td>4 个序列帧单位</td><td class="num">22</td><td>约 5 次/个</td></tr>
+      <tr><td>对局 frontier01</td><td>开局，零兵团</td><td class="num">1606</td><td>—</td></tr>
+      <tr><td>对局 frontier01</td><td>2 个兵团共 16 人</td><td class="num">1987</td><td>约 24 次/人</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Chrome 无头实测，拦 WebGL 绘制调用按帧统计，取中位数。数字含一次阴影 pass。draw call 与显卡强弱无关，同一台机器上换显卡也不会变。</p>
+  <p>一个 20 面的小兵和一个 2 万面的小兵，在这一项上一样贵。所以"模型做细一点"和"动作帧多一点"从来不是性能问题的解，反而都在加价。</p>
+
+  <h2>四条路线同时存在</h2>
+  <table>
+    <thead><tr><th>路线</th><th>代码与资产</th><th>风格</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td>程序化 Q 版</td><td><code>unit-models.ts</code>，五兵种三变体</td><td>三头身，圆润，与建筑同源</td><td>造型粗糙，但最协调</td></tr>
+      <tr><td>边军 GLB</td><td><code>assets/characters/frontier-*.glb</code>，默认皮肤</td><td>七头身，偏写实</td><td>每兵团限 8 人</td></tr>
+      <tr><td>AI 序列帧</td><td><code>public/sprites/</code>，8 方向 × 7 帧</td><td>七头身，半写实</td><td>单张 1792×2048</td></tr>
+      <tr><td>Kenney 低模</td><td>城堡、城镇、自然</td><td>平涂低模，四头身语境</td><td>项目里最稳的一套</td></tr>
+    </tbody>
+  </table>
+  <figure>
+    <img src="../docs/screenshots/skins-cavalry.png" alt="皮肤页里两种语言并排" />
+    <figcaption>同一排卡片里，前两个是三头身圆马，后两个是七头身写实角色。这不是皮肤差异，是两个游戏。</figcaption>
+  </figure>
+  <p>自己的提示词文档写得很清楚：<code>stylized semi-chibi build about four heads tall</code>。而交付回来的序列帧是七头身，头身比、披风长度、脚底线逐帧都在漂。规格从一开始就没被执行，问题不在模型能力。</p>
+
+  <h2>为什么一直是"没进展"</h2>
+  <ol>
+    <li>每条新路线都是<strong>追加</strong>，不是替换。四条语言同时在线，无论点开哪个页面都能看见矛盾。</li>
+    <li>用生成的方式做动作帧，帧与帧之间没有骨骼约束。头会变大小、脚会离地、刀会换手，逐帧挑选也拼不出一个循环。</li>
+    <li>为了压性能，把兵团从 20 人砍到 8 人。观感先输一局，性能也没救回来，因为大头根本不在人数上。</li>
+    <li>该省的没省：场景里地形、道路、据点、装饰、单位全在各自提交；不该省的省了：人数、动作数量、剪影辨识度。</li>
+  </ol>
+
+  <h2>五条可选路线</h2>
+  <table class="routes">
+    <thead><tr><th>方案</th><th>做法</th><th>质量上限</th><th>性能</th><th>成本</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>A 专业角色 + 合批</strong></td>
+        <td>CC0 角色包，共享骨架与动作，烘成顶点动画贴图后实例化</td>
+        <td class="ok">模型与动作都由专职作者决定</td>
+        <td class="ok">1 到 2 次/人，兵团回 20 人</td>
+        <td>2 到 3 天</td>
+      </tr>
+      <tr>
+        <td><strong>B 真 3D 渲序列帧</strong></td>
+        <td>同一角色在 Blender 按 28° 俯角八方向渲帧</td>
+        <td class="ok">同上，循环完美</td>
+        <td class="ok">5 次/个，可合批到 1 次</td>
+        <td>管线已有一半，3 天</td>
+      </tr>
+      <tr>
+        <td>C 程序化 Q 版做深</td>
+        <td>现有骨架改按部位实例化，补攻击与受击姿态</td>
+        <td>可爱但简单，天花板明确</td>
+        <td class="ok">30 次/兵团，与人数无关</td>
+        <td>1 天，零采购</td>
+      </tr>
+      <tr>
+        <td>D 继续生成 3D 与动作</td>
+        <td>图生三维，或让模型直出动作</td>
+        <td class="warn">不可编辑，比例与帧间漂移</td>
+        <td class="warn">不变</td>
+        <td>已经付过两次</td>
+      </tr>
+      <tr>
+        <td>E 远景色块化</td>
+        <td>远焦用阵营色块与图标，近焦才出模型</td>
+        <td>—</td>
+        <td class="ok">极低</td>
+        <td>2 天，战场像棋牌</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>建议</h2>
+  <p>主线走 A，兜底留 C，B 只在低端设备上做远景，D 停掉。</p>
+  <p>三条理由。第一，模型和动作由真正做过这两件事的人交付，规格不会在交付环节漂掉，这是"达不到要求"最直接的解法。第二，四头身低模和现有建筑同属一类语言，摆在一起不打架。第三，渲染方式换掉之后，兵团能回到 20 人，性能反而比现在好一个数量级。</p>
+  <p>候选包是 KayKit 冒险家包，CC0，四个低模角色，共享骨架和一套动作，glTF 格式，正好落在现有 GLB 管线里。公开资料只确认了四个角色与许可，动作清单要在下载后核对，不能先写进合同。</p>
+
+  <h3>第一步 换角色，回人数</h3>
+  <p>接 KayKit，替换默认皮肤，兵团上限从 8 恢复到 20。验收：一屏 6 个兵团 120 人，单位部分不超过 300 次绘制，当前同样人数约 2900 次；单位和建筑并排看不出两个游戏。</p>
+
+  <h3>第二步 合批</h3>
+  <p>把动作烘成顶点动画贴图，GPU 采样，实例化绘制。验收：120 人不超过 3 次 draw call，单帧动画的 CPU 开销低于 0.5 毫秒。若不想动资产，备选是按部位实例化，现有程序化骨架也能吃这套，20 人兵团从 800 多次降到 30 次以内。</p>
+  <p>场景本身是另一个数：开局零兵团已经 1606 次提交，地形、道路、装饰、阴影 pass 都在各算各的。这一步顺手把场景压到 500 以内，否则单位省下来的会被场景吞掉。</p>
+
+  <h3>第三步 动作扩容</h3>
+  <p>待机、行走、攻击、受击、死亡五个剪辑，12 帧每秒，1.55 米身高。验收：并排播放不滑步、不穿模，24 到 40 像素高度下剪影能分清兵种。</p>
+
+  <h2>规格合同</h2>
+  <table>
+    <thead><tr><th>项</th><th>取值</th><th>判据</th></tr></thead>
+    <tbody>
+      <tr><td>身高与头身比</td><td>1.55 米，四头身</td><td>与建筑同屏不违和</td></tr>
+      <tr><td>材质数</td><td>每角色不超过 2</td><td>每人不超过 2 次 draw</td></tr>
+      <tr><td>三角面</td><td>每角色不超过 3000</td><td>实例化后不放大</td></tr>
+      <tr><td>贴图</td><td>单张不超过 2048 见方，仅 albedo</td><td>不烘焙光影与 AO</td></tr>
+      <tr><td>动作</td><td>5 个剪辑，12 到 20 帧，12 帧每秒</td><td>循环首尾相接</td></tr>
+      <tr><td>兵团规模</td><td>20 人</td><td>全场 120 人可用</td></tr>
+      <tr><td>渲染预算</td><td>单位 3 次，全场 500 次以内</td><td>HUD 挂计数器</td></tr>
+    </tbody>
+  </table>
+
+  <h2>止损清单</h2>
+  <ul>
+    <li>不再生成七头身角色，任何新角色先过"四头身并排"这一关。</li>
+    <li>不再做八方向 2048 见方图集，单张解码就是 15 MB 显存。</li>
+    <li>不再为单兵做高光、法线、AO，士兵在屏幕上只有 24 到 40 像素。</li>
+    <li>不再逐件生成建筑，同族三级同框交付。</li>
+    <li>序列帧入口保留，但不作为默认皮肤。</li>
+  </ul>
+
+  <h2>今天就能开工</h2>
+  <ol>
+    <li>下载 KayKit，核对许可与动作清单，半小时出结论。</li>
+    <li>把默认皮肤切回程序化、兵团上限回 20，十分钟看到观感差异。</li>
+    <li>在场景里挂一个 draw call 计数器，接到调试位，之后每条改动都有数。</li>
+  </ol>
+  <p class="note">第 2 条会立刻让战场变密，但也会立刻暴露"程序化模型不够好看"。这个对比正是选 A 还是 C 的依据，先看再决定，比继续做第四套资产便宜。</p>
+</main>
+</body>
+</html>
