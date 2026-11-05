@@ -29,11 +29,11 @@ const DRY = new Set<number>([...LAND].filter((surface) => surface !== Surface.Sh
 const ALL = new Set<number>(Object.values(Surface));
 
 export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
-  infantry: { kind: "infantry", label: "步兵", surfaces: DRY, maxStepCm: 60, footprint: "1x1", turnFootprint: "1x1" },
-  shield: { kind: "shield", label: "盾兵", surfaces: DRY, maxStepCm: 50, footprint: "2x1", turnFootprint: "2x2" },
-  cavalry: { kind: "cavalry", label: "骑兵", surfaces: LAND, maxStepCm: 40, footprint: "1x1", turnFootprint: "1x1" },
-  archer: { kind: "archer", label: "弓兵", surfaces: DRY, maxStepCm: 60, footprint: "1x1", turnFootprint: "1x1" },
-  elite: { kind: "elite", label: "精兵", surfaces: ALL, maxStepCm: 80, footprint: "1x1", turnFootprint: "1x1" },
+  barbarian: { kind: "barbarian", label: "野蛮人", surfaces: DRY, maxStepCm: 60, footprint: "1x1", turnFootprint: "1x1" },
+  warrior: { kind: "warrior", label: "精锐战士", surfaces: DRY, maxStepCm: 50, footprint: "2x1", turnFootprint: "2x2" },
+  ranger: { kind: "ranger", label: "游侠", surfaces: LAND, maxStepCm: 40, footprint: "1x1", turnFootprint: "1x1" },
+  archer: { kind: "archer", label: "弓箭手", surfaces: DRY, maxStepCm: 60, footprint: "1x1", turnFootprint: "1x1" },
+  mage: { kind: "mage", label: "法师", surfaces: ALL, maxStepCm: 80, footprint: "1x1", turnFootprint: "1x1" },
 };
 
 export function unitProfile(kind: UnitKind): UnitProfile {

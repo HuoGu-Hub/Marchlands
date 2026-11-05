@@ -34,7 +34,7 @@ export type {
   UnitKind,
 } from "./types";
 
-export { PRODUCTION_SITE_KINDS, isProductionSiteKind, siteUnitKind } from "./types";
+export { PRODUCTION_SITE_KINDS, isProductionSiteKind, normalizeSiteKind, siteUnitKind } from "./types";
 
 export { createGame, step } from "./game";
 export { UNIT_PROFILES, unitProfile } from "./units";

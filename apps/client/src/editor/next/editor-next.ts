@@ -260,7 +260,7 @@ export class EditorNext {
   private tool: NextTool = "select";
   private selection: Selection = null;
   private libraryTab: LibraryTab = "site";
-  private activeSiteKind: SiteKind = "barracks";
+  private activeSiteKind: SiteKind = "barbarian";
   private activeAssetId: string | null = null;
   private activeFoundationKind: "platform" | "island" = "platform";
   private activeFoundationShape: FoundationShape = "plateau";

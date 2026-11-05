@@ -12,13 +12,13 @@ interface SiteSeed {
 }
 
 const SITES: SiteSeed[] = [
-  { id: "c1", kind: "barracks", owner: 1, level: 3, pop: 30, pos: [-220, 0] },
-  { id: "c2", kind: "barracks", owner: 2, level: 2, pop: 20, pos: [220, 0] },
-  { id: "c3", kind: "barracks", owner: 0, level: 2, pop: 20, pos: [0, 0] },
-  { id: "c4", kind: "barracks", owner: 0, level: 1, pop: 10, pos: [-120, 120] },
-  { id: "c5", kind: "barracks", owner: 0, level: 1, pop: 10, pos: [120, 120] },
-  { id: "c6", kind: "barracks", owner: 0, level: 1, pop: 10, pos: [-120, -120] },
-  { id: "c7", kind: "barracks", owner: 0, level: 1, pop: 10, pos: [120, -120] },
+  { id: "c1", kind: "barbarian", owner: 1, level: 3, pop: 30, pos: [-220, 0] },
+  { id: "c2", kind: "ranger", owner: 2, level: 2, pop: 20, pos: [220, 0] },
+  { id: "c3", kind: "warrior", owner: 0, level: 2, pop: 20, pos: [0, 0] },
+  { id: "c4", kind: "archer", owner: 0, level: 1, pop: 10, pos: [-120, 120] },
+  { id: "c5", kind: "barbarian", owner: 0, level: 1, pop: 10, pos: [120, 120] },
+  { id: "c6", kind: "ranger", owner: 0, level: 1, pop: 10, pos: [-120, -120] },
+  { id: "c7", kind: "warrior", owner: 0, level: 1, pop: 10, pos: [120, -120] },
   { id: "g1", kind: "granary", owner: 0, level: 1, pop: 0, pos: [-200, 60] },
   { id: "g2", kind: "granary", owner: 0, level: 1, pop: 0, pos: [200, 60] },
   {

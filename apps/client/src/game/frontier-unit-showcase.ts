@@ -17,11 +17,11 @@ interface UnitEntry {
 }
 
 const KIND_LABELS: Record<string, string> = {
-  infantry: "步兵",
-  shield: "盾兵",
-  cavalry: "骑兵",
+  barbarian: "步兵",
+  warrior: "盾兵",
+  ranger: "骑兵",
   archer: "弓兵",
-  elite: "精兵",
+  mage: "精兵",
 };
 
 const VARIANT_LABELS: Record<string, string> = {
@@ -190,7 +190,7 @@ class FrontierUnitShowcase {
   private async loadUnits(): Promise<void> {
     const loader = new GLTFLoader();
     const entries: UnitEntry[] = [];
-    for (const kind of ["infantry", "shield", "cavalry", "archer", "elite"]) {
+    for (const kind of ["barbarian", "warrior", "ranger", "archer", "mage"]) {
       for (const variant of ["A", "B"]) {
         const id = kind + "-" + variant;
         entries.push({

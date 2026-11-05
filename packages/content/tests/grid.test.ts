@@ -22,8 +22,8 @@ function gridMap(): MapDef {
       { id: 2, name: "AI", color: "red", ai: true },
     ],
     cities: [
-      { id: "c1", kind: "barracks", owner: 1, level: 1, pop: 10, pos: [-50, 0], layer: 0 },
-      { id: "c2", kind: "barracks", owner: 2, level: 1, pop: 10, pos: [50, 0], layer: 0 },
+      { id: "c1", kind: "barbarian", owner: 1, level: 1, pop: 10, pos: [-50, 0], layer: 0 },
+      { id: "c2", kind: "barbarian", owner: 2, level: 1, pop: 10, pos: [50, 0], layer: 0 },
     ],
     edges: [],
     objectives: [{ type: "capture_all" }],

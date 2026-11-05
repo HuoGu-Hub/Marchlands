@@ -7,9 +7,9 @@ const VIEW_HEIGHT = 16;
 const TARGET = new THREE.Vector3(0, 1.2, 0);
 
 const TOWNS = [
-  { x: -7.4, level: 1, owner: 0, title: "L1 据点 · 中立", color: "#c2bcaa", kind: "infantry" as const },
-  { x: 0, level: 2, owner: 1, title: "L2 据点 · 绿方", color: "#8ed9a0", kind: "elite" as const },
-  { x: 7.4, level: 3, owner: 2, title: "L3 据点 · 红方", color: "#ef9278", kind: "cavalry" as const },
+  { x: -7.4, level: 1, owner: 0, title: "L1 据点 · 中立", color: "#c2bcaa", kind: "barbarian" as const },
+  { x: 0, level: 2, owner: 1, title: "L2 据点 · 绿方", color: "#8ed9a0", kind: "mage" as const },
+  { x: 7.4, level: 3, owner: 2, title: "L3 据点 · 红方", color: "#ef9278", kind: "ranger" as const },
 ];
 
 export function runTownShowcase(host: HTMLElement): void {

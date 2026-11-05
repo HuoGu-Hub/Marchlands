@@ -8,7 +8,7 @@ function growthCity(): ReturnType<typeof createGame>["cities"][number] {
   const city = createGame(THREE_CITY_MAP, 1, TIMED_RULES).cities[0];
   return {
     ...city,
-    kind: "barracks",
+    kind: "barbarian",
     owner: 1,
     pop: 0,
     maxPop: 30,
@@ -52,7 +52,7 @@ describe("economy", () => {
   });
 
   it("slows over-cap decay for shield barracks", () => {
-    const city = { ...growthCity(), kind: "shieldBarracks" as const, pop: 33 };
+    const city = { ...growthCity(), kind: "warrior" as const, pop: 33 };
     for (let tick = 0; tick < 20; tick += 1) growCity(city, tick, 20);
     expect(city.pop).toBe(33);
   });

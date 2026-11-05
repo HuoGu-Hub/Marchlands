@@ -2,24 +2,24 @@ import * as THREE from "three";
 import { ModelBuilder } from "./building-kit";
 import type { TeamPalette } from "./building-kit";
 
-export type UnitKind = "infantry" | "shield" | "cavalry" | "archer" | "elite";
+export type UnitKind = "barbarian" | "warrior" | "ranger" | "archer" | "mage";
 
-export const UNIT_KINDS: UnitKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
+export const UNIT_KINDS: UnitKind[] = ["barbarian", "warrior", "ranger", "archer", "mage"];
 
 export const UNIT_NAMES: Record<UnitKind, string> = {
-  infantry: "野蛮人",
-  shield: "精锐战士",
-  cavalry: "游侠",
+  barbarian: "野蛮人",
+  warrior: "精锐战士",
+  ranger: "游侠",
   archer: "弓箭手",
-  elite: "法师",
+  mage: "法师",
 };
 
 export const UNIT_DESCRIPTIONS: Record<UnitKind, string> = {
-  infantry: "战斧 · 兽皮",
-  shield: "重甲 · 剑盾",
-  cavalry: "双刃 · 轻装",
+  barbarian: "战斧 · 兽皮",
+  warrior: "重甲 · 剑盾",
+  ranger: "双刃 · 轻装",
   archer: "十字弩 · 兜帽",
-  elite: "法杖 · 奥术",
+  mage: "法杖 · 奥术",
 };
 
 const CACHE = new Map<string, THREE.MeshStandardMaterial>();
@@ -425,7 +425,7 @@ function texturedPanel(
 function makeTorso(kind: UnitKind, palette: TeamPalette, variant: number): THREE.Group {
   const team = paintTeam(palette);
   const trim = paintTrim(palette);
-  const heavy = kind === "shield" || kind === "elite";
+  const heavy = kind === "warrior" || kind === "mage";
   return part((b) => {
     ball(b, 0.22, 1.08, 1.12, 0.92, team, 0, 0.17, 0);
     ball(b, 0.21, 1.0, 0.95, 0.86, kind === "archer" ? LEATHER : heavy ? ARMOR : LEATHER, 0, 0.14, 0.03);
@@ -468,10 +468,10 @@ function makeTorso(kind: UnitKind, palette: TeamPalette, variant: number): THREE
       }
     }
 
-    if (kind === "shield") {
+    if (kind === "warrior") {
       texturedPanel(b, 0.3, 0.07, 0.02, ARMOR_PLATE, 0, 0.29, 0.235);
       for (const x of [-0.12, 0.12]) ball(b, 0.026, 1, 1, 1, STEEL, x, 0.29, 0.245);
-    } else if (kind === "elite") {
+    } else if (kind === "mage") {
       ball(b, 0.19, 0.95, 1.05, 0.22, team, 0, 0.13, -0.19);
       for (const x of [-0.16, -0.08, 0, 0.08, 0.16]) {
         capsule(b, 0.022, 0.2, x === 0 ? trim : team, x, -0.08, -0.22, 0.1, 0, 0);
@@ -481,7 +481,7 @@ function makeTorso(kind: UnitKind, palette: TeamPalette, variant: number): THREE
       for (const x of [-0.09, 0, 0.09]) {
         capsule(b, 0.02, 0.12, team, x, -0.04, -0.2, 0.08, 0, 0);
       }
-    } else if (kind === "cavalry") {
+    } else if (kind === "ranger") {
       for (let index = 0; index < 10; index += 1) {
         const angle = (index / 10) * Math.PI * 2;
         ball(b, 0.045, 1, 0.8, 1, index % 2 === 0 ? WHITE : HORSE_LIGHT, Math.cos(angle) * 0.14, 0.31, Math.sin(angle) * 0.1 + 0.02);
@@ -508,7 +508,7 @@ function makeHead(kind: UnitKind, palette: TeamPalette, variant: number): THREE.
     ball(b, 0.018, 1, 0.8, 0.5, INK, 0, 0.075, 0.205);
     ball(b, 0.014, 1, 0.5, 0.4, RUST, 0, 0.065, 0.205);
 
-    if (kind === "infantry") {
+    if (kind === "barbarian") {
       ball(b, 0.215, 1.0, 0.55, 0.95, DARK_LEATHER, 0, 0.27, -0.05);
       torus(b, 0.208, 0.022, LEATHER, 0, 0.2, 0, Math.PI / 2, 0, 0);
       for (const x of [-0.15, 0.15]) capsule(b, 0.025, 0.1, HAIR, x, 0.02, 0.06, 0, 0, x < 0 ? 0.4 : -0.4);
@@ -518,7 +518,7 @@ function makeHead(kind: UnitKind, palette: TeamPalette, variant: number): THREE.
         ball(b, 0.062, 1, 0.95, 0.3, INK, 0.075, 0.14, 0.21);
         capsule(b, 0.009, 0.23, DARK_LEATHER, 0.01, 0.17, 0.2, 0, 0, 1.2);
       }
-    } else if (kind === "shield") {
+    } else if (kind === "warrior") {
       ball(b, 0.225, 1, 1, 1, ARMOR, 0, 0.12, 0.005);
       ball(b, 0.13, 1.0, 0.18, 0.1, INK, 0, 0.15, 0.205);
       for (const x of [-0.12, 0.12]) ball(b, 0.03, 1, 1, 1, STEEL, x, 0.18, 0.18);
@@ -535,7 +535,7 @@ function makeHead(kind: UnitKind, palette: TeamPalette, variant: number): THREE.
       ball(b, 0.18, 0.9, 0.9, 0.2, INK, 0, 0.13, 0.09);
       ball(b, 0.06, 1.1, 0.55, 0.8, team, 0, 0.32, -0.12);
       for (const x of [-0.14, 0.14]) capsule(b, 0.02, 0.1, team, x, 0.04, 0.05);
-    } else if (kind === "elite") {
+    } else if (kind === "mage") {
       b.add(
         new THREE.SphereGeometry(0.225, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2),
         ARMOR,
@@ -572,15 +572,15 @@ function makeHead(kind: UnitKind, palette: TeamPalette, variant: number): THREE.
 
 function makeArm(kind: UnitKind, palette: TeamPalette): THREE.Group {
   const team = paintTeam(palette);
-  const armor = kind === "shield" || kind === "cavalry" ? STEEL : kind === "elite" ? DARK_STEEL : LEATHER;
+  const armor = kind === "warrior" || kind === "ranger" ? STEEL : kind === "mage" ? DARK_STEEL : LEATHER;
   return part((b) => {
     capsule(b, 0.065, 0.08, kind === "archer" ? team : armor, 0, -0.08, 0);
     if (kind !== "archer") {
       capsule(b, 0.072, 0.06, ARMOR, 0, -0.12, 0);
       torus(b, 0.065, 0.012, STEEL, 0, -0.14, 0, Math.PI / 2, 0, 0);
     }
-    ball(b, 0.07, 1, 1, 1, kind === "shield" || kind === "elite" ? ARMOR_EDGE : SKIN, 0, -0.17, 0.01);
-    if (kind === "shield" || kind === "cavalry") torus(b, 0.055, 0.012, DARK_LEATHER, 0, -0.02, 0, 0, 0, 0);
+    ball(b, 0.07, 1, 1, 1, kind === "warrior" || kind === "mage" ? ARMOR_EDGE : SKIN, 0, -0.17, 0.01);
+    if (kind === "warrior" || kind === "ranger") torus(b, 0.055, 0.012, DARK_LEATHER, 0, -0.02, 0, 0, 0, 0);
   });
 }
 
@@ -596,10 +596,10 @@ function holdWeapon(weapon: THREE.Group, lean = 0): void {
 
 function makeLeg(kind: UnitKind): THREE.Group {
   return part((b) => {
-    capsule(b, 0.078, 0.05, kind === "shield" || kind === "elite" ? ARMOR : DARK_LEATHER, 0, -0.075, 0);
+    capsule(b, 0.078, 0.05, kind === "warrior" || kind === "mage" ? ARMOR : DARK_LEATHER, 0, -0.075, 0);
     ball(b, 0.075, 1.05, 0.7, 1.25, DARK_LEATHER, 0, -0.175, 0.025);
     ball(b, 0.07, 0.95, 0.35, 1.0, paint(0x8a7558, 0.98), 0, -0.19, 0.09);
-    if (kind === "shield" || kind === "elite" || kind === "cavalry") {
+    if (kind === "warrior" || kind === "mage" || kind === "ranger") {
       ball(b, 0.07, 0.95, 0.55, 1.1, ARMOR, 0, -0.19, 0.07);
       torus(b, 0.066, 0.011, STEEL, 0, -0.15, 0.02);
     } else {
@@ -726,7 +726,7 @@ function makeHumanoid(kind: UnitKind, palette: TeamPalette, variant: number): Un
     weapon.position.set(-0.3, 0.22, 0.12);
     weapon.rotation.set(0.08, 0.15, 0.05);
     root.add(weapon);
-  } else if (kind === "shield") {
+  } else if (kind === "warrior") {
     const weapon = sword();
     holdWeapon(weapon);
     rightArm.add(weapon);
@@ -734,11 +734,11 @@ function makeHumanoid(kind: UnitKind, palette: TeamPalette, variant: number): Un
     shield.position.set(-0.12, 0.08, 0.12);
     shield.rotation.set(0.05, -0.12, 0.05);
     leftArm.add(shield);
-  } else if (kind === "elite") {
+  } else if (kind === "mage") {
     const weapon = sword(true);
     holdWeapon(weapon);
     rightArm.add(weapon);
-  } else if (kind === "cavalry") {
+  } else if (kind === "ranger") {
     const weapon = lance(palette);
     weapon.position.set(0.3, 0.38, 0.06);
     root.add(weapon);
@@ -825,17 +825,17 @@ function makeCavalry(palette: TeamPalette, variant: number): UnitRig {
     }
   }
 
-  const torso = makeTorso("cavalry", palette, variant);
+  const torso = makeTorso("ranger", palette, variant);
   torso.position.set(0, 0.62, -0.12);
   root.add(torso);
-  const head = makeHead("cavalry", palette, variant);
+  const head = makeHead("ranger", palette, variant);
   head.position.y = NECK_Y;
   torso.add(head);
-  const leftArm = makeArm("cavalry", palette);
+  const leftArm = makeArm("ranger", palette);
   leftArm.position.set(-0.205, SHOULDER_Y, 0);
   leftArm.rotation.set(-0.5, 0, -0.35);
   torso.add(leftArm);
-  const rightArm = makeArm("cavalry", palette);
+  const rightArm = makeArm("ranger", palette);
   rightArm.position.set(0.205, SHOULDER_Y, 0);
   rightArm.rotation.set(-0.9, 0, 0.55);
   torso.add(rightArm);
@@ -868,12 +868,12 @@ function makeCavalry(palette: TeamPalette, variant: number): UnitRig {
     mount,
     mountLegs,
     height: 1.32,
-    kind: "cavalry",
+    kind: "ranger",
   };
 }
 
 export function buildUnit(kind: UnitKind, palette: TeamPalette, variant: number = 0): UnitRig {
-  const rig = kind === "cavalry" ? makeCavalry(palette, variant) : makeHumanoid(kind, palette, variant);
+  const rig = kind === "ranger" ? makeCavalry(palette, variant) : makeHumanoid(kind, palette, variant);
   rig.root.name = "unit-" + kind;
   rig.root.userData.unitKind = kind;
   rig.torso.name = "torso";

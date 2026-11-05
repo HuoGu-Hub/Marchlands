@@ -27,7 +27,7 @@ function gridMap(blockedCells: Array<[number, number]> = [], aiOwner = 2): MapDe
     cities: [
       {
         id: "a",
-        kind: "barracks",
+        kind: "barbarian",
         owner: 1,
         level: 1,
         pop: 30,
@@ -38,7 +38,7 @@ function gridMap(blockedCells: Array<[number, number]> = [], aiOwner = 2): MapDe
       },
       {
         id: "b",
-        kind: "barracks",
+        kind: "barbarian",
         owner: aiOwner as 1 | 2,
         level: 1,
         pop: 10,

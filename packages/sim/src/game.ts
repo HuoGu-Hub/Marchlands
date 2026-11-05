@@ -324,7 +324,7 @@ function applyCommand(
     const squad: SquadState = {
       id: `s${String(state.nextSquad).padStart(6, "0")}`,
       owner: from.owner,
-      unitKind: siteUnitKind(from.kind) ?? "infantry",
+      unitKind: siteUnitKind(from.kind) ?? "barbarian",
       from: from.id,
       to: to.id,
       count,
@@ -651,7 +651,7 @@ function sendGridSquad(
 ): void {
   const nav = state.nav;
   if (!nav) return;
-  const unitKind = siteUnitKind(from.kind) ?? "infantry";
+  const unitKind = siteUnitKind(from.kind) ?? "barbarian";
   const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind, to.id);
   if (!unitNav) return;
   const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
@@ -683,7 +683,7 @@ function sendGridSquadToCell(
   rejected: CommandRejection[],
 ): void {
   if (!state.nav) return reject(rejected, command, "no_route");
-  const unitKind = siteUnitKind(from.kind) ?? "infantry";
+  const unitKind = siteUnitKind(from.kind) ?? "barbarian";
   const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind);
   if (!unitNav) return reject(rejected, command, "no_route");
   const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
@@ -764,7 +764,7 @@ function retargetGridSquad(
 ): void {
   if (!state.nav) return;
   if (squad.xCm === undefined || squad.zCm === undefined) return reject(rejected, command, "squad_arrived");
-  const unitKind = squad.unitKind ?? "infantry";
+  const unitKind = squad.unitKind ?? "barbarian";
   const unitNav = createUnitNavGrid(state.map, state.cities, squad.owner, unitKind, to.id);
   if (!unitNav) return reject(rejected, command, "no_route");
   const start: [number, number] = [squad.xCm, squad.zCm];
@@ -814,7 +814,7 @@ function retargetGridSquadToCell(
 ): void {
   if (!state.nav) return reject(rejected, command, "no_route");
   if (squad.xCm === undefined || squad.zCm === undefined) return reject(rejected, command, "squad_arrived");
-  const unitKind = squad.unitKind ?? "infantry";
+  const unitKind = squad.unitKind ?? "barbarian";
   const unitNav = createUnitNavGrid(state.map, state.cities, squad.owner, unitKind);
   if (!unitNav) return reject(rejected, command, "no_route");
   const start: [number, number] = [squad.xCm, squad.zCm];

@@ -50,14 +50,14 @@ describe("map authoring", () => {
 
   it("does not add roads when placing a site", () => {
     const starter = createStarterDocument();
-    const result = addSite(starter, "barracks", [0, 0]);
+    const result = addSite(starter, "barbarian", [0, 0]);
     expect(result.document.sites).toHaveLength(starter.sites.length + 1);
     expect(result.document.roads).toEqual(starter.roads);
   });
 
   it("adds sites and recomputes road length after moving one", () => {
     const starter = createStarterDocument();
-    const added = addSite(starter, "barracks", [0, 0]);
+    const added = addSite(starter, "barbarian", [0, 0]);
     const withRoad = connect(added.document, "c1", added.site.id);
     const before = compileDocument(withRoad);
     const c1c3 = before.map.edges.find((edge) => edge.from === "c1" && edge.to === added.site.id);

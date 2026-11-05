@@ -139,12 +139,12 @@ export function runUnitPortrait(host: HTMLElement, key: string): void {
     // 边军 GLB 的骨骼导出仍有问题，卡片先用同兵种的程序化正面照占位。
     const kind = frontier[1] as UnitKind;
     const actor = new UnitActor({ kind, palette: paletteFor(1), variant: frontier[2] === "B" ? 1 : 0, phase: 0.7 });
-    if (kind === "cavalry") actor.rotation.y = -0.55;
+    if (kind === "ranger") actor.rotation.y = -0.55;
     actor.update(900);
     actor.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(actor);
     const size = box.getSize(new THREE.Vector3());
-    const targetHeight = kind === "cavalry" ? 2.05 : 1.72;
+    const targetHeight = kind === "ranger" ? 2.05 : 1.72;
     actor.scale.setScalar(targetHeight / Math.max(0.001, size.y));
     actor.updateMatrixWorld(true);
     const scaled = new THREE.Box3().setFromObject(actor);

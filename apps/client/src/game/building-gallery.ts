@@ -12,8 +12,8 @@ const TEAM_NAMES = ["中立", "绿方", "红方"];
 const TEAM_COLORS = ["#c2bcaa", "#8ed9a0", "#ef9278"];
 
 const GROUPS: Array<{ kinds: BuildingKind[]; title: string }> = [
-  { kinds: ["infantry", "shield", "cavalry", "archer"], title: "兵营一组" },
-  { kinds: ["elite", "tower", "granary", "mine"], title: "兵营二组" },
+  { kinds: ["barbarian", "warrior", "ranger", "archer"], title: "兵营一组" },
+  { kinds: ["mage", "tower", "granary", "mine"], title: "兵营二组" },
 ];
 
 export function runBuildingGallery(host: HTMLElement): void {

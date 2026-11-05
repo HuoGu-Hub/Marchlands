@@ -56,11 +56,11 @@ import {
 } from "./building-props";
 
 export type BuildingKind =
-  | "infantry"
-  | "shield"
-  | "cavalry"
+  | "barbarian"
+  | "warrior"
+  | "ranger"
   | "archer"
-  | "elite"
+  | "mage"
   | "tower"
   | "granary"
   | "mine";
@@ -68,33 +68,33 @@ export type BuildingKind =
 export type BuildingLevel = 1 | 2 | 3;
 
 export const BUILDING_KINDS: BuildingKind[] = [
-  "infantry",
-  "shield",
-  "cavalry",
+  "barbarian",
+  "warrior",
+  "ranger",
   "archer",
-  "elite",
+  "mage",
   "tower",
   "granary",
   "mine",
 ];
 
 export const BUILDING_NAMES: Record<BuildingKind, string> = {
-  infantry: "步兵营",
-  shield: "盾兵营",
-  cavalry: "骑兵营",
-  archer: "弓兵营",
-  elite: "精兵营",
+  barbarian: "野蛮人营地",
+  warrior: "精锐战士营",
+  ranger: "游侠营地",
+  archer: "弓箭手营",
+  mage: "法师塔",
   tower: "弓箭塔",
   granary: "粮仓",
   mine: "矿区",
 };
 
 export const BUILDING_DESCRIPTIONS: Record<BuildingKind, string> = {
-  infantry: "单刀步兵",
-  shield: "重甲盾卫",
-  cavalry: "长枪骑兵",
-  archer: "弓箭手",
-  elite: "轻甲精锐",
+  barbarian: "战斧近战",
+  warrior: "重甲剑盾",
+  ranger: "双刃游走",
+  archer: "远程弩手",
+  mage: "奥术远程",
   tower: "远程塔楼",
   granary: "粮草储备",
   mine: "金属开采",
@@ -106,11 +106,11 @@ export interface BuildingSpec {
 }
 
 export const BUILDING_SPECS: Record<BuildingKind, BuildingSpec> = {
-  infantry: { footprint: 1.3, height: 2.6 },
-  shield: { footprint: 1.35, height: 2.5 },
-  cavalry: { footprint: 1.55, height: 2.5 },
+  barbarian: { footprint: 1.3, height: 2.6 },
+  warrior: { footprint: 1.35, height: 2.5 },
+  ranger: { footprint: 1.55, height: 2.5 },
   archer: { footprint: 1.35, height: 2.5 },
-  elite: { footprint: 1.35, height: 3.2 },
+  mage: { footprint: 1.35, height: 3.2 },
   tower: { footprint: 1.05, height: 3.6 },
   granary: { footprint: 1.5, height: 3.1 },
   mine: { footprint: 1.6, height: 2.8 },
@@ -796,11 +796,11 @@ function buildMine(palette: TeamPalette, level: BuildingLevel, variant: number):
 export type BuildingBuilder = (palette: TeamPalette, level: BuildingLevel, variant: number) => THREE.Group;
 
 const BUILDERS: Record<BuildingKind, BuildingBuilder> = {
-  infantry: buildInfantry,
-  shield: buildShield,
-  cavalry: buildCavalry,
+  barbarian: buildInfantry,
+  warrior: buildShield,
+  ranger: buildCavalry,
   archer: buildArcher,
-  elite: buildElite,
+  mage: buildElite,
   tower: buildTower,
   granary: buildGranary,
   mine: buildMine,

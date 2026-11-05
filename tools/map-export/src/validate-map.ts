@@ -10,7 +10,7 @@ const { map, rules } = mapArg
   : loadContent();
 
 const neutral = map.cities.filter((city) => city.owner === 0).length;
-const towns = map.cities.filter((city) => city.kind === "barracks").length;
+const towns = map.cities.filter((city) => city.kind === "barbarian").length;
 const granaries = map.cities.filter((city) => city.kind === "granary").length;
 const outposts = map.cities.filter((city) => city.kind === "outpost").length;
 console.log(

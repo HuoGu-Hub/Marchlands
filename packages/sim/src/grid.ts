@@ -136,7 +136,7 @@ export function planGridRoute(
     { radiusCm, smooth: true },
   );
   if (!path) return null;
-  if (unitKind === "shield" && !shieldPathClear(nav, path.cells)) return null;
+  if (unitKind === "warrior" && !shieldPathClear(nav, path.cells)) return null;
   const points = path.points.map((point) => [point.xCm - offsetX, point.zCm - offsetZ] as [number, number]);
   return { cost: path.cost, points, distance: polylineLength(points) };
 }

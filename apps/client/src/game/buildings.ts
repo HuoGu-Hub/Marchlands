@@ -108,7 +108,7 @@ export function buildWall(level: number, palette: TeamPalette, radius = 4.5): TH
   return builder.finish();
 }
 
-export const TOWN_BUILDINGS: BuildingKind[] = ["infantry", "shield", "cavalry", "archer", "elite"];
+export const TOWN_BUILDINGS: BuildingKind[] = ["barbarian", "warrior", "ranger", "archer", "mage"];
 
 export const CITY_HALL_SCALE = 1.7;
 export const OUTPOST_TOWER_SCALE = 1.7;

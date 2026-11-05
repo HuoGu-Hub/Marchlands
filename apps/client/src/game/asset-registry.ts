@@ -172,13 +172,14 @@ const CASTLE_SPECS: PropSpec[] = [
 const BUILDING_SPECS: Array<{
   id: string;
   label: string;
-  kind: "town" | "infantry" | "shield" | "cavalry" | "archer" | "tower" | "granary";
+  kind: "town" | "barbarian" | "warrior" | "ranger" | "archer" | "mage" | "tower" | "granary";
   tags: string[];
 }> = [
-  { id: "builtin:building.barracks", label: "兵营", kind: "infantry", tags: ["建筑", "产兵"] },
-  { id: "builtin:building.stable", label: "马厩", kind: "cavalry", tags: ["建筑", "产兵"] },
-  { id: "builtin:building.shieldBarracks", label: "盾兵营", kind: "shield", tags: ["建筑", "产兵"] },
-  { id: "builtin:building.archerBarracks", label: "弓兵营", kind: "archer", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.barbarian", label: "野蛮人营地", kind: "barbarian", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.warrior", label: "精锐战士营", kind: "warrior", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.ranger", label: "游侠营地", kind: "ranger", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.archer", label: "弓箭手营", kind: "archer", tags: ["建筑", "产兵"] },
+  { id: "builtin:building.mage", label: "法师塔", kind: "mage", tags: ["建筑", "产兵"] },
   { id: "builtin:building.tower", label: "弓箭塔", kind: "tower", tags: ["建筑"] },
   { id: "builtin:building.granary", label: "粮仓", kind: "granary", tags: ["建筑"] },
 ];

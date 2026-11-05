@@ -6,19 +6,21 @@ import type { CityState, PlayerState, Ruleset, SiteKind } from "./types";
 const PLAYER_GROWTH_PER_SECOND = 1.2;
 const NEUTRAL_GROWTH_PER_SECOND = 0.8;
 const GROWTH_MODIFIER: Record<SiteKind, number> = {
-  barracks: 1,
-  stable: 0.9,
-  shieldBarracks: 0.85,
-  archerBarracks: 1.1,
+  barbarian: 1,
+  warrior: 0.85,
+  ranger: 0.9,
+  archer: 1.1,
+  mage: 0.95,
   granary: 1,
   outpost: 1,
 };
 /** 部分建筑超编衰减更慢。 */
 const DECAY_MODIFIER: Record<SiteKind, number> = {
-  barracks: 1,
-  stable: 0.95,
-  shieldBarracks: 0.6,
-  archerBarracks: 1,
+  barbarian: 1,
+  warrior: 0.6,
+  ranger: 0.95,
+  archer: 1,
+  mage: 0.75,
   granary: 1,
   outpost: 1,
 };

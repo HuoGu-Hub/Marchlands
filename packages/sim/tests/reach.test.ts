@@ -82,8 +82,8 @@ function gridMap(blockedCells: Array<[number, number]> = []): MapDef {
       { id: 2, name: "P2", color: "red", ai: true },
     ],
     cities: [
-      { id: "a", kind: "barracks", owner: 1, level: 1, pop: 30, pos: [-150, 0], layer: 0 },
-      { id: "b", kind: "barracks", owner: 2, level: 1, pop: 10, pos: [150, 0], layer: 0 },
+      { id: "a", kind: "barbarian", owner: 1, level: 1, pop: 30, pos: [-150, 0], layer: 0 },
+      { id: "b", kind: "barbarian", owner: 2, level: 1, pop: 10, pos: [150, 0], layer: 0 },
     ],
     edges: [],
     objectives: [{ type: "capture_all" }],

@@ -106,7 +106,7 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
     const level: Level = isPlayer || isAi ? 3 : ((1 + Math.floor(random() * 2.4)) as Level);
     sites.push({
       id: `c${index + 1}`,
-      kind: "barracks",
+      kind: "barbarian",
       owner: isPlayer ? 1 : isAi ? 2 : 0,
       level,
       pop: level * 10,
@@ -152,7 +152,7 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
   };
 
   const byId = new Map(sites.map((site) => [site.id, site]));
-  const townsOnly = sites.filter((site) => site.kind === "barracks");
+  const townsOnly = sites.filter((site) => site.kind === "barbarian");
   const pairOf = (a: Placed, b: Placed) => ({ a, b, d: distance(a.pos, b.pos) });
 
   const townPairs: Array<{ a: Placed; b: Placed; d: number }> = [];
@@ -197,11 +197,11 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
   }
 
   for (const site of sites) {
-    if (site.kind === "barracks") continue;
+    if (site.kind === "barbarian") continue;
     const nearest = townsOnly.reduce((best, town) => (distance(town.pos, site.pos) < distance(best.pos, site.pos) ? town : best), townsOnly[0]);
     addEdge(site, nearest);
     if (site.kind === "outpost") {
-      const partner = neighbours.get(nearest.id)!.find((id) => byId.get(id)?.kind === "barracks");
+      const partner = neighbours.get(nearest.id)!.find((id) => byId.get(id)?.kind === "barbarian");
       if (partner) site.watch = [nearest.id, partner];
       site.stance = site.stance === "engage" ? "evade" : "engage";
     }
@@ -213,7 +213,7 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
     edges.push({ from: pair.a.id, to: pair.b.id, length: Math.round(pair.d) });
   }
   for (const site of sites) {
-    if (site.kind === "barracks") continue;
+    if (site.kind === "barbarian") continue;
     const other = townsOnly.find((town) => linked.has(key(site.id, town.id)));
     if (other) edges.push({ from: site.id, to: other.id, length: Math.round(distance(site.pos, other.pos)) });
   }

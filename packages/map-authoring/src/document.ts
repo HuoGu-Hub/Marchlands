@@ -1,6 +1,6 @@
 import { ContentError, validateMap } from "@marchlands/content";
 import { decodeBitmapBase64 } from "@marchlands/nav";
-import { mapHashOf, type MapDef, type MapGridDef, type MapPlayer, type NavigationMode } from "@marchlands/sim";
+import { mapHashOf, normalizeSiteKind, type MapDef, type MapGridDef, type MapPlayer, type NavigationMode } from "@marchlands/sim";
 import type {
   CompileResult,
   EditorDiagnostic,
@@ -63,10 +63,10 @@ const MAX_PROPS = 2000;
 
 function starterSites(): SiteDraft[] {
   return [
-    { id: "c1", kind: "barracks", owner: 1, level: 3, pop: 30, pos: [-200, -150] },
-    { id: "c2", kind: "stable", owner: 2, level: 3, pop: 30, pos: [200, 150] },
-    { id: "c3", kind: "shieldBarracks", owner: 0, level: 1, pop: 10, pos: [-200, 150] },
-    { id: "c4", kind: "archerBarracks", owner: 0, level: 1, pop: 10, pos: [200, -150] },
+    { id: "c1", kind: "barbarian", owner: 1, level: 3, pop: 30, pos: [-200, -150] },
+    { id: "c2", kind: "ranger", owner: 2, level: 3, pop: 30, pos: [200, 150] },
+    { id: "c3", kind: "warrior", owner: 0, level: 1, pop: 10, pos: [-200, 150] },
+    { id: "c4", kind: "archer", owner: 0, level: 1, pop: 10, pos: [200, -150] },
   ];
 }
 
@@ -114,10 +114,10 @@ export function createGridDocument(): MapDocument {
     biome: "frontier",
     players: DEFAULT_PLAYERS.map((player) => ({ ...player })),
     sites: [
-      { id: "c1", kind: "barracks", owner: 1, level: 3, pop: 30, pos: [-200, -150], footprintDm: 80, captureRadiusDm: 40 },
-      { id: "c2", kind: "stable", owner: 2, level: 3, pop: 30, pos: [200, 150], footprintDm: 80, captureRadiusDm: 40 },
-      { id: "c3", kind: "shieldBarracks", owner: 0, level: 1, pop: 10, pos: [-200, 150], footprintDm: 80, captureRadiusDm: 40 },
-      { id: "c4", kind: "archerBarracks", owner: 0, level: 1, pop: 10, pos: [200, -150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c1", kind: "barbarian", owner: 1, level: 3, pop: 30, pos: [-200, -150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c2", kind: "ranger", owner: 2, level: 3, pop: 30, pos: [200, 150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c3", kind: "warrior", owner: 0, level: 1, pop: 10, pos: [-200, 150], footprintDm: 80, captureRadiusDm: 40 },
+      { id: "c4", kind: "archer", owner: 0, level: 1, pop: 10, pos: [200, -150], footprintDm: 80, captureRadiusDm: 40 },
     ],
     roads: [],
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
@@ -216,8 +216,8 @@ function finiteNumber(value: unknown): number | null {
 function siteFromUnknown(value: unknown): SiteDraft | null {
   if (!asRecord(value)) return null;
   if (typeof value.id !== "string" || value.id.length === 0) return null;
-  // 旧文档的 town 统一迁移为兵营，新文档不再提供城镇类型。
-  const kind = value.kind === "town" ? "barracks" : value.kind;
+  // 旧文档的 town 与旧据点 id 统一迁移到新名字，新文档不再提供城镇类型。
+  const kind = value.kind === "town" ? "barbarian" : typeof value.kind === "string" ? normalizeSiteKind(value.kind) : value.kind;
   if (!isProductionSiteKind(kind as SiteDraft["kind"]) && kind !== "granary" && kind !== "outpost") return null;
   const pos = numberPair(value.pos);
   if (!pos) return null;

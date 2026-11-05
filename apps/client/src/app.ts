@@ -365,7 +365,7 @@ export class App {
   private selection: RunConfig | null = null;
   private activeRun: RunConfig | null = null;
   private lastFocusedCard: HTMLElement | null = null;
-  private skinKind: UnitSkinKind = "infantry";
+  private skinKind: UnitSkinKind = "barbarian";
 
   constructor(root: HTMLElement, options: { autoStart?: boolean } = {}) {
     this.root = root;

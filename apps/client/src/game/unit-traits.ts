@@ -23,11 +23,11 @@ export const TRAIT_LABELS: Record<keyof UnitTraits, string> = {
 
 /** 兵种属性表，皮肤导入时按这张表校验。 */
 export const UNIT_TRAITS: Record<UnitKind, UnitTraits> = {
-  infantry: { river: true, flying: false, ranged: false },
-  shield: { river: false, flying: false, ranged: false },
-  cavalry: { river: true, flying: false, ranged: false },
+  barbarian: { river: true, flying: false, ranged: false },
+  warrior: { river: false, flying: false, ranged: false },
+  ranger: { river: true, flying: false, ranged: false },
   archer: { river: true, flying: false, ranged: true },
-  elite: { river: true, flying: true, ranged: true },
+  mage: { river: true, flying: true, ranged: true },
 };
 
 export function sameTraits(a: UnitTraits, b: UnitTraits): boolean {

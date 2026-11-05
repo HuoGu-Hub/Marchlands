@@ -14,7 +14,7 @@ import type {
   SiteKind,
   Stance,
 } from "@marchlands/sim";
-import { isProductionSiteKind, mapHashOf } from "@marchlands/sim";
+import { isProductionSiteKind, mapHashOf, normalizeSiteKind } from "@marchlands/sim";
 
 export class ContentError extends Error {
   readonly issues: string[];
@@ -101,6 +101,12 @@ function validateGrid(grid: Record<string, unknown>, width: number, height: numb
 
 export function validateMap(input: unknown): MapDef {
   if (!isRecord(input)) throw new ContentError("map", ["root must be an object"]);
+  // 旧地图里的据点 id 直接迁移到新名字，校验和运行都只看新 id。
+  if (Array.isArray(input.cities)) {
+    for (const city of input.cities) {
+      if (isRecord(city) && typeof city.kind === "string") city.kind = normalizeSiteKind(city.kind);
+    }
+  }
   const issues: string[] = [];
 
   if (input.schema !== 1 && input.schema !== 2) issues.push("schema must be 1 or 2");

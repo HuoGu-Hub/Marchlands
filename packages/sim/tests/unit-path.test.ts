@@ -49,32 +49,32 @@ function center(map: MapDef, x: number, z: number): [number, number] {
 describe("unit grid routing", () => {
   it("rejects a height step above the unit profile", () => {
     const map = gridMap(2, 1, [0, 70], [Surface.Grass, Surface.Grass]);
-    const infantry = createUnitNavGrid(map, [], 1, "infantry");
-    const elite = createUnitNavGrid(map, [], 1, "elite");
+    const infantry = createUnitNavGrid(map, [], 1, "barbarian");
+    const elite = createUnitNavGrid(map, [], 1, "mage");
     if (!infantry || !elite) throw new Error("missing nav");
-    expect(planGridRoute(map, infantry, center(map, 0, 0), center(map, 1, 0), 40, "infantry")).toBeNull();
-    expect(planGridRoute(map, elite, center(map, 0, 0), center(map, 1, 0), 40, "elite")).not.toBeNull();
+    expect(planGridRoute(map, infantry, center(map, 0, 0), center(map, 1, 0), 40, "barbarian")).toBeNull();
+    expect(planGridRoute(map, elite, center(map, 0, 0), center(map, 1, 0), 40, "mage")).not.toBeNull();
   });
 
   it("uses the map climb override for every unit", () => {
     const map = gridMap(2, 1, [0, 70], [Surface.Grass, Surface.Grass]);
     map.climbCm = 50;
-    const tight = createUnitNavGrid(map, [], 1, "infantry");
+    const tight = createUnitNavGrid(map, [], 1, "barbarian");
     if (!tight) throw new Error("missing nav");
-    expect(planGridRoute(map, tight, center(map, 0, 0), center(map, 1, 0), 40, "infantry")).toBeNull();
+    expect(planGridRoute(map, tight, center(map, 0, 0), center(map, 1, 0), 40, "barbarian")).toBeNull();
     map.climbCm = 80;
-    const loose = createUnitNavGrid(map, [], 1, "infantry");
+    const loose = createUnitNavGrid(map, [], 1, "barbarian");
     if (!loose) throw new Error("missing nav");
-    expect(planGridRoute(map, loose, center(map, 0, 0), center(map, 1, 0), 40, "infantry")).not.toBeNull();
+    expect(planGridRoute(map, loose, center(map, 0, 0), center(map, 1, 0), 40, "barbarian")).not.toBeNull();
   });
 
   it("filters surfaces by unit profile", () => {
     const map = gridMap(2, 1, [0, 0], [Surface.Grass, Surface.DeepWater]);
-    const infantry = createUnitNavGrid(map, [], 1, "infantry");
-    const elite = createUnitNavGrid(map, [], 1, "elite");
+    const infantry = createUnitNavGrid(map, [], 1, "barbarian");
+    const elite = createUnitNavGrid(map, [], 1, "mage");
     if (!infantry || !elite) throw new Error("missing nav");
-    expect(planGridRoute(map, infantry, center(map, 0, 0), center(map, 1, 0), 40, "infantry")).toBeNull();
-    expect(planGridRoute(map, elite, center(map, 0, 0), center(map, 1, 0), 40, "elite")).not.toBeNull();
+    expect(planGridRoute(map, infantry, center(map, 0, 0), center(map, 1, 0), 40, "barbarian")).toBeNull();
+    expect(planGridRoute(map, elite, center(map, 0, 0), center(map, 1, 0), 40, "mage")).not.toBeNull();
   });
 
   it("requires a 2x2 corridor for shield troops", () => {
@@ -85,12 +85,12 @@ describe("unit grid routing", () => {
       blocked.push(z * width + 0, z * width + 2, z * width + 3);
     }
     const map = gridMap(width, height, new Array(width * height).fill(0), new Array(width * height).fill(Surface.Grass), blocked);
-    const infantry = createUnitNavGrid(map, [], 1, "infantry");
-    const shield = createUnitNavGrid(map, [], 1, "shield");
+    const infantry = createUnitNavGrid(map, [], 1, "barbarian");
+    const shield = createUnitNavGrid(map, [], 1, "warrior");
     if (!infantry || !shield) throw new Error("missing nav");
     const from = center(map, 1, 1);
     const to = center(map, 1, 3);
-    expect(planGridRoute(map, infantry, from, to, 40, "infantry")).not.toBeNull();
-    expect(planGridRoute(map, shield, from, to, 40, "shield")).toBeNull();
+    expect(planGridRoute(map, infantry, from, to, 40, "barbarian")).not.toBeNull();
+    expect(planGridRoute(map, shield, from, to, 40, "warrior")).toBeNull();
   });
 });

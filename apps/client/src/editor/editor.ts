@@ -162,10 +162,11 @@ interface FoundationResizeState {
 
 const TOOL_LABEL: Record<Tool, string> = {
   select: "选择 / 移动",
-  barracks: "兵营",
-  stable: "马厩",
-  shieldBarracks: "盾兵营",
-  archerBarracks: "弓兵营",
+  barbarian: "野蛮人营地",
+  warrior: "精锐战士营",
+  ranger: "游侠营地",
+  archer: "弓箭手营",
+  mage: "法师塔",
   granary: "粮仓",
   outpost: "驻兵点",
   road: "道路",
@@ -238,10 +239,10 @@ const TEMPLATE = `
       </div>
       <details class="ml-ed-fold" open data-panel="site">
       <summary>据点</summary>
-      <button class="ml-ed-piece" data-tool="barracks" draggable="true"><i class="town"></i><b>兵营</b><span>步兵 · 可升级</span></button>
-      <button class="ml-ed-piece" data-tool="stable" draggable="true"><i class="town"></i><b>马厩</b><span>骑兵 · 可升级</span></button>
-      <button class="ml-ed-piece" data-tool="shieldBarracks" draggable="true"><i class="town"></i><b>盾兵营</b><span>盾兵 · 可升级</span></button>
-      <button class="ml-ed-piece" data-tool="archerBarracks" draggable="true"><i class="town"></i><b>弓兵营</b><span>弓兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="barbarian" draggable="true"><i class="town"></i><b>兵营</b><span>步兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="ranger" draggable="true"><i class="town"></i><b>马厩</b><span>骑兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="warrior" draggable="true"><i class="town"></i><b>盾兵营</b><span>盾兵 · 可升级</span></button>
+      <button class="ml-ed-piece" data-tool="archer" draggable="true"><i class="town"></i><b>弓兵营</b><span>弓兵 · 可升级</span></button>
       <button class="ml-ed-piece" data-tool="granary" draggable="true"><i class="granary"></i><b>粮仓</b><span>不产兵 · 叶子据点</span></button>
       <button class="ml-ed-piece" data-tool="outpost" draggable="true"><i class="outpost"></i><b>驻兵点</b><span>不产兵 · 监视一条路</span></button>
       </details>
@@ -301,10 +302,10 @@ function kindLabel(kind: SiteKind): string {
 }
 
 function toolColor(tool: Tool): string {
-  if (tool === "barracks") return "#c6a36a";
-  if (tool === "stable") return "#b58f67";
-  if (tool === "shieldBarracks") return "#9c9fbd";
-  if (tool === "archerBarracks") return "#9fbd72";
+  if (tool === "barbarian") return "#c6a36a";
+  if (tool === "ranger") return "#b58f67";
+  if (tool === "warrior") return "#9c9fbd";
+  if (tool === "archer") return "#9fbd72";
   if (tool === "granary") return "#d0b36a";
   if (tool === "outpost") return "#d07a58";
   if (tool === "road") return "#9cae9c";

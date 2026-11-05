@@ -7,29 +7,39 @@ export type NavigationMode = "graph" | "grid";
 export type PlayerId = 1 | 2;
 export type Owner = 0 | PlayerId;
 export type Level = 1 | 2 | 3;
-export type ProductionSiteKind = "barracks" | "stable" | "shieldBarracks" | "archerBarracks";
+/** 产兵建筑与它产出的兵种同名，全项目只有这一套 id。 */
+export type ProductionSiteKind = "barbarian" | "warrior" | "ranger" | "archer" | "mage";
 export type SiteKind = ProductionSiteKind | "granary" | "outpost";
-export type UnitKind = "infantry" | "shield" | "cavalry" | "archer" | "elite";
+export type UnitKind = ProductionSiteKind;
 
 export const PRODUCTION_SITE_KINDS: readonly ProductionSiteKind[] = [
-  "barracks",
-  "stable",
-  "shieldBarracks",
-  "archerBarracks",
+  "barbarian",
+  "warrior",
+  "ranger",
+  "archer",
+  "mage",
 ];
 
 /** 可产兵据点；粮仓与驻兵点不产兵。 */
 export function isProductionSiteKind(kind: SiteKind): kind is ProductionSiteKind {
-  return kind === "barracks" || kind === "stable" || kind === "shieldBarracks" || kind === "archerBarracks";
+  return (PRODUCTION_SITE_KINDS as readonly string[]).includes(kind);
 }
 
-/** 建筑类型固定绑定唯一兵种；弓箭塔不产兵。 */
+/** 产兵建筑固定绑定同名兵种；粮仓与驻兵点不产兵。 */
 export function siteUnitKind(kind: SiteKind): UnitKind | null {
-  if (kind === "barracks") return "infantry";
-  if (kind === "stable") return "cavalry";
-  if (kind === "shieldBarracks") return "shield";
-  if (kind === "archerBarracks") return "archer";
-  return null;
+  return isProductionSiteKind(kind) ? kind : null;
+}
+
+/** 旧地图与旧存档里的据点 id，读到就迁移到新名字。 */
+const LEGACY_SITE_KINDS: Record<string, SiteKind> = {
+  barracks: "barbarian",
+  shieldBarracks: "warrior",
+  stable: "ranger",
+  archerBarracks: "archer",
+};
+
+export function normalizeSiteKind(kind: string): SiteKind {
+  return (LEGACY_SITE_KINDS[kind] ?? kind) as SiteKind;
 }
 export type Stance = "evade" | "engage";
 export type MatchStatus = "playing" | "finished";

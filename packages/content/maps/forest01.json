@@ -26,7 +26,7 @@
   "cities": [
     {
       "id": "c1",
-      "kind": "barracks",
+      "kind": "barbarian",
       "owner": 1,
       "level": 3,
       "pop": 30,
@@ -38,7 +38,7 @@
     },
     {
       "id": "c2",
-      "kind": "stable",
+      "kind": "ranger",
       "owner": 2,
       "level": 2,
       "pop": 20,
@@ -50,7 +50,7 @@
     },
     {
       "id": "c3",
-      "kind": "shieldBarracks",
+      "kind": "warrior",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -62,7 +62,7 @@
     },
     {
       "id": "c4",
-      "kind": "archerBarracks",
+      "kind": "archer",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -74,7 +74,7 @@
     },
     {
       "id": "c5",
-      "kind": "barracks",
+      "kind": "barbarian",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -86,7 +86,7 @@
     },
     {
       "id": "c6",
-      "kind": "stable",
+      "kind": "ranger",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -98,7 +98,7 @@
     },
     {
       "id": "c7",
-      "kind": "shieldBarracks",
+      "kind": "warrior",
       "owner": 0,
       "level": 1,
       "pop": 10,

@@ -38,7 +38,7 @@ function canSendFrom(city: CityState | undefined): city is CityState {
 export function reachableGridCells(state: SimState, fromId: CityId): GridReach | null {
   const from = state.cities.find((city) => city.id === fromId);
   if (!state.nav || !canSendFrom(from)) return null;
-  const unitKind = siteUnitKind(from.kind) ?? "infantry";
+  const unitKind = siteUnitKind(from.kind) ?? "barbarian";
   const nav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind);
   if (!nav) return null;
   const cells = new Uint8Array(nav.cellCount);
