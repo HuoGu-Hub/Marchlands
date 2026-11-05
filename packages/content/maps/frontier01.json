@@ -524,6 +524,30 @@
         "c30",
         "c22"
       ]
+    },
+    {
+      "id": "m1",
+      "kind": "mage",
+      "owner": 0,
+      "level": 1,
+      "pop": 12,
+      "pos": [
+        -490,
+        430
+      ],
+      "layer": 0
+    },
+    {
+      "id": "m2",
+      "kind": "mage",
+      "owner": 0,
+      "level": 1,
+      "pop": 12,
+      "pos": [
+        -710,
+        -470
+      ],
+      "layer": 0
     }
   ],
   "edges": [
@@ -901,6 +925,26 @@
       "from": "c30",
       "to": "o4",
       "length": 154
+    },
+    {
+      "from": "m1",
+      "to": "c26",
+      "length": 118
+    },
+    {
+      "from": "m1",
+      "to": "c25",
+      "length": 217
+    },
+    {
+      "from": "m2",
+      "to": "c1",
+      "length": 163
+    },
+    {
+      "from": "m2",
+      "to": "c2",
+      "length": 279
     }
   ],
   "objectives": [

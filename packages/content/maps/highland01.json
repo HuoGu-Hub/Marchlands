@@ -38,7 +38,7 @@
     },
     {
       "id": "c2",
-      "kind": "ranger",
+      "kind": "barbarian",
       "owner": 0,
       "level": 3,
       "pop": 30,
@@ -50,7 +50,7 @@
     },
     {
       "id": "c3",
-      "kind": "warrior",
+      "kind": "barbarian",
       "owner": 1,
       "level": 3,
       "pop": 30,
@@ -62,7 +62,7 @@
     },
     {
       "id": "c4",
-      "kind": "archer",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -86,7 +86,7 @@
     },
     {
       "id": "c6",
-      "kind": "ranger",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -98,7 +98,7 @@
     },
     {
       "id": "c7",
-      "kind": "warrior",
+      "kind": "barbarian",
       "owner": 0,
       "level": 3,
       "pop": 30,
@@ -110,7 +110,7 @@
     },
     {
       "id": "c8",
-      "kind": "archer",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -134,7 +134,7 @@
     },
     {
       "id": "c10",
-      "kind": "ranger",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -146,7 +146,7 @@
     },
     {
       "id": "c11",
-      "kind": "warrior",
+      "kind": "barbarian",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -158,7 +158,7 @@
     },
     {
       "id": "c12",
-      "kind": "archer",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -182,7 +182,7 @@
     },
     {
       "id": "c14",
-      "kind": "ranger",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -194,7 +194,7 @@
     },
     {
       "id": "c15",
-      "kind": "warrior",
+      "kind": "barbarian",
       "owner": 0,
       "level": 3,
       "pop": 30,
@@ -206,7 +206,7 @@
     },
     {
       "id": "c16",
-      "kind": "archer",
+      "kind": "barbarian",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -230,7 +230,7 @@
     },
     {
       "id": "c18",
-      "kind": "ranger",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -242,7 +242,7 @@
     },
     {
       "id": "c19",
-      "kind": "warrior",
+      "kind": "barbarian",
       "owner": 0,
       "level": 2,
       "pop": 20,
@@ -254,7 +254,7 @@
     },
     {
       "id": "c20",
-      "kind": "archer",
+      "kind": "barbarian",
       "owner": 0,
       "level": 3,
       "pop": 30,
@@ -278,7 +278,7 @@
     },
     {
       "id": "c22",
-      "kind": "ranger",
+      "kind": "barbarian",
       "owner": 0,
       "level": 1,
       "pop": 10,
@@ -486,6 +486,30 @@
       "pos": [
         115,
         115
+      ],
+      "layer": 0
+    },
+    {
+      "id": "m1",
+      "kind": "mage",
+      "owner": 0,
+      "level": 1,
+      "pop": 12,
+      "pos": [
+        80,
+        -360
+      ],
+      "layer": 0
+    },
+    {
+      "id": "m2",
+      "kind": "mage",
+      "owner": 0,
+      "level": 1,
+      "pop": 12,
+      "pos": [
+        280,
+        80
       ],
       "layer": 0
     }
@@ -705,6 +729,26 @@
       "from": "g4",
       "to": "c19",
       "length": 103
+    },
+    {
+      "from": "m1",
+      "to": "c4",
+      "length": 99
+    },
+    {
+      "from": "m1",
+      "to": "c14",
+      "length": 144
+    },
+    {
+      "from": "m2",
+      "to": "c19",
+      "length": 76
+    },
+    {
+      "from": "m2",
+      "to": "c11",
+      "length": 207
     }
   ],
   "objectives": [

@@ -7,14 +7,15 @@ import type { MapCity, MapDef } from "@marchlands/sim";
 describe("forest01", () => {
   const { map, rules } = loadContent();
 
-  it("loads seven producing sites, two granaries and two outposts", () => {
-    expect(map.cities).toHaveLength(11);
-    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(7);
+  it("loads nine producing sites, two granaries and two outposts", () => {
+    expect(map.cities).toHaveLength(13);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(9);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(2);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(2);
+    expect(map.cities.filter((city) => city.kind === "mage")).toHaveLength(2);
     expect(map.players).toHaveLength(2);
-    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(9);
-    expect(map.edges).toHaveLength(16);
+    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(11);
+    expect(map.edges).toHaveLength(20);
     expect(map.cities.every((city) => city.layer === 0)).toBe(true);
   });
 
@@ -85,14 +86,15 @@ describe("forest01", () => {
 describe("crossroads01", () => {
   const { map, rules } = loadContent("maps/crossroads01.json");
 
-  it("loads twenty sites with twelve producing sites", () => {
-    expect(map.cities).toHaveLength(20);
-    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(12);
+  it("loads twenty-two sites with fourteen producing sites", () => {
+    expect(map.cities).toHaveLength(22);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(14);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
-    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(18);
+    expect(map.cities.filter((city) => city.kind === "mage")).toHaveLength(2);
+    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(20);
     expect(map.players).toHaveLength(2);
-    expect(map.edges).toHaveLength(31);
+    expect(map.edges).toHaveLength(35);
     expect(map.cities.every((city) => city.layer === 0)).toBe(true);
   });
 
@@ -232,12 +234,13 @@ describe("validation", () => {
 describe("frontier01", () => {
   const { map } = loadContent("maps/frontier01.json");
 
-  it("builds a forty-site frontier with thirty-two producing sites", () => {
-    expect(map.cities).toHaveLength(40);
-    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(32);
+  it("builds a forty-two-site frontier with thirty-four producing sites", () => {
+    expect(map.cities).toHaveLength(42);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(34);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
-    expect(map.edges).toHaveLength(75);
+    expect(map.cities.filter((city) => city.kind === "mage")).toHaveLength(2);
+    expect(map.edges).toHaveLength(79);
   });
 
   it("requires friendly transit", () => {
