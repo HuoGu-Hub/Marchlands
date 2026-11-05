@@ -324,13 +324,24 @@ export class AssetRegistry {
             applyTeamColor(object, context.owner);
             return object;
           };
+          // 只有一张通用模型时，按等级缩放，不再要求 L1/L2/L3 三个文件。
+          const LEVEL_FALLBACK_SCALE = [0.86, 1, 1.14];
+          const prefabFor = async (kind: string, level: number) => {
+            const exact = await prefab(`${kind}-L${level}`);
+            if (exact) return exact;
+            const shared = await prefab(kind);
+            if (shared) {
+              shared.scale.multiplyScalar(LEVEL_FALLBACK_SCALE[Math.min(2, Math.max(0, level - 1))]);
+            }
+            return shared;
+          };
           if (spec.kind === "town") {
             const hallKind = TOWN_BUILDINGS[Math.abs(seed) % TOWN_BUILDINGS.length];
-            const hall = (await prefab(`${hallKind}-L${level}`)) ?? buildBuilding(hallKind, palette, level, seed);
+            const hall = (await prefabFor(hallKind, level)) ?? buildBuilding(hallKind, palette, level, seed);
             hall.scale.multiplyScalar(CITY_HALL_SCALE);
             return hall;
           }
-          const building = (await prefab(`${spec.kind}-L${level}`)) ?? buildBuilding(spec.kind, palette, level, seed);
+          const building = (await prefabFor(spec.kind, level)) ?? buildBuilding(spec.kind, palette, level, seed);
           building.scale.multiplyScalar(spec.kind === "tower" ? OUTPOST_TOWER_SCALE : OUTPOST_BUILDING_SCALE);
           return building;
         },

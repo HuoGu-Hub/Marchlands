@@ -26,6 +26,7 @@ interface Shot {
   arc: number;
   kind: "arrow" | "bolt";
   bolt?: THREE.Sprite;
+  core?: THREE.Mesh;
 }
 
 /**
@@ -35,6 +36,7 @@ interface Shot {
 export class ProjectileField {
   readonly group = new THREE.Group();
   private arrowTemplate: THREE.Object3D | null = null;
+  private fireballTemplate: THREE.Object3D | null = null;
   private glow: THREE.Texture | null = null;
   private readonly live: Shot[] = [];
   private readonly cooldowns = new Map<string, number>();
@@ -43,10 +45,11 @@ export class ProjectileField {
   load(): void {
     if (this.loaded) return;
     this.loaded = true;
-    const url = Object.entries(ARROW_URLS).find(([path]) => path.endsWith("arrow.glb"))?.[1];
-    if (url) {
-      new GLTFLoader()
-        .loadAsync(url)
+    const loader = new GLTFLoader();
+    const arrowUrl = Object.entries(ARROW_URLS).find(([path]) => path.endsWith("arrow.glb"))?.[1];
+    if (arrowUrl) {
+      void loader
+        .loadAsync(arrowUrl)
         .then((gltf) => {
           this.arrowTemplate = gltf.scene;
           this.arrowTemplate.traverse((node) => {
@@ -56,6 +59,26 @@ export class ProjectileField {
         })
         .catch(() => {
           this.arrowTemplate = null;
+        });
+    }
+    const fireballUrl = Object.entries(ARROW_URLS).find(([path]) => path.endsWith("fireball.glb"))?.[1];
+    if (fireballUrl) {
+      void loader
+        .loadAsync(fireballUrl)
+        .then((gltf) => {
+          this.fireballTemplate = gltf.scene;
+          this.fireballTemplate.traverse((node) => {
+            const mesh = node as THREE.Mesh;
+            if (mesh.isMesh) {
+              mesh.frustumCulled = false;
+              mesh.material = (mesh.material as THREE.Material).clone();
+              (mesh.material as THREE.MeshStandardMaterial).emissive?.setHex(0xff8a3c);
+              (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.9;
+            }
+          });
+        })
+        .catch(() => {
+          this.fireballTemplate = null;
         });
     }
     this.glow = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}fx/magic_04.png`);
@@ -142,8 +165,28 @@ export class ProjectileField {
       model.scale.setScalar(1.15);
       holder.add(model);
       object = holder;
+    } else if (this.fireballTemplate) {
+      // 火球模型长轴朝 -Z，转半圈让它对着飞行方向。
+      const holder = new THREE.Group();
+      const model = this.fireballTemplate.clone(true);
+      model.rotation.y = Math.PI;
+      model.scale.setScalar(0.55);
+      const halo = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: this.glow,
+          color: 0xffa04a,
+          blending: THREE.AdditiveBlending,
+          transparent: true,
+          depthWrite: false,
+          toneMapped: false,
+        }),
+      );
+      halo.scale.setScalar(1.1);
+      holder.add(model, halo);
+      object = holder;
+      (object as THREE.Group).userData.glow = halo;
     } else {
-      // 法球 = 实体核心 + 加色光晕，光晕贴图来自 Kenney 粒子包。
+      // 没有模型时退回实体核心 + 加色光晕。
       const holder = new THREE.Group();
       const core = new THREE.Mesh(
         new THREE.SphereGeometry(0.13, 16, 12),
@@ -166,6 +209,7 @@ export class ProjectileField {
       holder.add(core, sprite);
       object = holder;
       (object as THREE.Group).userData.glow = sprite;
+      (object as THREE.Group).userData.core = core;
     }
     object.visible = false;
     this.group.add(object);
@@ -178,14 +222,21 @@ export class ProjectileField {
       duration: Math.min(duration + distance * 40, 900),
       arc: kind === "arrow" ? Math.min(1.4, distance * 0.12) : 0.1,
       kind,
-      ...(kind === "bolt" ? { bolt: (object as THREE.Group).userData.glow as THREE.Sprite } : {}),
+      ...(kind === "bolt"
+        ? {
+            bolt: (object as THREE.Group).userData.glow as THREE.Sprite,
+            core: (object as THREE.Group).userData.core as THREE.Mesh,
+          }
+        : {}),
     });
   }
 
   private release(shot: Shot): void {
     this.group.remove(shot.object);
-    if (shot.bolt) {
-      shot.bolt.material.dispose();
+    if (shot.bolt) shot.bolt.material.dispose();
+    if (shot.core) {
+      shot.core.geometry.dispose();
+      (shot.core.material as THREE.Material).dispose();
     }
   }
 

@@ -52,4 +52,18 @@ export const CREDITS: CreditEntry[] = [
     url: "https://quaternius.com",
     usage: "产兵建筑",
   },
+  {
+    name: "Low Poly FireBall",
+    author: "Dzénetan Massart",
+    license: "CC BY 4.0",
+    url: "https://sketchfab.com/3d-models/low-poly-fireball-boule-de-feu-en-low-poly-b722efe7ec084dafbe41427714dc5711",
+    usage: "法师法术弹",
+  },
+  {
+    name: "Free Stone Mage Tower",
+    author: "GameAssetsFin",
+    license: "CC BY 4.0",
+    url: "https://sketchfab.com/3d-models/free-stone-mage-tower-c5cb72c0bf994317912d45d2b61f7aa6",
+    usage: "法师塔",
+  },
 ];

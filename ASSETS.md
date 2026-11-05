@@ -20,6 +20,13 @@
 
 程序化生成的内容：地面纹理、白灰墙与木梁、屋顶瓦片、石板、旗帜与单位、UI。
 
+## 署名（CC BY）
+
+以下素材来自 Sketchfab，许可为 CC BY 4.0，游戏内「设置 → 素材署名」保留作者与来源：
+
+- Low Poly FireBall，作者 Dzénetan Massart，用作法师法术弹
+- Free Stone Mage Tower，作者 GameAssetsFin，用作法师塔
+
 ## 据点建筑
 
 五个产兵建筑换成 Quaternius Ultimate Fantasy RTS 的模型，CC0：
@@ -33,6 +40,8 @@
 | 法师塔 | Temple_SecondAge_Level1-3 |
 
 转换脚本见 `tools/asset-convert/rts-buildings.mjs`：屋顶材质 `Main` 改名 `team_roof` 参与阵营染色，整体缩放成正比、原点居中、底面贴地，输出到 `apps/client/src/assets/converted/buildings/`。
+
+法师塔改用 Sketchfab 的 Stone Mage Tower，只有一张模型，`converted/buildings/mage.glb`，等级差异由代码按 0.86 / 1 / 1.14 缩放。水晶材质改名 `team_roof` 参与阵营染色。
 
 ## 战斗表现
 
