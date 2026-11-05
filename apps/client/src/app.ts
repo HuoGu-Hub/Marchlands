@@ -1201,9 +1201,8 @@ export class App {
     const name = document.createElement("b");
     name.textContent = skin.label;
     const tag = document.createElement("small");
-    const family = skin.family === "sprite" ? "序列帧" : "通用角色";
     const tags = skin.traits ? traitTags(skin.traits) : [];
-    tag.textContent = tags.length > 0 ? `${family} · ${tags.join(" · ")}` : family;
+    tag.textContent = tags.length > 0 ? `通用角色 · ${tags.join(" · ")}` : "通用角色";
     copy.append(name, tag);
     card.append(media, copy);
     card.addEventListener("click", () => this.chooseSkin(skin));

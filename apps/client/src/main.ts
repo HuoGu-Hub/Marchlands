@@ -8,7 +8,6 @@ import { runRoadShowcase } from "./game/road-showcase";
 import { runSwitchDemo } from "./game/switch-demo";
 import { runUnitGallery } from "./game/unit-gallery";
 import { runTownShowcase } from "./game/town-showcase";
-import { runSpriteShowcase } from "./game/sprite-showcase";
 import { runFxPreview } from "./game/fx-preview";
 
 const host = document.getElementById("app");
@@ -41,8 +40,6 @@ if (scene === "map-preview" && previewMap) {
 } else if (scene === "frontier-battle") {
   // 直接进真实对局；?map= 可换地图
   new App(host, { autoStart: true }).start();
-} else if (scene === "sprite") {
-  runSpriteShowcase(host);
 } else if (scene === "fx") {
   runFxPreview(host);
 } else if (scene === "convert") {

@@ -19,10 +19,7 @@ const KEYS = [
   "kaykit-rogue-hooded",
   "kaykit-rogue",
   "kaykit-mage",
-  "warrior",
-  "cleric",
   "monk",
-  "rogue",
 ];
 
 const requested = process.argv.slice(2);

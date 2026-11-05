@@ -7,7 +7,6 @@ export type UnitSkinKind = UnitKind;
 export interface UnitSkinDef {
   key: string;
   label: string;
-  family: "classic" | "sprite";
   /** 绑定兵种的皮肤；通用皮肤不绑定。 */
   kind?: UnitSkinKind;
   /**
@@ -22,49 +21,32 @@ export const CLASSIC_UNIT_SKINS: UnitSkinDef[] = [
   {
     key: "kaykit-barbarian",
     label: "冒险家 · 野蛮人",
-    family: "classic",
     traits: { river: true, flying: false, ranged: false },
   },
   {
     key: "kaykit-knight",
     label: "冒险家 · 骑士",
-    family: "classic",
     traits: { river: false, flying: false, ranged: false },
   },
   {
     key: "kaykit-rogue-hooded",
     label: "冒险家 · 兜帽游侠",
-    family: "classic",
     traits: { river: true, flying: false, ranged: true },
   },
   {
     key: "kaykit-rogue",
     label: "冒险家 · 游侠",
-    family: "classic",
     traits: { river: true, flying: false, ranged: false },
   },
   {
     key: "kaykit-mage",
     label: "冒险家 · 法师",
-    family: "classic",
     traits: { river: true, flying: true, ranged: true },
   },
-  { key: "warrior", label: "剑士", family: "classic", traits: { river: false, flying: false, ranged: false } },
-  { key: "cleric", label: "祭司", family: "classic", traits: { river: true, flying: false, ranged: true } },
-  { key: "monk", label: "武僧", family: "classic", traits: { river: true, flying: false, ranged: false } },
-  { key: "rogue", label: "游侠", family: "classic", traits: { river: true, flying: false, ranged: false } },
+  { key: "monk", label: "武僧", traits: { river: true, flying: false, ranged: false } },
 ];
 
-/** 八方向序列帧皮肤。不注册为 GLB 资产，由场景直接构造 SpriteUnitActor。 */
-export const SPRITE_UNIT_SKINS: UnitSkinDef[] = [
-  { key: "sprite-ranger", label: "游侠 · 序列帧", family: "sprite", kind: "barbarian", traits: { river: true, flying: false, ranged: false } },
-  { key: "sprite-knight", label: "重甲盾兵 · 序列帧", family: "sprite", kind: "warrior", traits: { river: false, flying: false, ranged: false } },
-];
-
-export const ALL_UNIT_SKINS: UnitSkinDef[] = [
-  ...CLASSIC_UNIT_SKINS,
-  ...SPRITE_UNIT_SKINS,
-];
+export const ALL_UNIT_SKINS: UnitSkinDef[] = [...CLASSIC_UNIT_SKINS];
 
 export function unitSkinAssetId(key: string): string {
   return `builtin:unit.${key}`;
