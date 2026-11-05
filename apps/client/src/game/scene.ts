@@ -336,6 +336,12 @@ export class BattleScene {
   private sun: THREE.DirectionalLight | null = null;
   /** 开场前选定的兵团皮肤：兵种 → 资产 id。 */
   private readonly unitSkins: Record<string, string>;
+  private readonly pickRaycaster = new THREE.Raycaster();
+  private readonly pickNdc = new THREE.Vector2();
+  private readonly pickPoint = new THREE.Vector3();
+  private readonly projectPoint = new THREE.Vector3();
+  private readonly pickPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private viewport = { left: 0, top: 0, width: 0, height: 0 };
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -714,8 +720,11 @@ export class BattleScene {
   projectCity(cityId: CityId): { x: number; y: number } | null {
     const position = this.positions.get(cityId);
     if (!position) return null;
-    const rect = this.canvas.getBoundingClientRect();
-    const projected = position.clone().setY(position.y + (this.cityViews.get(cityId)?.labelHeight ?? CITY_LABEL_HEIGHT)).project(this.camera);
+    const rect = this.canvasRect();
+    const projected = this.projectPoint
+      .copy(position)
+      .setY(position.y + (this.cityViews.get(cityId)?.labelHeight ?? CITY_LABEL_HEIGHT))
+      .project(this.camera);
     return {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
@@ -725,8 +734,8 @@ export class BattleScene {
   projectCityBase(cityId: CityId): { x: number; y: number } | null {
     const position = this.positions.get(cityId);
     if (!position) return null;
-    const rect = this.canvas.getBoundingClientRect();
-    const projected = position.clone().setY(position.y + 1.8).project(this.camera);
+    const rect = this.canvasRect();
+    const projected = this.projectPoint.copy(position).setY(position.y + 1.8).project(this.camera);
     return {
       x: rect.left + ((projected.x + 1) / 2) * rect.width,
       y: rect.top + ((1 - projected.y) / 2) * rect.height,
@@ -787,10 +796,12 @@ export class BattleScene {
   }
 
   projectGround(x: number, z: number, height = 0): { x: number; y: number } | null {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.canvasRect();
     const worldX = x / 10;
     const worldZ = z / 10;
-    const point = new THREE.Vector3(worldX, this.terrain.heightAt(worldX, worldZ) + height, worldZ).project(this.camera);
+    const point = this.projectPoint
+      .set(worldX, this.terrain.heightAt(worldX, worldZ) + height, worldZ)
+      .project(this.camera);
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
     return {
       x: rect.left + ((point.x + 1) / 2) * rect.width,
@@ -799,33 +810,53 @@ export class BattleScene {
   }
 
   screenToGround(clientX: number, clientY: number): [number, number] | null {
-    const rect = this.canvas.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
+    const rect = this.canvasRect();
+    this.pickNdc.set(
       ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
       -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
     );
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(ndc, this.camera);
-    const point = new THREE.Vector3();
+    this.pickRaycaster.setFromCamera(this.pickNdc, this.camera);
+    const point = this.pickPoint;
     for (const mesh of this.terrain.meshes) mesh.updateMatrixWorld(true);
-    const hits = raycaster.intersectObjects(this.terrain.meshes, false);
+    const hits = this.pickRaycaster.intersectObjects(this.terrain.meshes, false);
     if (hits.length > 0) {
       point.copy(hits[0].point);
       return [point.x * 10, point.z * 10];
     }
-    if (!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), point)) return null;
+    this.pickPlane.constant = 0;
+    if (!this.pickRaycaster.ray.intersectPlane(this.pickPlane, point)) return null;
+    return [point.x * 10, point.z * 10];
+  }
+
+  /**
+   * 拖拽预览用的地面拾取：不做地形三角面射线，只解地面平面并按高度迭代一次。
+   * 指针移动频率可能远高于帧率，这里主要避免每个 pointermove 都遍历地形网格。
+   */
+  screenToGroundFast(clientX: number, clientY: number): [number, number] | null {
+    const rect = this.canvasRect();
+    this.pickNdc.set(
+      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    );
+    this.pickRaycaster.setFromCamera(this.pickNdc, this.camera);
+    const point = this.pickPoint;
+    this.pickPlane.constant = 0;
+    if (!this.pickRaycaster.ray.intersectPlane(this.pickPlane, point)) return null;
+    const height = this.terrain.heightAt(point.x, point.z);
+    this.pickPlane.constant = -height;
+    if (!this.pickRaycaster.ray.intersectPlane(this.pickPlane, point)) return null;
     return [point.x * 10, point.z * 10];
   }
 
   /** 离屏幕坐标最近的据点及像素距离，供点击与任务箭头判定优先级。 */
   nearestCity(clientX: number, clientY: number, state: SimState): { id: CityId; distance: number } | null {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.canvasRect();
     let bestId: CityId | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
     for (const city of state.cities) {
       const position = this.positions.get(city.id);
       if (!position) continue;
-      const projected = position.clone().setY(position.y + 1.8).project(this.camera);
+      const projected = this.projectPoint.copy(position).setY(position.y + 1.8).project(this.camera);
       const x = rect.left + ((projected.x + 1) / 2) * rect.width;
       const y = rect.top + ((1 - projected.y) / 2) * rect.height;
       const distance = Math.hypot(clientX - x, clientY - y);
@@ -2566,10 +2597,20 @@ export class BattleScene {
     }
   }
 
+  private canvasRect(): { left: number; top: number; width: number; height: number } {
+    if (this.viewport.width <= 0) {
+      const rect = this.canvas.getBoundingClientRect();
+      this.viewport = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    }
+    return this.viewport;
+  }
+
   private resize(): void {
     const parent = this.canvas.parentElement;
     const width = Math.max(1, parent?.clientWidth ?? window.innerWidth);
     const height = Math.max(1, parent?.clientHeight ?? window.innerHeight);
+    const rect = this.canvas.getBoundingClientRect();
+    this.viewport = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.fov = this.editorMode ? 45 : FIELD_OF_VIEW;

@@ -88,6 +88,8 @@ export class GameSession {
   private dispatchDrag = false;
   private dispatchSource: CityId | null = null;
   private planDragSources: CityId[] = [];
+  private dragPreviewFrame = 0;
+  private dragPreviewPoint: { x: number; y: number } | null = null;
   private suppressClick = false;
   private dragX = 0;
   private dragY = 0;
@@ -688,6 +690,7 @@ export class GameSession {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.cancelDragPreview();
     window.clearTimeout(this.introHideTimer);
     if (this.introRoot) {
       this.introRoot.hidden = true;
@@ -978,6 +981,7 @@ export class GameSession {
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
     if (this.introActive) this.finishIntro();
+    this.cancelDragPreview();
     this.dragMoved = false;
     this.dragStartX = event.clientX;
     this.dragStartY = event.clientY;
@@ -1020,7 +1024,7 @@ export class GameSession {
         return;
       }
       this.dragMoved = true;
-      this.routeOverlay.setDragArrows(this.planDragViews(event.clientX, event.clientY));
+      this.queueDragPreview(event.clientX, event.clientY);
       return;
     }
     if (this.dispatchDrag) {
@@ -1035,9 +1039,7 @@ export class GameSession {
         return;
       }
       this.dragMoved = true;
-      if (this.dispatchSource) {
-        this.routeOverlay.setDragArrow(this.dragArrowView(event.clientX, event.clientY));
-      }
+      if (this.dispatchSource) this.queueDragPreview(event.clientX, event.clientY);
       return;
     }
     if (!this.dragging) return;
@@ -1061,6 +1063,7 @@ export class GameSession {
   private readonly onPointerUp = (event: PointerEvent): void => {
     if (this.planDragSources.length > 0) {
       const moved = this.dragMoved;
+      this.cancelDragPreview();
       this.planDragSources = [];
       this.routeOverlay.setDragArrows(null);
       this.options.canvas.style.cursor = "grab";
@@ -1077,6 +1080,7 @@ export class GameSession {
     if (this.dispatchDrag) {
       const moved = this.dragMoved;
       const source = this.dispatchSource;
+      this.cancelDragPreview();
       this.dispatchDrag = false;
       this.dispatchSource = null;
       this.routeOverlay.setDragArrow(null);
@@ -1100,6 +1104,7 @@ export class GameSession {
   };
 
   private readonly onWindowBlur = (): void => {
+    this.cancelDragPreview();
     this.cancelPlanDrag();
     this.cancelDispatchDrag();
     this.dragging = false;
@@ -1108,8 +1113,31 @@ export class GameSession {
     this.options.canvas.style.cursor = "grab";
   };
 
+  private queueDragPreview(clientX: number, clientY: number): void {
+    this.dragPreviewPoint = { x: clientX, y: clientY };
+    if (this.dragPreviewFrame) return;
+    this.dragPreviewFrame = requestAnimationFrame(() => {
+      this.dragPreviewFrame = 0;
+      const point = this.dragPreviewPoint;
+      this.dragPreviewPoint = null;
+      if (!point) return;
+      if (this.planDragSources.length > 0) {
+        this.routeOverlay.setDragArrows(this.planDragViews(point.x, point.y));
+      } else if (this.dispatchDrag && this.dispatchSource) {
+        this.routeOverlay.setDragArrow(this.dragArrowView(point.x, point.y));
+      }
+    });
+  }
+
+  private cancelDragPreview(): void {
+    if (this.dragPreviewFrame) cancelAnimationFrame(this.dragPreviewFrame);
+    this.dragPreviewFrame = 0;
+    this.dragPreviewPoint = null;
+  }
+
   private cancelPlanDrag(): void {
     if (this.planDragSources.length === 0) return;
+    this.cancelDragPreview();
     this.planDragSources = [];
     this.dragMoved = false;
     this.routeOverlay.setDragArrows(null);
@@ -1118,6 +1146,7 @@ export class GameSession {
 
   private cancelDispatchDrag(): void {
     if (!this.dispatchDrag) return;
+    this.cancelDragPreview();
     this.dispatchDrag = false;
     this.dispatchSource = null;
     this.dragMoved = false;
@@ -1142,10 +1171,16 @@ export class GameSession {
   }
 
   /** 屏幕点击落在哪一格，返回格心地图坐标（厘米）。 */
-  private gridCellAt(clientX: number, clientY: number): { index: number; xCm: number; zCm: number } | null {
+  private gridCellAt(
+    clientX: number,
+    clientY: number,
+    preview = false,
+  ): { index: number; xCm: number; zCm: number } | null {
     const nav = this.state.nav;
     if (!nav) return null;
-    const point = this.scene.screenToGround(clientX, clientY);
+    const point = preview
+      ? this.scene.screenToGroundFast(clientX, clientY)
+      : this.scene.screenToGround(clientX, clientY);
     if (!point) return null;
     const offsetX = this.state.map.size[0] * 5;
     const offsetZ = this.state.map.size[1] * 5;
@@ -1169,8 +1204,9 @@ export class GameSession {
   private cellTargetAt(
     clientX: number,
     clientY: number,
+    preview = false,
   ): { city?: CityId; cell?: { index: number; xCm: number; zCm: number } } | null {
-    const cell = this.gridCellAt(clientX, clientY);
+    const cell = this.gridCellAt(clientX, clientY, preview);
     if (!cell) return null;
     const cityId = this.cellCityAt(cell.xCm, cell.zCm);
     return cityId ? { city: cityId } : { cell };
@@ -1180,15 +1216,16 @@ export class GameSession {
   private planTargetAt(
     clientX: number,
     clientY: number,
+    preview = false,
   ): { city?: CityId; cell?: { index: number; xCm: number; zCm: number } } | null {
     const nearest = this.scene.nearestCity(clientX, clientY, this.state);
     if (nearest && nearest.distance <= 72) return { city: nearest.id };
-    return this.cellTargetAt(clientX, clientY);
+    return this.cellTargetAt(clientX, clientY, preview);
   }
 
   /** 同一批选中的每座建筑各一条箭头，目标只画一次标记。 */
   private planDragViews(clientX: number, clientY: number): DragArrowView[] {
-    const target = this.planTargetAt(clientX, clientY);
+    const target = this.planTargetAt(clientX, clientY, true);
     if (!target) return [];
     let to: { x: number; y: number } | null = null;
     let marker: { ring?: { x: number; y: number }; square?: Array<{ x: number; y: number }> } = {};
@@ -1236,20 +1273,21 @@ export class GameSession {
     clientX: number,
     clientY: number,
     dragSource: CityId | null = null,
+    preview = false,
   ): { city?: CityId; cell?: { index: number; xCm: number; zCm: number } } | null {
     const nearest = this.scene.nearestCity(clientX, clientY, this.state);
     const nearCity = nearest ? this.getCity(nearest.id) : undefined;
     if (nearest && nearCity?.owner === 1 && nearest.distance <= 72) {
       // 从建筑拖出时，落在建筑附近的格子仍可作为目标；落在建筑本体上则不算。
       if (dragSource && nearest.id === dragSource && nearest.distance > 28) {
-        return this.cellTargetAt(clientX, clientY);
+        return this.cellTargetAt(clientX, clientY, preview);
       }
       // 拖到自己以外的友方建筑表示增援。
       if (dragSource && nearest.id !== dragSource) return { city: nearest.id };
       return null;
     }
     if (nearest && nearCity && nearest.distance <= 72) return { city: nearest.id };
-    const cell = this.cellTargetAt(clientX, clientY);
+    const cell = this.cellTargetAt(clientX, clientY, preview);
     if (cell) return cell;
     if (nearest && nearCity && nearCity.owner !== 1) return { city: nearest.id };
     return null;
@@ -1263,7 +1301,7 @@ export class GameSession {
     if (!city) return null;
     const from = this.scene.projectGround(city.pos[0], city.pos[1], 3.6);
     if (!from) return null;
-    const target = this.dispatchTargetAt(clientX, clientY, source);
+    const target = this.dispatchTargetAt(clientX, clientY, source, true);
     if (target?.cell) {
       const sizeCm = this.gridFocus?.nav.cellSizeCm ?? 100;
       const half = sizeCm / 20;
