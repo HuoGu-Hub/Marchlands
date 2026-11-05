@@ -21,10 +21,11 @@ import { UNIT_KINDS, UNIT_NAMES } from "./game/unit-models";
 import { skinsForKind, unitSkinAssetId } from "./game/unit-skins";
 import { UNIT_TRAITS, traitTags } from "./game/unit-traits";
 import type { UnitSkinDef, UnitSkinKind } from "./game/unit-skins";
+import { CREDITS } from "./credits";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "./settings";
 import type { Settings } from "./settings";
 
-type PageId = "boot" | "menu" | "campaign" | "series" | "editor" | "game" | "result" | "skins" | "settings";
+type PageId = "boot" | "menu" | "campaign" | "series" | "editor" | "game" | "result" | "skins" | "settings" | "credits";
 
 const TEMPLATE = `
 <section id="page-boot" class="page active">
@@ -259,9 +260,27 @@ const TEMPLATE = `
         </select>
       </div>
       <p class="settings-note">分辨率与全屏在 Electron 客户端生效；浏览器内只保存偏好。</p>
+      <div class="form-row">
+        <label>素材署名</label>
+        <button class="btn" id="btn-credits">查看</button>
+      </div>
       <div class="panel-actions">
         <button class="btn primary" id="btn-save-settings">保存</button>
         <button class="btn" id="btn-settings-back">返回</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="page-credits" class="page">
+  <div class="stage">
+    <div class="panel">
+      <div class="kicker">设置</div>
+      <h2>素材署名</h2>
+      <ul id="credits-list" class="credits-list"></ul>
+      <p class="settings-note">外部素材均来自公共资源库。CC0 无需署名，CC BY 保留作者与来源。</p>
+      <div class="panel-actions">
+        <button class="btn" id="btn-credits-back">返回</button>
       </div>
     </div>
   </div>
@@ -448,6 +467,8 @@ export class App {
       if (this.selection) this.openViewer(this.selection.mapId);
     });
     this.on("btn-viewer-close", "click", () => this.closeViewer());
+    this.on("btn-credits", "click", () => this.openCredits());
+    this.on("btn-credits-back", "click", () => this.show("settings"));
     this.on("btn-save-settings", "click", () => this.applySettingsForm(true));
     this.on("btn-settings-back", "click", () => {
       this.applySettingsForm(true);
@@ -1202,7 +1223,8 @@ export class App {
     name.textContent = skin.label;
     const tag = document.createElement("small");
     const tags = skin.traits ? traitTags(skin.traits) : [];
-    tag.textContent = tags.length > 0 ? `通用角色 · ${tags.join(" · ")}` : "通用角色";
+    const group = skin.kind ? "默认模型" : "通用角色";
+    tag.textContent = tags.length > 0 ? `${group} · ${tags.join(" · ")}` : group;
     copy.append(name, tag);
     card.append(media, copy);
     card.addEventListener("click", () => this.chooseSkin(skin));
@@ -1233,6 +1255,32 @@ export class App {
   private openSettings(): void {
     this.syncSettingsForm();
     this.show("settings");
+  }
+
+  private openCredits(): void {
+    this.renderCredits();
+    this.show("credits");
+  }
+
+  private renderCredits(): void {
+    const list = this.el("credits-list");
+    if (list.childElementCount > 0) return;
+    for (const credit of CREDITS) {
+      const item = document.createElement("li");
+      const title = document.createElement("span");
+      title.className = "credit-name";
+      title.textContent = credit.name;
+      const meta = document.createElement("span");
+      meta.className = "credit-meta";
+      const link = document.createElement("a");
+      link.href = credit.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = credit.author;
+      meta.append(link, ` · ${credit.license} · ${credit.usage}`);
+      item.append(title, meta);
+      list.append(item);
+    }
   }
 
   private syncSettingsForm(): void {
