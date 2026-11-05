@@ -43,13 +43,13 @@ const SQUAD_PATH_LIFT = 0.3;
 const UNIT_SCALE = 1.15;
 const CAVALRY_SCALE = 0.95;
 /** 外部 GLB 单位统一缩放到这个身高，和程序化小兵、建筑保持同一档。 */
-const GLB_UNIT_HEIGHT = 1.15;
+const GLB_UNIT_HEIGHT = 0.95;
 const SQUAD_LABEL_HEIGHT = 1.55;
 /** 兵团按实际人数铺开，每行站位与行列间距，单位：米。 */
 const SQUAD_COLUMNS = 3;
-const SQUAD_SPACING_X = 0.62;
-const SQUAD_SPACING_Z = 0.68;
-const SQUAD_CAVALRY_SPACING = 0.9;
+const SQUAD_SPACING_X = 0.86;
+const SQUAD_SPACING_Z = 0.96;
+const SQUAD_CAVALRY_SPACING = 1.1;
 
 /**
  * 兵团编队：按人数生成每个士兵的站位，行优先、以队形中心为原点。
@@ -303,6 +303,10 @@ export class BattleScene {
   private readonly focus = new THREE.Vector3();
   private bounds = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
   private elapsed = 0;
+  /** 渲染分辨率倍率：帧时偏高时自动降，恢复后再升回来。 */
+  private renderScale = 1;
+  private frameTimeEma = 16.7;
+  private adaptCooldown = 1500;
   private selectedIds: CityId[] = [];
   private disposed = false;
   private propBuildToken = 0;
@@ -353,7 +357,8 @@ export class BattleScene {
       material.userData.shared = true;
     }
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 2 倍像素密度在 1080p 缩放屏上会吃掉一半帧率，限制到 1.25 后画面几乎看不出差别。
+    this.renderer.setPixelRatio(this.basePixelRatio());
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.28;
@@ -833,6 +838,7 @@ export class BattleScene {
   }
 
   update(state: SimState, deltaMs: number): void {
+    this.adaptResolution(deltaMs);
     this.elapsed += deltaMs;
     this.updateIntro(deltaMs);
     this.updateCamera(deltaMs);
@@ -1490,10 +1496,12 @@ export class BattleScene {
     kind: UnitKind,
   ): void {
     const [x, z] = offsets[index] ?? [0, 0];
+    // 与队形中心的距离也随机，避免所有小兵均匀铺成一个方块。
+    const spread = 0.72 + unitJitter(squadId, index, 8) * 0.56;
     unit.position.set(
-      x + (unitJitter(squadId, index, 1) - 0.5) * 0.34,
+      x * spread + (unitJitter(squadId, index, 1) - 0.5) * 0.9,
       0,
-      z + (unitJitter(squadId, index, 2) - 0.5) * 0.3,
+      z * spread + (unitJitter(squadId, index, 2) - 0.5) * 0.8,
     );
     unit.rotation.y = (unitJitter(squadId, index, 3) - 0.5) * 0.8;
     unit.scale.setScalar(
@@ -1635,7 +1643,7 @@ export class BattleScene {
     this.scene.add(hemisphere);
     const sun = new THREE.DirectionalLight(0xffe0b4, 3.3);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.06;
     this.sun = sun;
@@ -2522,6 +2530,40 @@ export class BattleScene {
 
   private cameraDistance(): number {
     return VIEW_HEIGHT / this.zoom / (2 * Math.tan((FIELD_OF_VIEW * Math.PI) / 360));
+  }
+
+  /**
+   * 渲染分辨率上限：先按设备像素密度限到 1.25，再按总像素数封顶。
+   * 窗口越大、缩放越高，倍率自动往下走，填充成本保持稳定。
+   */
+  private basePixelRatio(): number {
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+    const width = Math.max(1, this.canvas.parentElement?.clientWidth ?? window.innerWidth);
+    const height = Math.max(1, this.canvas.parentElement?.clientHeight ?? window.innerHeight);
+    const pixels = width * height * dpr * dpr;
+    const budget = 2_400_000;
+    return pixels > budget ? dpr * Math.sqrt(budget / pixels) : dpr;
+  }
+
+  /**
+   * 按实测帧时调整渲染分辨率。
+   * 帧时高于 22 毫秒（低于约 45 帧）降一档，低于 13 毫秒再升回去。
+   */
+  private adaptResolution(deltaMs: number): void {
+    if (deltaMs <= 0 || deltaMs > 250) return;
+    this.frameTimeEma += (deltaMs - this.frameTimeEma) * 0.08;
+    this.adaptCooldown -= deltaMs;
+    if (this.adaptCooldown > 0) return;
+    this.adaptCooldown = 1500;
+    if (this.frameTimeEma > 22 && this.renderScale > 0.6) {
+      this.renderScale = Math.max(0.6, this.renderScale - 0.12);
+      this.renderer.setPixelRatio(this.basePixelRatio() * this.renderScale);
+      this.resize();
+    } else if (this.frameTimeEma < 14.5 && this.renderScale < 1) {
+      this.renderScale = Math.min(1, this.renderScale + 0.08);
+      this.renderer.setPixelRatio(this.basePixelRatio() * this.renderScale);
+      this.resize();
+    }
   }
 
   private resize(): void {
