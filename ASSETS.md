@@ -20,6 +20,13 @@
 
 程序化生成的内容：地面纹理、白灰墙与木梁、屋顶瓦片、石板、旗帜与单位、UI。
 
+## 战斗表现
+
+- 箭矢：KayKit Adventurers 包内的 `arrow`，CC0，转成 `apps/client/src/assets/fx/arrow.glb`。
+- 法术投射物：Kenney Particle Pack 1.1 的 `magic_04.png`，CC0，放在 `apps/client/public/fx/`，同目录保留 License。
+
+两者只在客户端播放，不参与模拟判定。
+
 ## 单位动作
 
 单位模型与动作由仓库内代码生成，随项目许可发布，不引入外部授权素材：

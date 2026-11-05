@@ -9,6 +9,7 @@ import { runSwitchDemo } from "./game/switch-demo";
 import { runUnitGallery } from "./game/unit-gallery";
 import { runTownShowcase } from "./game/town-showcase";
 import { runSpriteShowcase } from "./game/sprite-showcase";
+import { runFxPreview } from "./game/fx-preview";
 
 const host = document.getElementById("app");
 if (!host) throw new Error("missing #app");
@@ -42,6 +43,8 @@ if (scene === "map-preview" && previewMap) {
   new App(host, { autoStart: true }).start();
 } else if (scene === "sprite") {
   runSpriteShowcase(host);
+} else if (scene === "fx") {
+  runFxPreview(host);
 } else if (scene === "convert") {
   void import("./game/convert-scene").then((module) => module.runModelConvert(host));
 } else {
