@@ -10,6 +10,7 @@ import { runUnitGallery } from "./game/unit-gallery";
 import { runTownShowcase } from "./game/town-showcase";
 import { runFxPreview } from "./game/fx-preview";
 import { runCavalryPreview } from "./game/cavalry-preview";
+import { runGlbViewer } from "./game/glb-viewer";
 
 const host = document.getElementById("app");
 if (!host) throw new Error("missing #app");
@@ -45,6 +46,8 @@ if (scene === "map-preview" && previewMap) {
   runFxPreview(host);
 } else if (scene === "cavalry") {
   runCavalryPreview(host);
+} else if (scene === "glb") {
+  runGlbViewer(host);
 } else if (scene === "convert") {
   void import("./game/convert-scene").then((module) => module.runModelConvert(host));
 } else {
