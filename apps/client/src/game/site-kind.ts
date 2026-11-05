@@ -9,6 +9,7 @@ export const SITE_KIND_LABELS: Record<SiteKind, string> = {
   ranger: "游侠营地",
   archer: "弓箭手营",
   mage: "法师塔",
+  cavalry: "马厩",
   granary: "粮仓",
   outpost: "驻兵点",
 };
@@ -19,6 +20,7 @@ export const SITE_KIND_OPTIONS: ReadonlyArray<{ kind: SiteKind; label: string; d
   { kind: "ranger", label: "游侠营地", desc: "游侠 · 可渡河" },
   { kind: "archer", label: "弓箭手营", desc: "弓箭手 · 远程" },
   { kind: "mage", label: "法师塔", desc: "法师 · 远程 · 可腾空" },
+  { kind: "cavalry", label: "马厩", desc: "骑兵 · 可渡河 · 冲锋" },
   { kind: "granary", label: "粮仓", desc: "不产兵" },
   { kind: "outpost", label: "驻兵点", desc: "不产兵" },
 ];

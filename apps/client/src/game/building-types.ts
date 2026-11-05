@@ -61,6 +61,7 @@ export type BuildingKind =
   | "ranger"
   | "archer"
   | "mage"
+  | "cavalry"
   | "tower"
   | "granary"
   | "mine";
@@ -73,6 +74,7 @@ export const BUILDING_KINDS: BuildingKind[] = [
   "ranger",
   "archer",
   "mage",
+  "cavalry",
   "tower",
   "granary",
   "mine",
@@ -84,6 +86,7 @@ export const BUILDING_NAMES: Record<BuildingKind, string> = {
   ranger: "游侠营地",
   archer: "弓箭手营",
   mage: "法师塔",
+  cavalry: "马厩",
   tower: "弓箭塔",
   granary: "粮仓",
   mine: "矿区",
@@ -95,6 +98,7 @@ export const BUILDING_DESCRIPTIONS: Record<BuildingKind, string> = {
   ranger: "双刃游走",
   archer: "远程弩手",
   mage: "奥术远程",
+  cavalry: "重装冲锋",
   tower: "远程塔楼",
   granary: "粮草储备",
   mine: "金属开采",
@@ -111,6 +115,7 @@ export const BUILDING_SPECS: Record<BuildingKind, BuildingSpec> = {
   ranger: { footprint: 1.55, height: 2.5 },
   archer: { footprint: 1.35, height: 2.5 },
   mage: { footprint: 1.35, height: 3.2 },
+  cavalry: { footprint: 1.45, height: 2.4 },
   tower: { footprint: 1.05, height: 3.6 },
   granary: { footprint: 1.5, height: 3.1 },
   mine: { footprint: 1.6, height: 2.8 },
@@ -798,7 +803,8 @@ export type BuildingBuilder = (palette: TeamPalette, level: BuildingLevel, varia
 const BUILDERS: Record<BuildingKind, BuildingBuilder> = {
   barbarian: buildInfantry,
   warrior: buildShield,
-  ranger: buildCavalry,
+  ranger: buildShield,
+  cavalry: buildCavalry,
   archer: buildArcher,
   mage: buildElite,
   tower: buildTower,

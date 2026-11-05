@@ -48,6 +48,12 @@ export const CLASSIC_UNIT_SKINS: UnitSkinDef[] = [
     kind: "mage",
     traits: { river: true, flying: true, ranged: true },
   },
+  {
+    key: "cavalry",
+    label: "披甲骑兵",
+    kind: "cavalry",
+    traits: { river: true, flying: false, ranged: false },
+  },
 ];
 
 export const ALL_UNIT_SKINS: UnitSkinDef[] = [...CLASSIC_UNIT_SKINS];

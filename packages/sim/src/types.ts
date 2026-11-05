@@ -8,7 +8,7 @@ export type PlayerId = 1 | 2;
 export type Owner = 0 | PlayerId;
 export type Level = 1 | 2 | 3;
 /** 产兵建筑与它产出的兵种同名，全项目只有这一套 id。 */
-export type ProductionSiteKind = "barbarian" | "warrior" | "ranger" | "archer" | "mage";
+export type ProductionSiteKind = "barbarian" | "warrior" | "ranger" | "archer" | "mage" | "cavalry";
 export type SiteKind = ProductionSiteKind | "granary" | "outpost";
 export type UnitKind = ProductionSiteKind;
 
@@ -18,6 +18,7 @@ export const PRODUCTION_SITE_KINDS: readonly ProductionSiteKind[] = [
   "ranger",
   "archer",
   "mage",
+  "cavalry",
 ];
 
 /** 可产兵据点；粮仓与驻兵点不产兵。 */

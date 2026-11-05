@@ -50,6 +50,8 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
   private readonly actions = new Map<string, THREE.AnimationAction>();
   private current: THREE.AnimationAction | null = null;
   private attackAction: THREE.AnimationAction | null = null;
+  /** 一直叠加播放的第二条动作轨，骑兵用它保持骑乘姿势。 */
+  private overlay: THREE.AnimationAction | null = null;
   private moving = false;
   /** 每个小兵自己的播放速度，让同一队列的动作逐渐错开。 */
   private timeScale = 1;
@@ -71,6 +73,14 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
       action.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
       action.clampWhenFinished = false;
       this.actions.set(clipKey(clip.name), action);
+    }
+    // 骑兵这类组合模型：马的剪辑负责移动，骑手的坐姿要一直叠在上面。
+    for (const [name, action] of this.actions) {
+      if (!name.endsWith("ride")) continue;
+      action.setEffectiveWeight(1);
+      action.play();
+      this.overlay = action;
+      break;
     }
     // 剪辑顺序不固定，优先播放待机，避免一进场就循环挥击。
     const first = animations[0];
@@ -120,7 +130,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
 
   playAttack(): void {
     if (!this.mixer) return;
-    const action = findClip(this.actions, ["attack"]);
+    const action = findClip(this.actions, ["attack", "kick", "headbutt"]);
     if (!action || action === this.attackAction) return;
     action.reset();
     action.setLoop(THREE.LoopOnce, 1);
@@ -160,7 +170,7 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
   private pickClip(moving: boolean): THREE.AnimationAction | null {
     if (this.actions.size === 0) return null;
     const preferred = moving
-      ? ["walk", "run", "move", "runcycle", "walkcycle"]
+      ? ["gallop", "walk", "run", "move", "runcycle", "walkcycle"]
       : ["idle", "stand", "breath", "idleloop"];
     return findClip(this.actions, preferred) ?? this.actions.values().next().value ?? null;
   }

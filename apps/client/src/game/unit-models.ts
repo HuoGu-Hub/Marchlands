@@ -1,10 +1,13 @@
 import * as THREE from "three";
+import { PRODUCTION_SITE_KINDS } from "@marchlands/sim";
+import type { UnitKind as SimUnitKind } from "@marchlands/sim";
 import { ModelBuilder } from "./building-kit";
 import type { TeamPalette } from "./building-kit";
 
-export type UnitKind = "barbarian" | "warrior" | "ranger" | "archer" | "mage";
+/** 客户端兵种名单直接跟 sim 走，避免两边各写一套。 */
+export type UnitKind = SimUnitKind;
 
-export const UNIT_KINDS: UnitKind[] = ["barbarian", "warrior", "ranger", "archer", "mage"];
+export const UNIT_KINDS: UnitKind[] = [...PRODUCTION_SITE_KINDS];
 
 export const UNIT_NAMES: Record<UnitKind, string> = {
   barbarian: "野蛮人",
@@ -12,6 +15,7 @@ export const UNIT_NAMES: Record<UnitKind, string> = {
   ranger: "游侠",
   archer: "弓箭手",
   mage: "法师",
+  cavalry: "骑兵",
 };
 
 export const UNIT_DESCRIPTIONS: Record<UnitKind, string> = {
@@ -20,6 +24,7 @@ export const UNIT_DESCRIPTIONS: Record<UnitKind, string> = {
   ranger: "双刃 · 轻装 · 交战 1.4 米",
   archer: "十字弩 · 兜帽 · 交战 3.8 米",
   mage: "法杖 · 奥术 · 交战 4.6 米",
+  cavalry: "长枪 · 战马 · 交战 1.5 米",
 };
 
 const CACHE = new Map<string, THREE.MeshStandardMaterial>();
@@ -873,7 +878,7 @@ function makeCavalry(palette: TeamPalette, variant: number): UnitRig {
 }
 
 export function buildUnit(kind: UnitKind, palette: TeamPalette, variant: number = 0): UnitRig {
-  const rig = kind === "ranger" ? makeCavalry(palette, variant) : makeHumanoid(kind, palette, variant);
+  const rig = kind === "cavalry" ? makeCavalry(palette, variant) : makeHumanoid(kind, palette, variant);
   rig.root.name = "unit-" + kind;
   rig.root.userData.unitKind = kind;
   rig.torso.name = "torso";

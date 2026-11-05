@@ -11,6 +11,7 @@ const GROWTH_MODIFIER: Record<SiteKind, number> = {
   ranger: 0.9,
   archer: 1.1,
   mage: 0.95,
+  cavalry: 0.8,
   granary: 1,
   outpost: 1,
 };
@@ -21,6 +22,7 @@ const DECAY_MODIFIER: Record<SiteKind, number> = {
   ranger: 0.95,
   archer: 1,
   mage: 0.75,
+  cavalry: 0.7,
   granary: 1,
   outpost: 1,
 };

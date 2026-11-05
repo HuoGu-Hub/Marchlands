@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
     archer: "builtin:unit.kaykit-rogue-hooded",
     ranger: "builtin:unit.kaykit-rogue",
     mage: "builtin:unit.kaykit-mage",
+    cavalry: "builtin:unit.cavalry",
   },
 };
 

@@ -167,6 +167,7 @@ const TOOL_LABEL: Record<Tool, string> = {
   ranger: "游侠营地",
   archer: "弓箭手营",
   mage: "法师塔",
+  cavalry: "马厩",
   granary: "粮仓",
   outpost: "驻兵点",
   road: "道路",

@@ -17,6 +17,7 @@ export const UNIT_TRAITS: Record<UnitKind, UnitTraits> = {
   ranger: { river: true, flying: false, ranged: false },
   archer: { river: true, flying: false, ranged: true },
   mage: { river: true, flying: true, ranged: true },
+  cavalry: { river: true, flying: false, ranged: false },
 };
 
 export interface UnitProfile {
@@ -97,6 +98,15 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     surfaces: surfacesFor(UNIT_TRAITS.mage),
     maxStepCm: 80,
     attackRangeCm: 460,
+    footprint: "1x1",
+    turnFootprint: "1x1",
+  },
+  cavalry: {
+    kind: "cavalry",
+    label: "骑兵",
+    surfaces: surfacesFor(UNIT_TRAITS.cavalry),
+    maxStepCm: 70,
+    attackRangeCm: 150,
     footprint: "1x1",
     turnFootprint: "1x1",
   },
