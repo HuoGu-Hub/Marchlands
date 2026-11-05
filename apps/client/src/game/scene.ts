@@ -36,9 +36,7 @@ const REACH_CELL_LIFT = 0.1;
 const CITY_LABEL_HEIGHT = 4.3;
 /** 兵团路线要压在道路面之上，否则与道路重叠时会被完全遮住。 */
 const SQUAD_PATH_LIFT = 0.3;
-const UNIT_SCALE = 1.15;
-const CAVALRY_SCALE = 0.95;
-/** 外部 GLB 单位统一缩放到这个身高，和程序化小兵、建筑保持同一档。 */
+/** 所有小兵统一缩放到这个身高，和程序化小兵、建筑保持同一档。 */
 const GLB_UNIT_HEIGHT = 0.95;
 const SQUAD_LABEL_HEIGHT = 1.55;
 /** 兵团按实际人数铺开，每行站位与行列间距，单位：米。 */
@@ -1458,7 +1456,7 @@ export class BattleScene {
     index: number,
     offsets: ReadonlyArray<readonly [number, number]>,
     squadId: string,
-    kind: UnitKind,
+    _kind: UnitKind,
   ): void {
     const [x, z] = offsets[index] ?? [0, 0];
     // 与队形中心的距离也随机，避免所有小兵均匀铺成一个方块。
@@ -1469,9 +1467,12 @@ export class BattleScene {
       z * spread + (unitJitter(squadId, index, 2) - 0.5) * 0.8,
     );
     unit.rotation.y = (unitJitter(squadId, index, 3) - 0.5) * 0.8;
-    unit.scale.setScalar(
-      (kind === "cavalry" ? CAVALRY_SCALE : UNIT_SCALE) * (0.92 + unitJitter(squadId, index, 5) * 0.16),
-    );
+    // GLB 的缩放已经在 populateGlbUnits 里按包围盒算好，这里只归一化程序化小兵。
+    // 否则补员、收队形时会把它重新放大回模型原始尺寸。
+    if (unit instanceof UnitActor) {
+      const height = unit.height > 0.01 ? unit.height : 1.7;
+      unit.scale.setScalar((GLB_UNIT_HEIGHT / height) * (0.92 + unitJitter(squadId, index, 5) * 0.16));
+    }
   }
 
   /** 小兵不参与阴影投射，节省阴影贴图开销；整队用一张软圆影。 */
@@ -1562,7 +1563,7 @@ export class BattleScene {
         }
         const unit = new GlbUnitActor(built.object, built.animations);
         this.placeSquadUnit(unit, index, offsets, squad.id, kind);
-        // 外部兵团资产尺寸不可控，统一按包围盒缩放到身高 1.55 m
+        // 外部兵团资产尺寸不可控，统一按包围盒缩放到身高 0.95 m
         const box = new THREE.Box3().setFromObject(built.object);
         const height = box.max.y - box.min.y;
         const baseScale = height > 0.01 ? GLB_UNIT_HEIGHT / height : 1;
