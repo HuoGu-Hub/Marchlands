@@ -37,8 +37,8 @@ export type {
 export { PRODUCTION_SITE_KINDS, isProductionSiteKind, normalizeSiteKind, siteUnitKind } from "./types";
 
 export { createGame, step } from "./game";
-export { UNIT_PROFILES, unitProfile } from "./units";
-export type { UnitProfile } from "./units";
+export { UNIT_PROFILES, UNIT_TRAITS, unitProfile, unitTraits } from "./units";
+export type { UnitProfile, UnitTraits } from "./units";
 export { canonicalState, hash, hashText, mapHashOf } from "./hash";
 export { createAi } from "./ai";
 export type { AiController, AiTuning } from "./ai";

@@ -1,14 +1,32 @@
 import { Surface } from "@marchlands/nav";
 import type { UnitKind } from "./types";
 
+/** 兵种的通行属性，皮肤准入与寻路规则共用这一份定义。 */
+export interface UnitTraits {
+  /** 可渡河：能走浅水。 */
+  river: boolean;
+  /** 可腾空：无视地表。 */
+  flying: boolean;
+  /** 远程单位：留作战斗规则接入。 */
+  ranged: boolean;
+}
+
+export const UNIT_TRAITS: Record<UnitKind, UnitTraits> = {
+  barbarian: { river: true, flying: false, ranged: false },
+  warrior: { river: false, flying: false, ranged: false },
+  ranger: { river: true, flying: false, ranged: false },
+  archer: { river: true, flying: false, ranged: true },
+  mage: { river: true, flying: true, ranged: true },
+};
+
 export interface UnitProfile {
   readonly kind: UnitKind;
   readonly label: string;
-  /** 可通行地表；普通地面兵种默认不能走深水。 */
+  /** 可通行地表，由属性推导。 */
   readonly surfaces: ReadonlySet<number>;
   /** 相邻格最大高度差，厘米。 */
   readonly maxStepCm: number;
-  /** 占地：1x1 或 2x1（盾兵）。 */
+  /** 占地：1x1 或 2x1。 */
   readonly footprint: "1x1" | "2x1";
   /** 盾兵转弯需要 2x2 空地。 */
   readonly turnFootprint: "1x1" | "2x2";
@@ -28,14 +46,59 @@ const LAND = new Set<number>([
 const DRY = new Set<number>([...LAND].filter((surface) => surface !== Surface.ShallowWater));
 const ALL = new Set<number>(Object.values(Surface));
 
+/** 属性决定可走地表：会飞的全地形，能渡河的走浅水，其余只能走干地。 */
+function surfacesFor(traits: UnitTraits): ReadonlySet<number> {
+  if (traits.flying) return ALL;
+  return traits.river ? LAND : DRY;
+}
+
 export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
-  barbarian: { kind: "barbarian", label: "野蛮人", surfaces: DRY, maxStepCm: 60, footprint: "1x1", turnFootprint: "1x1" },
-  warrior: { kind: "warrior", label: "精锐战士", surfaces: DRY, maxStepCm: 50, footprint: "2x1", turnFootprint: "2x2" },
-  ranger: { kind: "ranger", label: "游侠", surfaces: LAND, maxStepCm: 40, footprint: "1x1", turnFootprint: "1x1" },
-  archer: { kind: "archer", label: "弓箭手", surfaces: DRY, maxStepCm: 60, footprint: "1x1", turnFootprint: "1x1" },
-  mage: { kind: "mage", label: "法师", surfaces: ALL, maxStepCm: 80, footprint: "1x1", turnFootprint: "1x1" },
+  barbarian: {
+    kind: "barbarian",
+    label: "野蛮人",
+    surfaces: surfacesFor(UNIT_TRAITS.barbarian),
+    maxStepCm: 60,
+    footprint: "1x1",
+    turnFootprint: "1x1",
+  },
+  warrior: {
+    kind: "warrior",
+    label: "精锐战士",
+    surfaces: surfacesFor(UNIT_TRAITS.warrior),
+    maxStepCm: 50,
+    footprint: "2x1",
+    turnFootprint: "2x2",
+  },
+  ranger: {
+    kind: "ranger",
+    label: "游侠",
+    surfaces: surfacesFor(UNIT_TRAITS.ranger),
+    maxStepCm: 60,
+    footprint: "1x1",
+    turnFootprint: "1x1",
+  },
+  archer: {
+    kind: "archer",
+    label: "弓箭手",
+    surfaces: surfacesFor(UNIT_TRAITS.archer),
+    maxStepCm: 60,
+    footprint: "1x1",
+    turnFootprint: "1x1",
+  },
+  mage: {
+    kind: "mage",
+    label: "法师",
+    surfaces: surfacesFor(UNIT_TRAITS.mage),
+    maxStepCm: 80,
+    footprint: "1x1",
+    turnFootprint: "1x1",
+  },
 };
 
 export function unitProfile(kind: UnitKind): UnitProfile {
   return UNIT_PROFILES[kind];
+}
+
+export function unitTraits(kind: UnitKind): UnitTraits {
+  return UNIT_TRAITS[kind];
 }
