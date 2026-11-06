@@ -1,6 +1,6 @@
 {
   "name": "marchlands",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "private": true,
   "description": "3D 领地争夺游戏，Three.js 客户端与确定性 TypeScript 模拟核心",
   "license": "MIT",
