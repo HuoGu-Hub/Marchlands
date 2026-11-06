@@ -890,7 +890,8 @@ export class EditorController {
       cell,
       startCell: stroke.start,
       radiusCells: this.brushRadius,
-      strengthCm: this.tool === "cliff" ? 100 : this.brushStrength,
+      // 悬崖笔刷一次抬高一层，正好跨过 120 厘米的陡壁阈值。
+      strengthCm: this.tool === "cliff" ? 120 : this.brushStrength,
       surface: this.surfaceBrush,
     });
     stroke.document = next;

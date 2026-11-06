@@ -248,6 +248,18 @@ function isSteepCell(grid: NavGrid, x: number, z: number): boolean {
   return false;
 }
 
+/** 相邻格高差达到陡壁阈值，说明这里爬不上去。 */
+function isCliffEdge(grid: NavGrid, x: number, z: number): boolean {
+  const here = grid.heightCm(grid.index(x, z));
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    const nx = x + dx;
+    const nz = z + dz;
+    if (nx < 0 || nz < 0 || nx >= grid.width || nz >= grid.height) continue;
+    if (Math.abs(grid.heightCm(grid.index(nx, nz)) - here) >= 120) return true;
+  }
+  return false;
+}
+
 function buildNavOverlay(grid: NavGrid, map: MapDef): THREE.Group {
   const cellM = grid.cellSizeCm / 100;
   const halfX = map.size[0] / 20;
@@ -272,7 +284,8 @@ function buildNavOverlay(grid: NavGrid, map: MapDef): THREE.Group {
       ) {
         continue;
       }
-      if (grid.isOverridden(index)) color.setHex(0x53c7bd);
+      if (isCliffEdge(grid, x, z)) color.setHex(0xb03a2e);
+      else if (grid.isOverridden(index)) color.setHex(0x53c7bd);
       else if (!grid.baseWalkable(index)) color.setHex(0xb64a33);
       else if (surface === Surface.DeepWater) color.setHex(0x2d5d86);
       else if (surface === Surface.ShallowWater) color.setHex(0x4f8fa8);

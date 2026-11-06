@@ -40,6 +40,34 @@ describe("grid brush", () => {
     expect(cliff.grid?.heightCm[center(cliff)]).toBe(100);
   });
 
+  it("raises a cliff by one layer and carves a walkable ramp", () => {
+    const document = createGridDocument();
+    const grid = document.grid;
+    if (!grid) throw new Error("missing grid");
+    const before = grid.heightCm[35 * grid.width + 35];
+    const raised = applyGridBrush(document, { mode: "cliff", cell: [35, 35], radiusCells: 0, strengthCm: 120 });
+    const raisedGrid = raised.grid;
+    if (!raisedGrid) throw new Error("missing grid");
+    expect(raisedGrid.heightCm[35 * raisedGrid.width + 35]).toBe(before + 120);
+
+    // 坡道：先把终点抬高，再从起点铺一条到终点。
+    const stepped = applyGridBrush(document, { mode: "cliff", cell: [45, 35], radiusCells: 0, strengthCm: 240 });
+    const ramp = applyGridBrush(stepped, {
+      mode: "ramp",
+      cell: [45, 35],
+      startCell: [35, 35],
+      radiusCells: 2,
+      strengthCm: 40,
+    });
+    const rampGrid = ramp.grid;
+    if (!rampGrid) throw new Error("missing grid");
+    const start = rampGrid.heightCm[35 * rampGrid.width + 35];
+    const middle = rampGrid.heightCm[35 * rampGrid.width + 40];
+    const end = rampGrid.heightCm[35 * rampGrid.width + 45];
+    expect(middle).toBeGreaterThan(start);
+    expect(end).toBeGreaterThan(middle);
+  });
+
   it("paints surfaces, water, blockers and walkable overrides", () => {
     const document = createGridDocument();
     const water = applyGridBrush(document, { mode: "water", cell: [35, 35], radiusCells: 1, strengthCm: 20 });
