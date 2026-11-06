@@ -4,6 +4,7 @@ import type { MapCity, MapDef } from "@marchlands/sim";
 
 const SURFACE_GRASS = 0;
 const SURFACE_ROAD = 3;
+const SURFACE_BRIDGE = 8;
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -20,6 +21,23 @@ function encodeBase64(bytes: Uint8Array): string {
     output += has2 ? ALPHABET[b2 & 63] : "=";
   }
   return output;
+}
+
+function decodeBase64Bytes(text: string, length: number): Uint8Array {
+  const out = new Uint8Array(length);
+  let pointer = 0;
+  const lookup = new Map<string, number>();
+  for (let index = 0; index < ALPHABET.length; index += 1) lookup.set(ALPHABET[index], index);
+  for (let index = 0; index < text.length && pointer < length; index += 4) {
+    const c0 = lookup.get(text[index]) ?? 0;
+    const c1 = lookup.get(text[index + 1]) ?? 0;
+    const c2 = lookup.get(text[index + 2] ?? "A") ?? 0;
+    const c3 = lookup.get(text[index + 3] ?? "A") ?? 0;
+    if (pointer < length) out[pointer++] = (c0 << 2) | (c1 >> 4);
+    if (pointer < length) out[pointer++] = ((c1 & 15) << 4) | (c2 >> 2);
+    if (pointer < length) out[pointer++] = ((c2 & 3) << 6) | c3;
+  }
+  return out;
 }
 
 function encodeInt16Base64(values: ArrayLike<number>): string {
@@ -118,6 +136,44 @@ function sampleHeights(
   return out;
 }
 
+/** 重铺路面：按当前的窄路规则把已有网格图的道路重画一遍。 */
+export function reroadMap(map: MapDef): MapDef {
+  if (!map.grid || map.navigation !== "grid") return map;
+  const cols = map.grid.width;
+  const rows = map.grid.height;
+  const cells = cols * rows;
+  const surface = decodeBase64Bytes(map.grid.surface, cells);
+  for (let index = 0; index < cells; index += 1) {
+    if (surface[index] === SURFACE_ROAD || surface[index] === SURFACE_BRIDGE) surface[index] = SURFACE_GRASS;
+  }
+  const toCell = (pos: [number, number]): [number, number] => [
+    Math.floor((pos[0] * 10 + map.size[0] * 5) / map.grid!.cellSizeCm),
+    Math.floor((pos[1] * 10 + map.size[1] * 5) / map.grid!.cellSizeCm),
+  ];
+  const byId = new Map(map.cities.map((city) => [city.id, city]));
+  for (const edge of map.edges) {
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    if (!from || !to) continue;
+    const [x0, z0] = toCell(from.pos);
+    const [x1, z1] = toCell(to.pos);
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(z1 - z0), 1);
+    for (let step = 0; step <= steps; step += 1) {
+      const cx = Math.round(x0 + ((x1 - x0) * step) / steps);
+      const cz = Math.round(z0 + ((z1 - z0) * step) / steps);
+      if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
+      const index = cz * cols + cx;
+      if (surface[index] === SURFACE_GRASS) surface[index] = SURFACE_ROAD;
+    }
+  }
+  const next: MapDef = {
+    ...map,
+    grid: { ...map.grid, surface: encodeBase64(surface) },
+  };
+  next.mapHash = mapHashOf(next);
+  return next;
+}
+
 export interface GridOptions {
   /** 每格边长，厘米。 */
   cellSizeCm?: number;
@@ -162,15 +218,10 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
     for (let step = 0; step <= steps; step += 1) {
       const cx = Math.round(x0 + ((x1 - x0) * step) / steps);
       const cz = Math.round(z0 + ((z1 - z0) * step) / steps);
-      for (let dx = -1; dx <= 1; dx += 1) {
-        for (let dz = -1; dz <= 1; dz += 1) {
-          const x = cx + dx;
-          const z = cz + dz;
-          if (x < 0 || z < 0 || x >= cols || z >= rows) continue;
-          const index = z * cols + x;
-          if (surface[index] === SURFACE_GRASS) surface[index] = SURFACE_ROAD;
-        }
-      }
+      // 道路只铺一格，交叉口自然连成一片，不会把整片平地都铺成石板。
+      if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
+      const index = cz * cols + cx;
+      if (surface[index] === SURFACE_GRASS) surface[index] = SURFACE_ROAD;
     }
   }
 
@@ -271,7 +322,7 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
       const rise = Math.abs(topHeight - bottomHeight);
       const steps = Math.max(4, Math.ceil(rise / 38));
       const runLength = Math.hypot(topX - bottomX, topZ - bottomZ);
-      const totalSteps = Math.max(steps, Math.ceil(runLength * 2));
+      const totalSteps = Math.max(steps, Math.ceil(runLength));
       let previous = bottomHeight;
       for (let step = 0; step <= totalSteps; step += 1) {
         const t = step / totalSteps;
@@ -281,12 +332,12 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
         previous = tall;
         const px = bottomX + (topX - bottomX) * t;
         const pz = bottomZ + (topZ - bottomZ) * t;
-        for (let dz = -2; dz <= 2; dz += 1) {
-          for (let dx = -2; dx <= 2; dx += 1) {
+        for (let dz = -1; dz <= 1; dz += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
             const cx = Math.round(px) + dx;
             const cz = Math.round(pz) + dz;
             if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
-            if (Math.hypot(cx - px, cz - pz) > 2.2) continue;
+            if (Math.hypot(cx - px, cz - pz) > 1.2) continue;
             heights[cz * cols + cx] = Math.round(tall);
             surface[cz * cols + cx] = SURFACE_ROAD;
           }

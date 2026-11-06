@@ -195,7 +195,7 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
       let g = sampleBilinear(cellColor, 3, x, z, 1);
       let b = sampleBilinear(cellColor, 3, x, z, 2);
 
-      const weight = Math.max(0, Math.min(1, sampleBilinear(cellMask, 1, x, z) * 1.6));
+      const weight = Math.max(0, Math.min(1, (sampleBilinear(cellMask, 1, x, z) - 0.22) / 0.5));
       if (weight > 0.01) {
         const stone = 0.62;
         const sx = Math.floor(x / stone);

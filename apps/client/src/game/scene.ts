@@ -410,6 +410,13 @@ export class BattleScene {
         projectCity: (id: string) => this.projectCity(id as CityId),
         projectCityBase: (id: string) => this.projectCityBase(id as CityId),
         projectGround: (x: number, z: number) => this.projectGround(x, z, 0.1),
+        focus: (xDm: number, zDm: number, zoom?: number) => {
+          this.focus.x = xDm / 10;
+          this.focus.z = zDm / 10;
+          if (zoom !== undefined) this.zoom = THREE.MathUtils.clamp(zoom, ZOOM_MIN, ZOOM_MAX);
+          this.updateCamera(0);
+          return { x: this.focus.x, z: this.focus.z, zoom: this.zoom };
+        },
       };
     }
   }
