@@ -56,6 +56,16 @@ describe("unit grid routing", () => {
     expect(planGridRoute(map, elite, center(map, 0, 0), center(map, 1, 0), 40, "mage")).not.toBeNull();
   });
 
+  it("blocks a cliff for heavy units but lets a mage over it", () => {
+    // 60 厘米高差在一米格上是 600‰，精锐战士 400‰ 上不去，法师 900‰ 可以。
+    const map = gridMap(2, 1, [0, 60], [Surface.Grass, Surface.Grass]);
+    const warrior = createUnitNavGrid(map, [], 1, "warrior");
+    const mage = createUnitNavGrid(map, [], 1, "mage");
+    if (!warrior || !mage) throw new Error("missing nav");
+    expect(planGridRoute(map, warrior, center(map, 0, 0), center(map, 1, 0), 40, "warrior")).toBeNull();
+    expect(planGridRoute(map, mage, center(map, 0, 0), center(map, 1, 0), 40, "mage")).not.toBeNull();
+  });
+
   it("uses the map climb override for every unit", () => {
     const map = gridMap(2, 1, [0, 70], [Surface.Grass, Surface.Grass]);
     map.climbCm = 50;

@@ -266,12 +266,21 @@ export function disconnect(document: MapDocument, from: CityId, to: CityId): Map
   return next;
 }
 
+/** 内置装饰里默认会挡路的：栅栏门放行，草丛花瓣之类不挡。 */
+function defaultPropBlocker(assetId: string): boolean {
+  if (!assetId.startsWith("builtin:prop.")) return false;
+  if (assetId === "builtin:prop.fence.gate") return false;
+  if (/\.(grass|flower|mushroom|bush|road|stairs)/.test(assetId)) return false;
+  return /\.(tree|rock|hedge|fence|wall|stall|cart|fountain|windmill|watermill|lantern|banner)/.test(assetId);
+}
+
 export function addProp(
   document: MapDocument,
   assetId: string,
   pos: [number, number],
   rotation = 0,
   scale = 1,
+  options: { blocker?: boolean; footprintDm?: number } = {},
 ): { document: MapDocument; prop: PropDraft } {
   const next = cloneDocument(document);
   const prop: PropDraft = {
@@ -280,6 +289,12 @@ export function addProp(
     pos: clampPosition(next, pos),
     rotation: ((rotation % 360) + 360) % 360,
     scale: Math.min(10, Math.max(0.1, scale)),
+    ...((options.blocker ?? defaultPropBlocker(assetId)) ? { blocker: true } : {}),
+    ...(options.footprintDm !== undefined
+      ? { footprintDm: Math.max(1, Math.round(options.footprintDm)) }
+      : defaultPropBlocker(assetId)
+        ? { footprintDm: 12 }
+        : {}),
   };
   next.visual.props.push(prop);
   return { document: next, prop };

@@ -1,5 +1,5 @@
 import { ContentError, validateMap } from "@marchlands/content";
-import { decodeBitmapBase64 } from "@marchlands/nav";
+import { decodeBitmapBase64, encodeBitmapBase64 } from "@marchlands/nav";
 import { mapHashOf, normalizeSiteKind, type MapDef, type MapGridDef, type MapPlayer, type NavigationMode } from "@marchlands/sim";
 import type {
   CompileResult,
@@ -7,7 +7,6 @@ import type {
   FoundationDraft,
   GridDraft,
   MapDocument,
-  MapVisual,
   ParsedDocument,
   PropDraft,
   RoadDraft,
@@ -21,6 +20,7 @@ import {
   DEFAULT_CAPTURE_RADIUS_DM,
   DEFAULT_FOOTPRINT_DM,
   createGridDraft,
+  emptyBitmap,
   gridIssues,
   gridNavigationIssues,
   packGridDraft,
@@ -32,7 +32,6 @@ import {
   compileVisual,
   createDefaultVisual,
   createStarterVisual,
-  foundationsForDocument,
   foundationsForMap,
   isAssetId,
   isRoadStyle,
@@ -980,6 +979,8 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
         ...document.grid,
         surface: Array.from(rasterized.surface),
         heightCm: rasterized.heightCm,
+        // 装饰物的占地要并进阻挡层，否则栅栏、城墙只是摆设。
+        blocked: bakePropBlockers(document, rasterized.surface.length),
       };
       packedGrid = packGridDraft(packed);
     } catch (caught) {
@@ -1049,6 +1050,36 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
   }
 
   return { map, visual: compileVisual(document), diagnostics };
+}
+
+/** 把带阻挡标记的装饰物按占地圆烘进阻挡位图。 */
+function bakePropBlockers(document: MapDocument, cells: number): string {
+  const grid = document.grid;
+  if (!grid) return emptyBitmap(cells);
+  const blocked = decodeBitmapBase64(grid.blocked, cells);
+  const size = document.size;
+  for (const prop of document.visual.props) {
+    if (!prop.blocker) continue;
+    const radiusDm = Math.max(1, (prop.footprintDm ?? 10) / 2);
+    const cellSizeDm = grid.cellSizeDm;
+    const centerX = (prop.pos[0] + size[0] / 2) / cellSizeDm;
+    const centerZ = (prop.pos[1] + size[1] / 2) / cellSizeDm;
+    const reach = Math.ceil(radiusDm / cellSizeDm);
+    const baseX = Math.floor(centerX);
+    const baseZ = Math.floor(centerZ);
+    for (let dz = -reach; dz <= reach; dz += 1) {
+      for (let dx = -reach; dx <= reach; dx += 1) {
+        const cellX = baseX + dx;
+        const cellZ = baseZ + dz;
+        if (cellX < 0 || cellZ < 0 || cellX >= grid.width || cellZ >= grid.height) continue;
+        const offsetX = (cellX + 0.5 - centerX) * cellSizeDm;
+        const offsetZ = (cellZ + 0.5 - centerZ) * cellSizeDm;
+        if (Math.hypot(offsetX, offsetZ) > radiusDm) continue;
+        blocked[cellZ * grid.width + cellX] = 1;
+      }
+    }
+  }
+  return encodeBitmapBase64(blocked);
 }
 
 function validateVisual(document: MapDocument): Array<{ code: string; message: string; propId?: string }> {

@@ -89,7 +89,7 @@ function sampleHeights(
     values = next;
   }
   // 限制相邻格高差：坡再陡也能走，陡坎交给 blocked 标记。
-  const MAX_RISE_CM = 55;
+  const MAX_RISE_CM = 70;
   for (let pass = 0; pass < 12; pass += 1) {
     let changed = false;
     for (let z = 0; z < rows; z += 1) {
@@ -125,6 +125,8 @@ export interface GridOptions {
   stables?: number;
   /** 地形参数；网格高度按它采样，客户端地表也用同一份。 */
   terrain?: { seed: number; amplitude: number };
+  /** 抬升的台地：位置、半径与高度，边缘自动做成陡坡。 */
+  plateaus?: Array<{ pos: [number, number]; radiusCm: number; heightCm: number }>;
 }
 
 /**
@@ -225,6 +227,28 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
     });
   }
 
+  // 台地：把一块圆形区域整体抬升，边缘在几格内收拢成陡坡，
+  // 重甲单位上不去，轻装和游侠还能爬。
+  if (options.plateaus && options.plateaus.length > 0) {
+    const cellCm = CELL_CM;
+    for (const plateau of options.plateaus) {
+      const centerX = (plateau.pos[0] + map.size[0] * 5) / cellCm - 0.5;
+      const centerZ = (plateau.pos[1] + map.size[1] * 5) / cellCm - 0.5;
+      const radiusCells = plateau.radiusCm / cellCm;
+      const reach = Math.ceil(radiusCells) + 5;
+      for (let dz = -reach; dz <= reach; dz += 1) {
+        for (let dx = -reach; dx <= reach; dx += 1) {
+          const cx = Math.round(centerX) + dx;
+          const cz = Math.round(centerZ) + dz;
+          if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
+          const distance = Math.hypot(cx - centerX, cz - centerZ);
+          const t = Math.min(1, Math.max(0, (radiusCells + 5 - distance) / 5));
+          heights[cz * cols + cx] += Math.round(plateau.heightCm * t * t * (3 - 2 * t));
+        }
+      }
+    }
+  }
+
   // 路面走廊压平：路面附近的高程取同一段路的平均值，
   // 否则 18 厘米的路面抬升盖不住一格一格的台阶，路边会露出锯齿。
   const roadCellsList: number[] = [];
@@ -250,18 +274,40 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
       }
       corridor[slot] = Math.round(sum / Math.max(1, count));
     }
+    // 路面格直接取走廊高度，两侧三格内做几轮平滑，避免路边形成一圈陡坎。
+    const nearRoad = new Uint8Array(cells);
     for (let slot = 0; slot < roadCellsList.length; slot += 1) {
       const index = roadCellsList[slot];
+      heights[index] = corridor[slot];
       const cx = index % cols;
       const cz = Math.floor(index / cols);
-      for (let dz = -1; dz <= 1; dz += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dz = -3; dz <= 3; dz += 1) {
+        for (let dx = -3; dx <= 3; dx += 1) {
           const nx = cx + dx;
           const nz = cz + dz;
           if (nx < 0 || nz < 0 || nx >= cols || nz >= rows) continue;
-          heights[nz * cols + nx] = corridor[slot];
+          nearRoad[nz * cols + nx] = 1;
         }
       }
+    }
+    for (let pass = 0; pass < 3; pass += 1) {
+      const next = Int16Array.from(heights);
+      for (let z = 1; z < rows - 1; z += 1) {
+        for (let x = 1; x < cols - 1; x += 1) {
+          const index = z * cols + x;
+          if (!nearRoad[index] || surface[index] === SURFACE_ROAD) continue;
+          let sum = 0;
+          let count = 0;
+          for (let dz = -1; dz <= 1; dz += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+              sum += heights[(z + dz) * cols + (x + dx)];
+              count += 1;
+            }
+          }
+          next[index] = Math.round(sum / count);
+        }
+      }
+      heights.set(next);
     }
   }
 

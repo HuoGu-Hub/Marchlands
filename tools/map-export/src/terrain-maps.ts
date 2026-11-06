@@ -18,42 +18,6 @@ export interface TerrainMapRecipe {
   terrainSeed?: number;
 }
 
-export interface TerrainMapPreset {
-  style: "frontier" | "meadow" | "autumn" | "ash" | "coast" | "snow";
-  amplitude: number;
-  seed: number;
-  roadStyle: "cobble" | "dirt";
-  foundation: { assetId: string; scale: number; rotation: number; offsetY: number };
-  description: string;
-}
-
-export const TERRAIN_MAP_PRESETS: Record<string, TerrainMapPreset> = {
-  highland01: {
-    style: "meadow",
-    amplitude: 2.6,
-    seed: 4711,
-    roadStyle: "cobble",
-    foundation: { assetId: "builtin:foundation.terrain003", scale: 0.052, rotation: 24, offsetY: -4.5 },
-    description: "岩脊高地：城镇散落在起伏的岩台上，坡道上连着碎石路，谁先站住高处谁就能看清整片谷地。",
-  },
-  autumnvale01: {
-    style: "autumn",
-    amplitude: 2.4,
-    seed: 923,
-    roadStyle: "dirt",
-    foundation: { assetId: "builtin:foundation.terrain001", scale: 0.055, rotation: -38, offsetY: -4 },
-    description: "秋色谷地：落叶林里藏着三十座城镇，土路沿着缓坡绕行，粮仓卡在谷口。",
-  },
-  snowpass01: {
-    style: "snow",
-    amplitude: 2.2,
-    seed: 1607,
-    roadStyle: "cobble",
-    foundation: { assetId: "builtin:foundation.terrain004", scale: 0.05, rotation: 8, offsetY: -5 },
-    description: "雪岭关隘：积雪覆盖的山道上，据点沿坡层层设防，翻过垭口才算真正进入对方腹地。",
-  },
-};
-
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -236,6 +200,18 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
     ...(site.watch ? { watch: site.watch } : {}),
   }));
 
+  // 台地：远离据点的高地，边缘几格收成陡坡，重甲单位得绕路。
+  const plateaus: Array<{ pos: [number, number]; radiusCm: number; heightCm: number }> = [];
+  for (let attempt = 0; attempt < 800 && plateaus.length < 3; attempt += 1) {
+    const pos: [number, number] = [
+      (random() * 2 - 1) * (width / 2 - 220),
+      (random() * 2 - 1) * (height / 2 - 220),
+    ];
+    if (cities.some((city) => Math.hypot(city.pos[0] - pos[0], city.pos[1] - pos[1]) < 240)) continue;
+    if (plateaus.some((entry) => Math.hypot(entry.pos[0] - pos[0], entry.pos[1] - pos[1]) < 520)) continue;
+    plateaus.push({ pos, radiusCm: 720 + Math.round(random() * 420), heightCm: 200 + Math.round(random() * 140) });
+  }
+
   return toGridMap(withMageSites({
     schema: 1,
     slug: recipe.slug,
@@ -254,6 +230,7 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
   }), {
     stables: 2,
     terrain: { seed: recipe.terrainSeed ?? recipe.seed, amplitude: recipe.terrainAmplitude ?? 1 },
+    plateaus,
   });
 }
 

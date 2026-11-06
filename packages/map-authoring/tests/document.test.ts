@@ -504,6 +504,23 @@ describe("map authoring", () => {
     ).toBe(true);
   });
 
+  it("bakes blocking props into the nav grid", () => {
+    const document = createGridDocument();
+    const site = document.sites[0];
+    const placed = addProp(document, "builtin:prop.fence", [site.pos[0] + 60, site.pos[1] + 60], 0, 1, {
+      blocker: true,
+      footprintDm: 20,
+    });
+    const result = compileDocument(placed.document);
+    expect(result.diagnostics.filter((entry) => entry.severity === "error")).toHaveLength(0);
+    const grid = result.map.grid;
+    if (!grid) throw new Error("missing grid");
+    const flags = decodeBitmapBase64(grid.blocked, grid.width * grid.height);
+    const cell = gridCellAt({ cellSizeDm: grid.cellSizeCm / 10, width: grid.width, height: grid.height }, result.map.size, placed.prop.pos);
+    if (!cell) throw new Error("prop outside grid");
+    expect(flags[cell[1] * grid.width + cell[0]]).toBe(1);
+  });
+
   it("reports a grid map without grid data", () => {
     const document = createGridDocument();
     delete document.grid;
