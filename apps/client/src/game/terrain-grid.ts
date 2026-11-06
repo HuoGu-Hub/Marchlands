@@ -21,14 +21,6 @@ export interface GridTerrainMeshes {
   readonly cliffs: THREE.Mesh | null;
 }
 
-function wallTone(wall: GridSurfaceWall): number {
-  let hash =
-    Math.imul(Math.round(wall.ax * 100) | 0, 374761393) ^
-    Math.imul(Math.round(wall.az * 100) | 0, 668265263);
-  hash = Math.imul(hash ^ (hash >>> 13), 1274126177);
-  return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
-}
-
 function buildTopGeometry(surface: GridSurface, options: GridTerrainOptions): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
   const positions = surface.positions;
@@ -84,7 +76,8 @@ function buildCliffGeometry(walls: readonly GridSurfaceWall[]): THREE.BufferGeom
       0.45,
       (normalA.z + normalB.z) / 2,
     ).normalize();
-    const tone = 0.97 + wallTone(wall) * 0.05;
+    // 逐墙随机明度会让 1 米一段的崖面像一排纸片；整面墙统一，靠法线出体积。
+    const tone = 1;
     const shadeAt = (y: number, bottom: number, top: number): number => {
       const t = top - bottom < 1e-4 ? 1 : (y - bottom) / (top - bottom);
       return tone * (0.68 + 0.32 * t);

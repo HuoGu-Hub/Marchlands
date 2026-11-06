@@ -201,7 +201,7 @@ export function buildGridSurface(
     }
   }
 
-  // 每个格角取四格的最高/最低顶面：所有墙段共用同一对端点，接缝不会裂。
+  // 每个格角取四格顶面的包络：同一角上的墙段共用端高，接缝不会裂。
   const cornerTop = new Float32Array((width + 1) * (height + 1));
   const cornerBottom = new Float32Array((width + 1) * (height + 1));
   for (let j = 0; j <= height; j += 1) {
@@ -250,31 +250,37 @@ export function buildGridSurface(
       const cell = cz * width + cx;
       if (cx + 1 < width) {
         const neighbour = cell + 1;
-        const sign = heights[cell] >= heights[neighbour] ? 1 : -1;
-        pushWall(
-          originX + (cx + 1) * cellSizeM,
-          originZ + cz * cellSizeM,
-          originX + (cx + 1) * cellSizeM,
-          originZ + (cz + 1) * cellSizeM,
-          cz * (width + 1) + (cx + 1),
-          (cz + 1) * (width + 1) + (cx + 1),
-          sign,
-          0,
-        );
+        // 只有崖顶一侧才补墙：两侧都是缓坡时，斜对角的崖顶会把包络抬起来，
+        // 沿低地铺出一排薄薄的"纸片"，这是之前崖脚鳞片的来源。
+        if (cliffTop[cell] || cliffTop[neighbour]) {
+          const sign = heights[cell] >= heights[neighbour] ? 1 : -1;
+          pushWall(
+            originX + (cx + 1) * cellSizeM,
+            originZ + cz * cellSizeM,
+            originX + (cx + 1) * cellSizeM,
+            originZ + (cz + 1) * cellSizeM,
+            cz * (width + 1) + (cx + 1),
+            (cz + 1) * (width + 1) + (cx + 1),
+            sign,
+            0,
+          );
+        }
       }
       if (cz + 1 < height) {
         const neighbour = cell + width;
-        const sign = heights[cell] >= heights[neighbour] ? 1 : -1;
-        pushWall(
-          originX + cx * cellSizeM,
-          originZ + (cz + 1) * cellSizeM,
-          originX + (cx + 1) * cellSizeM,
-          originZ + (cz + 1) * cellSizeM,
-          (cz + 1) * (width + 1) + cx,
-          (cz + 1) * (width + 1) + (cx + 1),
-          0,
-          sign,
-        );
+        if (cliffTop[cell] || cliffTop[neighbour]) {
+          const sign = heights[cell] >= heights[neighbour] ? 1 : -1;
+          pushWall(
+            originX + cx * cellSizeM,
+            originZ + (cz + 1) * cellSizeM,
+            originX + (cx + 1) * cellSizeM,
+            originZ + (cz + 1) * cellSizeM,
+            (cz + 1) * (width + 1) + cx,
+            (cz + 1) * (width + 1) + (cx + 1),
+            0,
+            sign,
+          );
+        }
       }
     }
   }
