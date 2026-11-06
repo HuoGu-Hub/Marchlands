@@ -242,8 +242,9 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
           const cz = Math.round(centerZ) + dz;
           if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
           const distance = Math.hypot(cx - centerX, cz - centerZ);
-          const t = Math.min(1, Math.max(0, (radiusCells + 5 - distance) / 5));
-          heights[cz * cols + cx] += Math.round(plateau.heightCm * t * t * (3 - 2 * t));
+          // 台地边缘是硬边：一格里直接抬起来，才算悬崖，不是缓坡。
+          const t = Math.min(1, Math.max(0, radiusCells - distance + 0.5));
+          heights[cz * cols + cx] += Math.round(plateau.heightCm * t);
         }
       }
     }

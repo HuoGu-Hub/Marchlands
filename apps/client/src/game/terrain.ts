@@ -554,7 +554,7 @@ export function buildTerrain(
   const offsetX = map.size[0] * 5;
   const offsetZ = map.size[1] * 5;
   const baseHeightAt = (x: number, z: number): number => {
-    if (navGrid) return navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100;
+    if (navGrid) return sharpHeightAt(x, z);
     return heightField.heightAt(x, z);
   };
   const platformFields = new Map<string, ReturnType<typeof createHeightField>>();
@@ -579,6 +579,37 @@ export function buildTerrain(
     (navGrid
       ? navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100
       : fieldFor(platform).heightAt(x, z));
+  // 陡壁格改用最近格高度，网格在这里直接立起来，视觉上才是坎而不是缓坡。
+  const cliffCells = navGrid ? new Uint8Array(navGrid.width * navGrid.height) : null;
+  if (navGrid && cliffCells) {
+    const wallThreshold = 120;
+    for (let z = 0; z < navGrid.height; z += 1) {
+      for (let x = 0; x < navGrid.width; x += 1) {
+        const index = z * navGrid.width + x;
+        const here = navGrid.heightCm(index);
+        let steep = false;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx < 0 || nz < 0 || nx >= navGrid.width || nz >= navGrid.height) continue;
+          if (Math.abs(navGrid.heightCm(nz * navGrid.width + nx) - here) >= wallThreshold) {
+            steep = true;
+            break;
+          }
+        }
+        if (steep) cliffCells[index] = 1;
+      }
+    }
+  }
+  const sharpHeightAt = (x: number, z: number): number => {
+    if (!navGrid || !cliffCells) return baseHeightAt(x, z);
+    const cx = Math.floor((x * 100 + offsetX) / navGrid.cellSizeCm);
+    const cz = Math.floor((z * 100 + offsetZ) / navGrid.cellSizeCm);
+    if (cx < 0 || cz < 0 || cx >= navGrid.width || cz >= navGrid.height) return baseHeightAt(x, z);
+    if (!cliffCells[cz * navGrid.width + cx]) return baseHeightAt(x, z);
+    return navGrid.heightCm(cz * navGrid.width + cx) / 100;
+  };
+
   const heightAt = (x: number, z: number): number => {
     let best: number | null = null;
     for (const platform of platforms) {
