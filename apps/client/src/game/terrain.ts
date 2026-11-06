@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
+import { buildCliffMesh } from "./cliff-mesh";
 import { paintGroundTexture } from "./ground-paint";
 import type { CityId, MapDef } from "@marchlands/sim";
 import { createHeightField, foundationDepth, foundationRect } from "@marchlands/map-authoring";
@@ -725,6 +726,15 @@ export function buildTerrain(
     topY: Math.max(...builtPlatforms.map((entry) => entry.metrics.topY)),
     rim: primaryMetrics.rim,
   };
+
+  // 陡壁补面：格与格之间高差大的地方补一层竖直岩壁。
+  if (navGrid) {
+    const cliffMesh = buildCliffMesh({ navGrid, size: map.size });
+    if (cliffMesh) {
+      group.add(cliffMesh);
+      meshes.push(cliffMesh);
+    }
+  }
 
   const navOverlay = navGrid ? buildNavOverlay(navGrid, map) : null;
   // 通行预览是编辑器的调试层，对局里默认关掉，不然会把整条路网当色块盖在地面上。
