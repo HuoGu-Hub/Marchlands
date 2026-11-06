@@ -250,6 +250,51 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
     }
   }
 
+  // 每处台地开一条坡道：沿一条线把高差摊成每格不超过 38 厘米的台阶，
+  // 兵种按坡度判定都能走上去，台地不再是进不去的高台。
+  if (options.plateaus && options.plateaus.length > 0) {
+    const cellCm = CELL_CM;
+    for (const plateau of options.plateaus) {
+      const centerX = (plateau.pos[0] + map.size[0] * 5) / cellCm - 0.5;
+      const centerZ = (plateau.pos[1] + map.size[1] * 5) / cellCm - 0.5;
+      const radiusCells = plateau.radiusCm / cellCm;
+      const angle = Math.atan2(-centerZ, -centerX);
+      const dirX = Math.cos(angle);
+      const dirZ = Math.sin(angle);
+      const topX = centerX + dirX * (radiusCells - 3);
+      const topZ = centerZ + dirZ * (radiusCells - 3);
+      const topHeight = heights[Math.round(topZ) * cols + Math.round(topX)] ?? plateau.heightCm;
+      const bottomStart = radiusCells + 2;
+      const bottomX = centerX + dirX * bottomStart;
+      const bottomZ = centerZ + dirZ * bottomStart;
+      const bottomHeight = heights[Math.round(bottomZ) * cols + Math.round(bottomX)] ?? 0;
+      const rise = Math.abs(topHeight - bottomHeight);
+      const steps = Math.max(4, Math.ceil(rise / 38));
+      const runLength = Math.hypot(topX - bottomX, topZ - bottomZ);
+      const totalSteps = Math.max(steps, Math.ceil(runLength * 2));
+      let previous = bottomHeight;
+      for (let step = 0; step <= totalSteps; step += 1) {
+        const t = step / totalSteps;
+        const target = bottomHeight + (topHeight - bottomHeight) * t;
+        // 每一格最多爬 38 厘米，接缝处不会留下迈不上去的台。
+        const tall = previous + Math.max(-38, Math.min(38, target - previous));
+        previous = tall;
+        const px = bottomX + (topX - bottomX) * t;
+        const pz = bottomZ + (topZ - bottomZ) * t;
+        for (let dz = -2; dz <= 2; dz += 1) {
+          for (let dx = -2; dx <= 2; dx += 1) {
+            const cx = Math.round(px) + dx;
+            const cz = Math.round(pz) + dz;
+            if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
+            if (Math.hypot(cx - px, cz - pz) > 2.2) continue;
+            heights[cz * cols + cx] = Math.round(tall);
+            surface[cz * cols + cx] = SURFACE_ROAD;
+          }
+        }
+      }
+    }
+  }
+
   // 路面走廊压平：路面附近的高程取同一段路的平均值，
   // 否则 18 厘米的路面抬升盖不住一格一格的台阶，路边会露出锯齿。
   const roadCellsList: number[] = [];
