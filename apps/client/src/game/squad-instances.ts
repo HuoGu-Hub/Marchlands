@@ -20,7 +20,7 @@ interface BillboardMesh {
 const CAPACITY = 4096;
 const TARGET_HEIGHT = 0.95;
 const VIEW_HEIGHT = 1.05;
-const TEXTURE_SIZE = 192;
+const TEXTURE_SIZE = 256;
 
 /**
  * 远处兵团的静态替身。
@@ -71,8 +71,9 @@ export class SquadInstanceField {
       const geometry = new THREE.PlaneGeometry(1, 1);
       const material = new THREE.MeshBasicMaterial({
         map: texture,
-        transparent: true,
-        alphaTest: 0.08,
+        // 不透明队列 + alphaTest，避免大量透明替身互相排序造成闪烁。
+        transparent: false,
+        alphaTest: 0.02,
         depthWrite: true,
         side: THREE.DoubleSide,
         toneMapped: false,
@@ -128,9 +129,9 @@ export class SquadInstanceField {
   private renderActor(actor: THREE.Object3D): THREE.Texture {
     const renderer = this.renderer as THREE.WebGLRenderer;
     const target = new THREE.WebGLRenderTarget(TEXTURE_SIZE, TEXTURE_SIZE, {
-      minFilter: THREE.LinearFilter,
+      minFilter: THREE.LinearMipmapLinearFilter,
       magFilter: THREE.LinearFilter,
-      generateMipmaps: false,
+      generateMipmaps: true,
     });
     target.texture.colorSpace = THREE.SRGBColorSpace;
 

@@ -199,6 +199,8 @@ interface SquadView {
   strikeUntil: number;
   /** 远距离兵团降频更新动画时累计的时间。 */
   animAccum: number;
+  /** 当前是否使用远处静态替身；用滞回避免镜头在阈值附近反复切换。 */
+  instanced: boolean;
 }
 
 export class BattleScene {
@@ -1139,12 +1141,15 @@ export class BattleScene {
       const selected = this.selectedSquadId === squad.id;
       const kind = this.unitKindFor(squad.from);
       const skin = this.skinFor(kind, squad.owner);
-      const far = visible && !selected && distance2 > 2500 && !!skin && assetRegistry.has(skin);
+      const enterFar = !view.instanced && distance2 > 3025;
+      const stayFar = view.instanced && distance2 > 2025;
+      const far = visible && !selected && (enterFar || stayFar) && !!skin && assetRegistry.has(skin);
       if (far) {
         if (!this.squadInstances.has(skin as string, squad.owner)) {
           void this.squadInstances.prepare(skin as string, squad.owner);
         }
         if (this.squadInstances.has(skin as string, squad.owner)) {
+          view.instanced = true;
           // 50 米外改用静态替身：人数不减少，但不跑骨骼、不做逐单位绘制。
           for (const unit of view.units) unit.visible = false;
           const total = Math.min(squad.count, MAX_GLB_SQUAD_UNITS);
@@ -1167,6 +1172,7 @@ export class BattleScene {
           continue;
         }
       }
+      view.instanced = false;
       for (const unit of view.units) unit.visible = true;
       const near = visible && distance2 < 400;
       const interval = near ? 0 : 66;
@@ -1429,6 +1435,7 @@ export class BattleScene {
       shadow,
       strikeUntil: 0,
       animAccum: 0,
+      instanced: false,
     };
 
     if (unitAssetId && assetRegistry.has(unitAssetId)) {
@@ -1532,10 +1539,7 @@ export class BattleScene {
     const skin = this.skinFor(kind, squad.owner);
     const glbSkin = !!skin && assetRegistry.has(skin);
     const baseMax = glbSkin ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
-    const maxUnits =
-      this.selectedSquadId === squad.id
-        ? baseMax
-        : this.squadLodCap(baseMax, view.group.position.x, view.group.position.z);
+    const maxUnits = this.selectedSquadId === squad.id ? baseMax : view.instanced ? 2 : baseMax;
     const target = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(target, spacing, spacingZ);
     let changed = false;
