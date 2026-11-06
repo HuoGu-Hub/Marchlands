@@ -13,6 +13,8 @@ import type { Terrain } from "./terrain";
 import { buildAtmosphere } from "./atmosphere";
 import type { Atmosphere } from "./atmosphere";
 import type { UnitKind } from "./unit-models";
+import { SquadInstanceField } from "./squad-instances";
+import type { SquadInstanceEntry } from "./squad-instances";
 
 const PLAYER_COLORS: Record<Owner, number> = {
   0: 0x97917f,
@@ -222,6 +224,7 @@ export class BattleScene {
   private readonly reachGroup = new THREE.Group();
   private readonly reachCellGroup = new THREE.Group();
   private readonly squadPathGroup = new THREE.Group();
+  private readonly squadInstances = new SquadInstanceField();
   private readonly squadPathViews = new Map<string, { fill: THREE.Mesh; edges: THREE.LineSegments; key: string }>();
   private reachCellMesh: THREE.Mesh | null = null;
   private reachCorners: Float32Array | null = null;
@@ -373,6 +376,7 @@ export class BattleScene {
     this.scene.fog = new THREE.Fog(0x0c120e, 125, 195);
 
     this.camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.6, 2400);
+    this.squadInstances.configure(this.renderer, this.camera);
 
     for (const city of map.cities) {
       this.positions.set(city.id, new THREE.Vector3(city.pos[0] / 10, 0, city.pos[1] / 10));
@@ -386,6 +390,7 @@ export class BattleScene {
     this.scene.add(this.reachGroup);
     this.scene.add(this.reachCellGroup);
     this.scene.add(this.squadPathGroup);
+    this.scene.add(this.squadInstances.group);
     this.buildGround();
     this.applyFoundations();
     this.zoom = Math.max(this.fitZoom(), GAMEPLAY_ZOOM);
@@ -894,6 +899,7 @@ export class BattleScene {
     this.propBuildToken += 1;
     this.foundationToken += 1;
     this.resizeObserver.disconnect();
+    this.squadInstances.dispose();
     this.scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (mesh.geometry && mesh.geometry.userData.shared !== true) mesh.geometry.dispose();
@@ -1094,6 +1100,7 @@ export class BattleScene {
       new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse),
     );
     const seen = new Set<string>();
+    const instanceEntries = new Map<string, SquadInstanceEntry[]>();
     for (const squad of state.squads) {
       seen.add(squad.id);
       let view = this.squadViews.get(squad.id);
@@ -1128,8 +1135,40 @@ export class BattleScene {
       this.squadSphere.center.set(point.x, view.group.position.y + 1, point.z);
       this.squadSphere.radius = 4.5;
       const visible = this.frustum.intersectsSphere(this.squadSphere);
-      // 近景兵团全速更新；远处兵团 15 Hz 更新，动作仍连续，但骨骼计算少四分之三。
-      const near = visible && this.camera.position.distanceToSquared(view.group.position) < 900;
+      const distance2 = this.camera.position.distanceToSquared(view.group.position);
+      const selected = this.selectedSquadId === squad.id;
+      const kind = this.unitKindFor(squad.from);
+      const skin = this.skinFor(kind, squad.owner);
+      const far = visible && !selected && distance2 > 2500 && !!skin && assetRegistry.has(skin);
+      if (far) {
+        if (!this.squadInstances.has(skin as string, squad.owner)) {
+          void this.squadInstances.prepare(skin as string, squad.owner);
+        }
+        if (this.squadInstances.has(skin as string, squad.owner)) {
+          // 50 米外改用静态替身：人数不减少，但不跑骨骼、不做逐单位绘制。
+          for (const unit of view.units) unit.visible = false;
+          const total = Math.min(squad.count, MAX_GLB_SQUAD_UNITS);
+          const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
+          const offsets = squadFormation(total, spacing, kind === "ranger" ? 0.82 : SQUAD_SPACING_Z);
+          const key = `${skin}:${squad.owner}`;
+          const list = instanceEntries.get(key) ?? [];
+          for (let index = 0; index < total; index += 1) {
+            const [x, z] = offsets[index] ?? [0, 0];
+            const spread = 0.72 + unitJitter(squad.id, index, 8) * 0.56;
+            list.push({
+              x: view.group.position.x + x * spread + (unitJitter(squad.id, index, 1) - 0.5) * 0.9,
+              y: view.group.position.y + 0.06,
+              z: view.group.position.z + z * spread + (unitJitter(squad.id, index, 2) - 0.5) * 0.8,
+              scale: 0.92 + unitJitter(squad.id, index, 5) * 0.16,
+            });
+          }
+          instanceEntries.set(key, list);
+          view.animAccum = 0;
+          continue;
+        }
+      }
+      for (const unit of view.units) unit.visible = true;
+      const near = visible && distance2 < 400;
       const interval = near ? 0 : 66;
       view.animAccum += delta;
       if (!visible) {
@@ -1145,6 +1184,7 @@ export class BattleScene {
         }
       }
     }
+    this.squadInstances.update(instanceEntries);
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__mlSquadModels = [...this.squadViews.entries()].map(
         ([id, view]) => ({ id, units: view.units.length, loading: view.loading }),
@@ -1441,13 +1481,11 @@ export class BattleScene {
     return height;
   }
 
-  /** 远处兵团少画几个代表，近处恢复满编；队标仍显示真实人数。 */
+  /** 50 米内保留完整真实模型，更远交给静态替身；替身数量不减少。 */
   private squadLodCap(base: number, x: number, z: number): number {
     const dx = this.camera.position.x - x;
     const dz = this.camera.position.z - z;
-    const d2 = dx * dx + dz * dz;
-    const factor = d2 < 400 ? 1 : d2 < 1600 ? 0.5 : 0.3;
-    return Math.max(2, Math.round(base * factor));
+    return dx * dx + dz * dz < 2500 ? base : 2;
   }
 
   /** 站位带一点随机抖动和朝向偏差，避免整队像克隆人。 */
