@@ -1141,8 +1141,8 @@ export class BattleScene {
       const selected = this.selectedSquadId === squad.id;
       const kind = this.unitKindFor(squad.from);
       const skin = this.skinFor(kind, squad.owner);
-      const enterFar = !view.instanced && distance2 > 3025;
-      const stayFar = view.instanced && distance2 > 2025;
+      const enterFar = !view.instanced && distance2 > 10000;
+      const stayFar = view.instanced && distance2 > 8100;
       const far = visible && !selected && (enterFar || stayFar) && !!skin && assetRegistry.has(skin);
       if (far) {
         if (!this.squadInstances.has(skin as string, squad.owner)) {
@@ -1488,11 +1488,11 @@ export class BattleScene {
     return height;
   }
 
-  /** 50 米内保留完整真实模型，更远交给静态替身；替身数量不减少。 */
+  /** 100 米内保留完整真实模型，更远交给静态替身；替身数量不减少。 */
   private squadLodCap(base: number, x: number, z: number): number {
     const dx = this.camera.position.x - x;
     const dz = this.camera.position.z - z;
-    return dx * dx + dz * dz < 2500 ? base : 2;
+    return dx * dx + dz * dz < 10000 ? base : 2;
   }
 
   /** 站位带一点随机抖动和朝向偏差，避免整队像克隆人。 */
