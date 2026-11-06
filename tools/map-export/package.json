@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@marchlands/content": "workspace:*",
-    "@marchlands/sim": "workspace:*"
+    "@marchlands/sim": "workspace:*",
+    "@marchlands/map-authoring": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

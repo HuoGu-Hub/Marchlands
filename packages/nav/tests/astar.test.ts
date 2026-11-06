@@ -59,11 +59,12 @@ describe("nav grid pathfinding", () => {
     expect(grid.heightCmAtXZ(450, 50)).toBe(100);
   });
 
-  it("allows a 30 cm step and rejects 31 cm", () => {
+  it("walks a gentle step and rejects one above the slope limit", () => {
+    // 坡度 700‰，一格一米：70 厘米以内可走，超过就挡住。
     const allowed = makeGrid({ width: 2, height: 1, heightAt: (x) => x * 30 });
     expect(plan(allowed, [0, 0], [1, 0])?.cost).toBe(2200);
 
-    const denied = makeGrid({ width: 2, height: 1, heightAt: (x) => x * 31 });
+    const denied = makeGrid({ width: 2, height: 1, heightAt: (x) => x * 80 });
     expect(plan(denied, [0, 0], [1, 0])).toBeNull();
   });
 

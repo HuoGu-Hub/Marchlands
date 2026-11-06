@@ -82,7 +82,10 @@ export function createUnitNavGrid(
     walkableOverride: override,
     rules: {
       maxStepCm,
-      maxSlopePermille: Math.max(1000, Math.round((maxStepCm / grid.cellSizeCm) * 1000)),
+      // 地图上的 climbCm 是整张图的攀爬覆盖，坡度也按它换算。
+      maxSlopePermille: map.climbCm
+        ? Math.round((map.climbCm / grid.cellSizeCm) * 1000)
+        : profile.maxSlopePermille,
     },
   });
 }

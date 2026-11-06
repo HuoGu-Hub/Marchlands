@@ -145,5 +145,5 @@ export function buildCrossroads01(): MapDef {
       { type: "capture_all" },
       { type: "time_limit", ticks: 18000 },
     ],
-  }), { stables: 2 });
+  }), { stables: 2, terrain: { seed: 20261123, amplitude: 1 } });
 }

@@ -175,6 +175,9 @@ importers:
       '@marchlands/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@marchlands/map-authoring':
+        specifier: workspace:*
+        version: link:../../packages/map-authoring
       '@marchlands/sim':
         specifier: workspace:*
         version: link:../../packages/sim

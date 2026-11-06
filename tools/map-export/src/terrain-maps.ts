@@ -12,6 +12,10 @@ export interface TerrainMapRecipe {
   granaries: number;
   minGap: number;
   playerCorner: [number, number];
+  /** 地表起伏振幅，米；和客户端地表保持一致。 */
+  terrainAmplitude?: number;
+  /** 地表噪声种子；不填就用 seed。 */
+  terrainSeed?: number;
 }
 
 export interface TerrainMapPreset {
@@ -247,7 +251,10 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
     cities,
     edges,
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
-  }), { stables: 2 });
+  }), {
+    stables: 2,
+    terrain: { seed: recipe.terrainSeed ?? recipe.seed, amplitude: recipe.terrainAmplitude ?? 1 },
+  });
 }
 
 export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
@@ -261,6 +268,7 @@ export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
     granaries: 4,
     minGap: 158,
     playerCorner: [-0.78, -0.72],
+    terrainAmplitude: 2.6,
   },
   {
     slug: "autumnvale01",
@@ -272,6 +280,8 @@ export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
     granaries: 4,
     minGap: 160,
     playerCorner: [0.76, -0.7],
+    terrainAmplitude: 2.4,
+    terrainSeed: 923,
   },
   {
     slug: "snowpass01",
@@ -283,5 +293,6 @@ export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
     granaries: 4,
     minGap: 162,
     playerCorner: [-0.72, 0.74],
+    terrainAmplitude: 2.2,
   },
 ];

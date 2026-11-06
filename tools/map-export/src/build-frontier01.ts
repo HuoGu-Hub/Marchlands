@@ -8,6 +8,11 @@ import { withMageSites } from "./mage-sites";
 const here = dirname(fileURLToPath(import.meta.url));
 const file = resolve(here, "../../../packages/content/maps/frontier01.json");
 const map = JSON.parse(readFileSync(file, "utf8"));
-const next = map.navigation === "grid" ? map : toGridMap(withMageSites(map), { stables: 2 });
+// 已经转过网格但没写地形参数的，退回据点图重转一次。
+const source =
+  map.navigation === "grid" && !map.terrain
+    ? { ...map, navigation: undefined, grid: undefined, mapHash: undefined, schema: 1, cities: map.cities.filter((city: { kind: string }) => city.kind !== "cavalry") }
+    : map;
+const next = source.navigation === "grid" ? source : toGridMap(withMageSites(source), { stables: 2, terrain: { seed: 20261123, amplitude: 1 } });
 writeFileSync(file, JSON.stringify(next, null, 2) + "\n", "utf8");
 console.log("wrote " + file);

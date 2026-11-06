@@ -1,3 +1,4 @@
+import { createHeightField } from "@marchlands/map-authoring";
 import { mapHashOf } from "@marchlands/sim";
 import type { MapCity, MapDef } from "@marchlands/sim";
 
@@ -43,11 +44,87 @@ function encodeBitmapBase64(flags: ArrayLike<number>): string {
   return encodeBase64(bytes);
 }
 
+/** 按地图地形参数采样每格高度，再平滑两遍，避免出现一格一步的断崖。 */
+function sampleHeights(
+  map: MapDef,
+  cols: number,
+  rows: number,
+  cellSizeCm: number,
+  terrain?: { seed: number; amplitude: number },
+): Int16Array {
+  const cells = cols * rows;
+  const out = new Int16Array(cells);
+  if (!terrain) return out;
+  const field = createHeightField({
+    cities: map.cities.map((city) => [city.pos[0], city.pos[1]] as [number, number]),
+    terrain: { seed: terrain.seed, amplitude: terrain.amplitude },
+  });
+  const stepMeters = cellSizeCm / 100;
+  let values = new Float32Array(cells);
+  for (let z = 0; z < rows; z += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      const metersX = (x - cols / 2 + 0.5) * stepMeters;
+      const metersZ = (z - rows / 2 + 0.5) * stepMeters;
+      values[z * cols + x] = field.heightAt(metersX, metersZ);
+    }
+  }
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = new Float32Array(cells);
+    for (let z = 0; z < rows; z += 1) {
+      for (let x = 0; x < cols; x += 1) {
+        let sum = 0;
+        let count = 0;
+        for (let dz = -1; dz <= 1; dz += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            const nx = x + dx;
+            const nz = z + dz;
+            if (nx < 0 || nz < 0 || nx >= cols || nz >= rows) continue;
+            sum += values[nz * cols + nx];
+            count += 1;
+          }
+        }
+        next[z * cols + x] = sum / count;
+      }
+    }
+    values = next;
+  }
+  // 限制相邻格高差：坡再陡也能走，陡坎交给 blocked 标记。
+  const MAX_RISE_CM = 55;
+  for (let pass = 0; pass < 12; pass += 1) {
+    let changed = false;
+    for (let z = 0; z < rows; z += 1) {
+      for (let x = 0; x < cols; x += 1) {
+        const index = z * cols + x;
+        const here = values[index];
+        for (const [dx, dz] of [[1, 0], [0, 1]] as const) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx >= cols || nz >= rows) continue;
+          const neighbor = nz * cols + nx;
+          const diff = (values[neighbor] - here) * 100;
+          if (Math.abs(diff) <= MAX_RISE_CM) continue;
+          const adjust = ((Math.abs(diff) - MAX_RISE_CM) / 2 / 100) * Math.sign(diff);
+          values[neighbor] -= adjust;
+          values[index] += adjust;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  for (let index = 0; index < cells; index += 1) {
+    out[index] = Math.round(values[index] * 100);
+  }
+  return out;
+}
+
 export interface GridOptions {
   /** 每格边长，厘米。 */
   cellSizeCm?: number;
   /** 需要铺进地图的中立产兵据点，例如马厩。 */
   stables?: number;
+  /** 地形参数；网格高度按它采样，客户端地表也用同一份。 */
+  terrain?: { seed: number; amplitude: number };
 }
 
 /**
@@ -62,8 +139,8 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
   const rows = Math.round((height * 10) / CELL_CM);
   const cells = cols * rows;
 
-  const heights = new Int16Array(cells);
   const surface = new Uint8Array(cells).fill(SURFACE_GRASS);
+  const heights = sampleHeights(map, cols, rows, CELL_CM, options.terrain);
   const blocked = new Uint8Array(cells);
   const walkableOverride = new Uint8Array(cells);
 
@@ -148,10 +225,51 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
     });
   }
 
+  // 路面走廊压平：路面附近的高程取同一段路的平均值，
+  // 否则 18 厘米的路面抬升盖不住一格一格的台阶，路边会露出锯齿。
+  const roadCellsList: number[] = [];
+  for (let index = 0; index < cells; index += 1) {
+    if (surface[index] === SURFACE_ROAD) roadCellsList.push(index);
+  }
+  if (roadCellsList.length > 0) {
+    const corridor = new Int16Array(roadCellsList.length);
+    for (let slot = 0; slot < roadCellsList.length; slot += 1) {
+      const index = roadCellsList[slot];
+      const cx = index % cols;
+      const cz = Math.floor(index / cols);
+      let sum = 0;
+      let count = 0;
+      for (let dz = -2; dz <= 2; dz += 1) {
+        for (let dx = -2; dx <= 2; dx += 1) {
+          const nx = cx + dx;
+          const nz = cz + dz;
+          if (nx < 0 || nz < 0 || nx >= cols || nz >= rows) continue;
+          sum += heights[nz * cols + nx];
+          count += 1;
+        }
+      }
+      corridor[slot] = Math.round(sum / Math.max(1, count));
+    }
+    for (let slot = 0; slot < roadCellsList.length; slot += 1) {
+      const index = roadCellsList[slot];
+      const cx = index % cols;
+      const cz = Math.floor(index / cols);
+      for (let dz = -1; dz <= 1; dz += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const nx = cx + dx;
+          const nz = cz + dz;
+          if (nx < 0 || nz < 0 || nx >= cols || nz >= rows) continue;
+          heights[nz * cols + nx] = corridor[slot];
+        }
+      }
+    }
+  }
+
   const next: MapDef = {
     ...map,
     schema: 2,
     navigation: "grid",
+    ...(options.terrain ? { terrain: { ...options.terrain } } : {}),
     grid: {
       cellSizeCm: CELL_CM,
       width: cols,

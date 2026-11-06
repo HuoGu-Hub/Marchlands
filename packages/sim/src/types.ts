@@ -121,6 +121,8 @@ export interface MapDef {
   grid?: MapGridDef;
   /** 编译产物哈希，供回放与地图校验使用。 */
   mapHash?: string;
+  /** 地形参数：网格高度与客户端地表都按这一份生成，两边才对得上。 */
+  terrain?: { seed: number; amplitude: number };
   slug: string;
   name: string;
   biome: string;

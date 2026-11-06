@@ -207,9 +207,9 @@ export class NavGrid {
     if (!this.isWalkable(from, coverage) || !this.isWalkable(to, coverage)) return false;
 
     const delta = this.heights[to] - this.heights[from];
-    if (Math.abs(delta) > this.rules.maxStepCm) return false;
     const diagonal = dx !== 0 && dz !== 0;
     const run = diagonal ? this.diagonalRunCm : this.cellSizeCm;
+    // 坡度决定能不能走；绝对落差只用于台阶/墙这类垂直面。
     if (Math.abs(delta) * 1000 > this.rules.maxSlopePermille * run) return false;
 
     if (diagonal) {
@@ -220,11 +220,11 @@ export class NavGrid {
       const heightTo = this.heights[to];
       const heightA = this.heights[sideA];
       const heightB = this.heights[sideB];
-      const maxStep = this.rules.maxStepCm;
-      if (Math.abs(heightA - heightFrom) > maxStep) return false;
-      if (Math.abs(heightTo - heightA) > maxStep) return false;
-      if (Math.abs(heightB - heightFrom) > maxStep) return false;
-      if (Math.abs(heightTo - heightB) > maxStep) return false;
+      const maxRise = (this.rules.maxSlopePermille * this.cellSizeCm) / 1000;
+      if (Math.abs(heightA - heightFrom) > maxRise) return false;
+      if (Math.abs(heightTo - heightA) > maxRise) return false;
+      if (Math.abs(heightB - heightFrom) > maxRise) return false;
+      if (Math.abs(heightTo - heightB) > maxRise) return false;
     }
     return true;
   }

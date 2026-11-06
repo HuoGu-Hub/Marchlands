@@ -543,8 +543,9 @@ export function buildTerrain(
 ): Terrain {
   const style = options.style ?? "frontier";
   const palette = TERRAIN_PALETTES[style] ?? TERRAIN_PALETTES.frontier;
-  const seed = Math.round(options.seed ?? 20261123);
-  const amplitude = Math.min(3.2, Math.max(0.2, options.amplitude ?? 1));
+  // 地图自带的地形参数优先，保证画面和网格高度是同一份。
+  const seed = Math.round(map.terrain?.seed ?? options.seed ?? 20261123);
+  const amplitude = Math.min(3.2, Math.max(0.2, map.terrain?.amplitude ?? options.amplitude ?? 1));
   const noiseShift = (seed % 1000) * 0.017;
   const cities = [...positions.values()];
   const edges = map.edges
