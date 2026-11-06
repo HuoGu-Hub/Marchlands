@@ -1,6 +1,6 @@
 # Marchlands 边境之地
 
-![version](https://img.shields.io/badge/version-0.1.0-d6b46a)
+![version](https://img.shields.io/badge/version-0.2.0-d6b46a)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-4d7ea8)
 ![engine](https://img.shields.io/badge/Three.js-0.171-000000)
 
@@ -14,9 +14,18 @@ Marchlands 是一款 3D 领地争夺游戏。玩家从一座产兵据点起步�
 
 Windows 10 或 Windows 11，x64。
 
-[v0.1.0 发布包](https://github.com/HuoGu-Hub/Marchlands/releases/tag/v0.1.0)
+[v0.2.0 发布包](https://github.com/HuoGu-Hub/Marchlands/releases/tag/v0.2.0)
 
 下载后解压，运行 `Marchlands.exe`。无需安装，存档与设置保存在本机浏览器存储中。
+
+## 0.2.0 更新
+
+- 地基系统重做：地基铺满整图，台地按层抬升，台地边缘生成不可攀爬的竖直岩壁。
+- 新增层高、陡壁与坡道编辑工具，台地只能通过坡道进入。
+- 地表与路面合并为整张烘焙贴图，路面、院落和岩壁随地形一起绘制。
+- 六张官方地图重新铺设一格宽道路，据点圆盘改为不规则泥地院落。
+- 选中建筑后单击目的地会显示行军路线预览，不会直接派兵。
+- 岩脊高地地形重做，加入明显的台地、岩壁与坡道高差。
 
 ## 玩法
 
@@ -32,7 +41,7 @@ Windows 10 或 Windows 11，x64。
 - 6 张官方地图，战役包含两章 4 个关卡。
 - 6 个兵种：野蛮人、精锐战士、游侠、弓箭手、法师、骑兵。
 - 3 档 AI 难度：轻松、标准、困难。
-- 地图编辑器支持网格地形、道路、装饰、地基、资产包导入导出、校验、撤销与试玩。
+- 地图编辑器支持网格地形、道路、装饰、地基、层高、陡壁、坡道、资产包导入导出、校验、撤销与试玩。
 - 6 套兵种皮肤，可在主菜单切换，敌我双方共用模型并按队伍色区分。
 
 ## 操作
@@ -126,6 +135,6 @@ pnpm test:e2e
 
 ## 版本
 
-当前版本 0.1.0。
+当前版本 0.2.0。
 
 已知限制：仅提供 Windows x64 构建，单机对 AI，界面为简体中文，暂未加入联机、战争迷雾与正式关卡平衡。

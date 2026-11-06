@@ -878,12 +878,12 @@ test("campaign opens a series, a level sheet, difficulty and full map preview", 
   await page.click('[data-series="frontier"]');
   await expect(page.locator("#page-series")).toBeVisible();
   await expect(page.locator(".level-card")).toHaveCount(2);
-  await expect(page.locator('[data-level="frontier01"]')).toContainText("Frontier 01");
+  await expect(page.locator('[data-level="frontier01"]')).toContainText("边境线");
   await expect(page.locator('[data-level="frontier01"]')).toContainText("36 座产兵据点");
 
   await page.click('[data-level="frontier01"]');
   await expect(page.locator("#level-overlay")).toHaveClass(/on/);
-  await expect(page.locator("#level-title")).toHaveText("Frontier 01");
+  await expect(page.locator("#level-title")).toHaveText("边境线");
   await expect(page.locator("#level-objective")).toContainText("36");
   await expect(page.locator('input[name="level-difficulty"]')).toHaveCount(3);
 

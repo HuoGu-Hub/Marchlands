@@ -43,7 +43,7 @@ for (const file of ["main.cjs", "preload.cjs"]) {
 }
 fs.writeFileSync(
   path.join(stage, "package.json"),
-  JSON.stringify({ name: "marchlands", productName: "Marchlands", version: "0.1.0", main: "electron/main.cjs" }, null, 2),
+  JSON.stringify({ name: "marchlands", productName: "Marchlands", version: "0.2.0", main: "electron/main.cjs" }, null, 2),
 );
 
 const icon = path.join(root, "build", "icon.ico");
@@ -58,7 +58,7 @@ packager({
   arch: "x64",
   out: path.resolve(root, "..", "..", "release"),
   overwrite: true,
-  appVersion: "0.1.0",
+  appVersion: "0.2.0",
   ...(electronZipDir ? { electronZipDir } : {}),
   ...(fs.existsSync(icon) ? { icon } : {}),
   win32metadata: {
