@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
-import { buildCliffMesh } from "./cliff-mesh";
 import { paintGroundTexture } from "./ground-paint";
 import type { CityId, MapDef } from "@marchlands/sim";
 import { createHeightField, foundationDepth, foundationRect } from "@marchlands/map-authoring";
@@ -535,7 +534,7 @@ export function buildTerrain(
   const palette = TERRAIN_PALETTES[style] ?? TERRAIN_PALETTES.frontier;
   // 地图自带的地形参数优先，保证画面和网格高度是同一份。
   const seed = Math.round(map.terrain?.seed ?? options.seed ?? 20261123);
-  const amplitude = Math.min(3.2, Math.max(0.2, map.terrain?.amplitude ?? options.amplitude ?? 1));
+  const amplitude = Math.min(12, Math.max(0.2, map.terrain?.amplitude ?? options.amplitude ?? 1));
   const noiseShift = (seed % 1000) * 0.017;
   const cities = [...positions.values()];
   const edges = map.edges
@@ -727,15 +726,6 @@ export function buildTerrain(
     rim: primaryMetrics.rim,
   };
 
-  // 陡壁补面：格与格之间高差大的地方补一层竖直岩壁。
-  if (navGrid) {
-    const cliffMesh = buildCliffMesh({ navGrid, size: map.size });
-    if (cliffMesh) {
-      group.add(cliffMesh);
-      meshes.push(cliffMesh);
-    }
-  }
-
   const navOverlay = navGrid ? buildNavOverlay(navGrid, map) : null;
   // 通行预览是编辑器的调试层，对局里默认关掉，不然会把整条路网当色块盖在地面上。
   if (navOverlay) {
@@ -860,7 +850,14 @@ function islandRim(
     let bermBase = 0.16;
     let bermNoise = 0.58;
     let depthScale = 0.82 + valueNoise(cos * 1.6 + shift, sin * 1.6, seed + 307) * 0.34;
-    if (shape === "mesa") {
+    if (shape === "plateau") {
+      // 台地地基铺满整张图，边缘只留一圈很窄的收边，不然会撑出一大片假地形。
+      base = support + 1.6;
+      radiusScale = 1 + fine * 0.015;
+      bermBase = 0.05;
+      bermNoise = 0.1;
+      depthScale = 1;
+    } else if (shape === "mesa") {
       base = support + 4 + broad * 2.2;
       radiusScale = 0.99 + fine * 0.02;
       bermBase = 0.02;

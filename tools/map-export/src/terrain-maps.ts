@@ -202,14 +202,14 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
 
   // 台地：远离据点的高地，边缘几格收成陡坡，重甲单位得绕路。
   const plateaus: Array<{ pos: [number, number]; radiusCm: number; heightCm: number }> = [];
-  for (let attempt = 0; attempt < 800 && plateaus.length < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 2000 && plateaus.length < 7; attempt += 1) {
     const pos: [number, number] = [
       (random() * 2 - 1) * (width / 2 - 220),
       (random() * 2 - 1) * (height / 2 - 220),
     ];
     if (cities.some((city) => Math.hypot(city.pos[0] - pos[0], city.pos[1] - pos[1]) < 240)) continue;
     if (plateaus.some((entry) => Math.hypot(entry.pos[0] - pos[0], entry.pos[1] - pos[1]) < 520)) continue;
-    plateaus.push({ pos, radiusCm: 720 + Math.round(random() * 420), heightCm: 200 + Math.round(random() * 140) });
+    plateaus.push({ pos, radiusCm: 900 + Math.round(random() * 600), heightCm: 300 + Math.round(random() * 300) });
   }
 
   return toGridMap(withMageSites({
@@ -245,7 +245,7 @@ export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
     granaries: 4,
     minGap: 158,
     playerCorner: [-0.78, -0.72],
-    terrainAmplitude: 2.6,
+    terrainAmplitude: 6,
   },
   {
     slug: "autumnvale01",
@@ -257,7 +257,7 @@ export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
     granaries: 4,
     minGap: 160,
     playerCorner: [0.76, -0.7],
-    terrainAmplitude: 2.4,
+    terrainAmplitude: 5.5,
     terrainSeed: 923,
   },
   {
@@ -270,6 +270,6 @@ export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
     granaries: 4,
     minGap: 162,
     playerCorner: [-0.72, 0.74],
-    terrainAmplitude: 2.2,
+    terrainAmplitude: 5,
   },
 ];
