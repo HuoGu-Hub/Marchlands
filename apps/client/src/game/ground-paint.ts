@@ -14,8 +14,10 @@ export interface GroundPaintOptions {
     rock: number;
     rockDark: number;
   };
-  /** 每米像素数，默认 10。 */
+  /** 每米像素数，默认 32。 */
   readonly pixelsPerMeter?: number;
+  /** 据点位置与院落半径，米；用来在地表上画一圈泥地，代替原来的圆盘。 */
+  readonly yards?: ReadonlyArray<{ x: number; z: number; radius: number }>;
 }
 
 function hash2(x: number, y: number): number {
@@ -54,7 +56,7 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
   const { navGrid, size, palette } = options;
   const widthMeters = size[0] / 10;
   const depthMeters = size[1] / 10;
-  const perMeter = Math.min(options.pixelsPerMeter ?? 16, Math.floor(4096 / Math.max(widthMeters, depthMeters)));
+  const perMeter = Math.min(options.pixelsPerMeter ?? 32, Math.floor(4096 / Math.max(widthMeters, depthMeters)));
   const width = Math.max(64, Math.round(widthMeters * perMeter));
   const height = Math.max(64, Math.round(depthMeters * perMeter));
   const canvas = document.createElement("canvas");
@@ -113,10 +115,18 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
     mask = next;
   }
 
+  const yards = options.yards ?? [];
   for (let py = 0; py < height; py += 1) {
     const z = (py + 0.5) / perMeter - depthMeters / 2;
     for (let px = 0; px < width; px += 1) {
       const x = (px + 0.5) / perMeter - widthMeters / 2;
+      // 据点院落：把建筑周围压成一片泥土地，边缘柔和过渡到草地。
+      let yard = 0;
+      for (const entry of yards) {
+        const distance = Math.hypot(x - entry.x, z - entry.z);
+        if (distance > entry.radius) continue;
+        yard = Math.max(yard, Math.min(1, (entry.radius - distance) / 0.6));
+      }
       const slope = Math.abs(heightAt(x + 0.5, z) - heightAt(x - 0.5, z));
       const grade = slope / 1;
 
@@ -170,6 +180,13 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
         r = mixChannel(r, roadR, weight);
         g = mixChannel(g, roadG, weight);
         b = mixChannel(b, roadB, weight);
+      }
+
+      if (yard > 0) {
+        const grit = valueNoise(x / 0.8, z / 0.8) * 0.16;
+        r = mixChannel(r, 122 * (0.88 + grit), yard);
+        g = mixChannel(g, 108 * (0.88 + grit), yard);
+        b = mixChannel(b, 84 * (0.88 + grit), yard);
       }
 
       const index = (py * width + px) * 4;

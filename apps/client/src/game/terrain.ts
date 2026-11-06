@@ -692,7 +692,16 @@ export function buildTerrain(
   const paintedGround = navGrid
     ? Object.assign(
         new THREE.MeshStandardMaterial({
-          map: paintGroundTexture({ navGrid, size: map.size, palette }),
+          map: paintGroundTexture({
+          navGrid,
+          size: map.size,
+          palette,
+          yards: map.cities.map((city) => ({
+            x: city.pos[0] / 10,
+            z: city.pos[1] / 10,
+            radius: city.kind === "granary" || city.kind === "outpost" ? 2.4 : 3.4,
+          })),
+        }),
           roughness: 1,
           metalness: 0,
         }),

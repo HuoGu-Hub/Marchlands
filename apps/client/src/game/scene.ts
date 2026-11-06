@@ -26,7 +26,6 @@ const ZOOM_MAX = 2.4;
 const DEFAULT_ZOOM = 1.12;
 const GAMEPLAY_ZOOM = 0.42;
 const CITY_BASE_RADIUS = 2.3;
-const CITY_BASE_HEIGHT = 0.26;
 /** 可派兵目标的浅绿色格子：边长与离地高度，单位：米。 */
 const REACH_CELL_SIZE = 12;
 const REACH_CELL_LIFT = 0.1;
@@ -166,7 +165,6 @@ interface CityView {
   buildToken: number;
   labelHeight: number;
   baseRadius: number;
-  base: THREE.Mesh;
   shadow: THREE.Mesh;
 }
 
@@ -1273,13 +1271,9 @@ export class BattleScene {
     shadow.scale.set(CITY_BASE_RADIUS + 0.18, CITY_BASE_RADIUS + 0.18, 1);
     group.add(shadow);
 
-    const base = createCityBase();
-    base.position.y = CITY_BASE_HEIGHT / 2;
-    base.scale.set(CITY_BASE_RADIUS, 1, CITY_BASE_RADIUS);
-    group.add(base);
-
+    // 不再铺圆盘地基：建筑直接坐在地形上，随地面起伏。
     const model = new THREE.Group();
-    model.position.y = CITY_BASE_HEIGHT;
+    model.position.y = -0.04;
     group.add(model);
 
     const labelCanvas = document.createElement("canvas");
@@ -1309,7 +1303,6 @@ export class BattleScene {
       buildToken: 0,
       labelHeight: CITY_LABEL_HEIGHT,
       baseRadius: CITY_BASE_RADIUS,
-      base,
       shadow,
     };
     this.rebuildCityModel(view, city);
@@ -1387,7 +1380,6 @@ export class BattleScene {
     const halfX = THREE.MathUtils.clamp(Math.max(Math.abs(box.min.x), Math.abs(box.max.x)) + 0.14, 1.1, 2.4);
     const halfZ = THREE.MathUtils.clamp(Math.max(Math.abs(box.min.z), Math.abs(box.max.z)) + 0.14, 1.1, 2.4);
     view.baseRadius = Math.max(halfX, halfZ);
-    view.base.scale.set(halfX, 1, halfZ);
     view.shadow.scale.set(halfX + 0.08, halfZ + 0.08, 1);
   }
 
@@ -2720,23 +2712,6 @@ function dirtTexture(repeatX: number, repeatY: number): THREE.CanvasTexture {
   return clone;
 }
 
-let cityBaseGeometry: THREE.CylinderGeometry | null = null;
-let cityBaseMaterials: THREE.Material[] | null = null;
-
-function createCityBase(): THREE.Mesh {
-  if (!cityBaseGeometry) {
-    cityBaseGeometry = new THREE.CylinderGeometry(1, 1.06, CITY_BASE_HEIGHT, 20);
-    cityBaseGeometry.userData.shared = true;
-  }
-  if (!cityBaseMaterials) {
-    const side = new THREE.MeshStandardMaterial({ color: 0x5f5848, roughness: 1, flatShading: true });
-    const top = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
-    side.userData.shared = true;
-    top.userData.shared = true;
-    cityBaseMaterials = [side, top, side];
-  }
-  return new THREE.Mesh(cityBaseGeometry, cityBaseMaterials);
-}
 
 let cobbleCache: THREE.CanvasTexture | null = null;
 
