@@ -620,6 +620,7 @@ export function buildTerrain(
     const cz = Math.floor((z * 100 + offsetZ) / navGrid.cellSizeCm);
     if (cx < 0 || cz < 0 || cx >= navGrid.width || cz >= navGrid.height) return baseHeightAt(x, z);
     if (!cliffCells[cz * navGrid.width + cx]) return baseHeightAt(x, z);
+    if ((globalThis as { __noSharp?: boolean }).__noSharp) return baseHeightAt(x, z);
     return navGrid.heightCm(cz * navGrid.width + cx) / 100;
   };
 
@@ -692,16 +693,19 @@ export function buildTerrain(
   const paintedGround = navGrid
     ? Object.assign(
         new THREE.MeshStandardMaterial({
-          map: paintGroundTexture({
-          navGrid,
-          size: map.size,
-          palette,
-          yards: map.cities.map((city) => ({
-            x: city.pos[0] / 10,
-            z: city.pos[1] / 10,
-            radius: city.kind === "granary" || city.kind === "outpost" ? 2 : 2.9,
-          })),
-        }),
+          map: (() => {
+            const texture = paintGroundTexture({
+              navGrid,
+              size: map.size,
+              palette,
+              yards: map.cities.map((city) => ({
+                x: city.pos[0] / 10,
+                z: city.pos[1] / 10,
+                radius: city.kind === "granary" || city.kind === "outpost" ? 2 : 2.9,
+              })),
+            });
+            return texture;
+          })(),
           roughness: 1,
           metalness: 0,
         }),
@@ -1032,7 +1036,8 @@ function buildIslandApron(
   geometry.computeVertexNormals();
   return new THREE.Mesh(
     geometry,
-    ground ?? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }),
+    // 平滑着色：平面着色会让岛体的放射状分段显成一道道竖条。
+    ground ?? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
   );
 }
 

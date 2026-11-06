@@ -16,7 +16,7 @@ export interface GroundPaintOptions {
   };
   /** 每米像素数，默认 32。 */
   readonly pixelsPerMeter?: number;
-  /** 据点位置与院落半径，米；用来在地表上画一圈泥地，代替原来的圆盘。 */
+  /** 据点位置与院落半径，米；用来在地表上画一圈泥地，代替圆盘。 */
   readonly yards?: ReadonlyArray<{ x: number; z: number; radius: number }>;
 }
 
@@ -40,7 +40,7 @@ function valueNoise(x: number, y: number): number {
   return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
 }
 
-function mixChannel(a: number, b: number, t: number): number {
+function mix(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
@@ -49,8 +49,10 @@ function rgb(color: number): [number, number, number] {
 }
 
 /**
- * 把地表画成一张贴图：草地、土路、陡坡岩石和石路都在同一张图上，
- * 路面和地面本来就是一块，不会出现接缝，也不用额外铺路面网格。
+ * 把地表画成一张贴图：草地、土斑、陡坡岩石、石路和据点院落都在同一张图上。
+ *
+ * 颜色按格计算再双线性采样，只有路面细节按像素画。
+ * 全分辨率逐像素跑噪声要八秒多，按格算只要几百毫秒。
  */
 export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTexture {
   const { navGrid, size, palette } = options;
@@ -67,109 +69,133 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
   const image = context.createImageData(width, height);
   const data = image.data;
 
-  const offsetX = size[0] * 5;
-  const offsetZ = size[1] * 5;
+  const cellSize = navGrid.cellSizeCm;
+  const cellMeters = cellSize / 100;
+  const cellW = Math.max(1, Math.ceil((size[0] * 10) / cellSize));
+  const cellH = Math.max(1, Math.ceil((size[1] * 10) / cellSize));
+
   const grass = rgb(palette.grass);
   const grassLight = rgb(palette.grassLight);
   const dirt = rgb(palette.dirt);
   const rock = rgb(palette.rock);
   const rockDark = rgb(palette.rockDark);
-
-  const heightAt = (xm: number, zm: number): number =>
-    navGrid.heightCmAtXZ(Math.round(xm * 100 + offsetX), Math.round(zm * 100 + offsetZ)) / 100;
-
-  // 像素级道路距离场：先把道路格铺到像素上，再做两遍倒角距离变换，
-  // 这样路面边缘是按像素过渡的，不会跟着一米一格走成台阶。
-  const roadPixels = new Uint8Array(width * height);
-  for (let py = 0; py < height; py += 1) {
-    const z = (py + 0.5) / perMeter - depthMeters / 2;
-    for (let px = 0; px < width; px += 1) {
-      const x = (px + 0.5) / perMeter - widthMeters / 2;
-      const surface = navGrid.surfaceAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ));
-      roadPixels[py * width + px] = surface === Surface.Road || surface === Surface.Bridge ? 1 : 0;
-    }
-  }
-  // 道路遮罩做几遍模糊来软化边缘：距离场在斜边上会有条带，
-  // 模糊过的二值遮罩不会有这种深浅斑块。
-  const maskRadius = Math.max(2, Math.round(perMeter * 0.35));
-  let mask = Float32Array.from(roadPixels);
-  for (let pass = 0; pass < 2; pass += 1) {
-    const next = new Float32Array(width * height);
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        let sum = 0;
-        let count = 0;
-        for (let dy = -maskRadius; dy <= maskRadius; dy += 1) {
-          const ny = y + dy;
-          if (ny < 0 || ny >= height) continue;
-          for (let dx = -maskRadius; dx <= maskRadius; dx += 1) {
-            const nx = x + dx;
-            if (nx < 0 || nx >= width) continue;
-            sum += mask[ny * width + nx];
-            count += 1;
-          }
-        }
-        next[y * width + x] = sum / count;
-      }
-    }
-    mask = next;
-  }
-
   const yards = options.yards ?? [];
-  for (let py = 0; py < height; py += 1) {
-    const z = (py + 0.5) / perMeter - depthMeters / 2;
-    for (let px = 0; px < width; px += 1) {
-      const x = (px + 0.5) / perMeter - widthMeters / 2;
-      // 据点院落：把建筑周围压成一片泥土地，边缘柔和过渡到草地。
-      let yard = 0;
-      for (const entry of yards) {
-        const dx = x - entry.x;
-        const dz = z - entry.z;
-        const distance = Math.hypot(dx, dz);
-        if (distance > entry.radius * 1.5) continue;
-        // 半径按两档噪声扰动，边界变成不规则的泥地，而不是一个圆。
-        const wobble =
-          valueNoise(entry.x * 0.6 + dx * 0.8, entry.z * 0.6 + dz * 0.8) * 0.6 +
-          valueNoise(entry.x * 1.7 + dx * 2.1, entry.z * 1.7 + dz * 2.1) * 0.3;
-        const radius = entry.radius * (0.74 + wobble * 0.62);
-        if (distance > radius) continue;
-        yard = Math.max(yard, Math.min(1, (radius - distance) / 0.55));
-      }
-      const slope = Math.abs(heightAt(x + 0.5, z) - heightAt(x - 0.5, z));
-      const grade = slope / 1;
 
-      // 草地底色：两层噪声拉开明暗，避免大片纯色。
+  // 按格算底色：草地明暗、土斑、陡坡岩石、院落泥地。
+  const cellColor = new Float32Array(cellW * cellH * 3);
+  const cellYard = new Float32Array(cellW * cellH);
+  for (let cz = 0; cz < cellH; cz += 1) {
+    const z = (cz + 0.5) * cellMeters - depthMeters / 2;
+    for (let cx = 0; cx < cellW; cx += 1) {
+      const x = (cx + 0.5) * cellMeters - widthMeters / 2;
+      const index = cz * cellW + cx;
+      const here = navGrid.heightCm(Math.min(navGrid.height - 1, cz) * navGrid.width + Math.min(navGrid.width - 1, cx));
+      const right = navGrid.heightCm(Math.min(navGrid.height - 1, cz) * navGrid.width + Math.min(navGrid.width - 1, cx + 1));
+      const down = navGrid.heightCm(Math.min(navGrid.height - 1, cz + 1) * navGrid.width + Math.min(navGrid.width - 1, cx));
+      const grade = Math.max(Math.abs(right - here), Math.abs(down - here)) / cellSize;
+
       const broad = valueNoise(x / 7.5, z / 7.5);
       const fine = valueNoise(x / 1.6, z / 1.6);
-      let r = mixChannel(grass[0], grassLight[0], broad * 0.55 + fine * 0.25);
-      let g = mixChannel(grass[1], grassLight[1], broad * 0.55 + fine * 0.25);
-      let b = mixChannel(grass[2], grassLight[2], broad * 0.55 + fine * 0.25);
+      const shade = broad * 0.55 + fine * 0.25;
+      let r = mix(grass[0], grassLight[0], shade);
+      let g = mix(grass[1], grassLight[1], shade);
+      let b = mix(grass[2], grassLight[2], shade);
       const darken = 1 - (1 - broad) * 0.35;
       r *= darken;
       g *= darken;
       b *= darken;
 
-      // 土斑：低频噪声的少数区域。
       const patch = valueNoise(x / 11 + 3.7, z / 11 - 1.3);
       if (patch > 0.62) {
-        const t = Math.min(1, (patch - 0.62) / 0.16);
-        r = mixChannel(r, dirt[0], t * 0.8);
-        g = mixChannel(g, dirt[1], t * 0.8);
-        b = mixChannel(b, dirt[2], t * 0.8);
+        const t = Math.min(1, (patch - 0.62) / 0.16) * 0.8;
+        r = mix(r, dirt[0], t);
+        g = mix(g, dirt[1], t);
+        b = mix(b, dirt[2], t);
       }
 
-      // 陡坡露岩。
       if (grade > 0.3) {
         const t = Math.min(1, (grade - 0.3) / 0.45);
         const tone = valueNoise(x / 2.2, z / 2.2);
         const rockColor = tone > 0.5 ? rock : rockDark;
-        r = mixChannel(r, rockColor[0], t);
-        g = mixChannel(g, rockColor[1], t);
-        b = mixChannel(b, rockColor[2], t);
+        r = mix(r, rockColor[0], t);
+        g = mix(g, rockColor[1], t);
+        b = mix(b, rockColor[2], t);
       }
 
-      // 石路：石块铺在格子坐标上，边缘按像素距离淡出。
-      const weight = Math.max(0, Math.min(1, mask[py * width + px] * 2.2));
+      for (const entry of yards) {
+        const dx = x - entry.x;
+        const dz = z - entry.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance > entry.radius * 1.5) continue;
+        const wobble =
+          valueNoise(entry.x * 0.6 + dx * 0.8, entry.z * 0.6 + dz * 0.8) * 0.6 +
+          valueNoise(entry.x * 1.7 + dx * 2.1, entry.z * 1.7 + dz * 2.1) * 0.3;
+        const radius = entry.radius * (0.74 + wobble * 0.62);
+        if (distance > radius) continue;
+        cellYard[index] = Math.max(cellYard[index], Math.min(1, (radius - distance) / 0.55));
+      }
+
+      cellColor[index * 3] = r;
+      cellColor[index * 3 + 1] = g;
+      cellColor[index * 3 + 2] = b;
+    }
+  }
+
+  // 道路遮罩在格子分辨率上模糊，按像素双线性采样。
+  let cellMask = new Float32Array(cellW * cellH);
+  for (let cz = 0; cz < cellH; cz += 1) {
+    for (let cx = 0; cx < cellW; cx += 1) {
+      const surface = navGrid.surfaceAtXZ(Math.round((cx + 0.5) * cellSize), Math.round((cz + 0.5) * cellSize));
+      cellMask[cz * cellW + cx] = surface === Surface.Road || surface === Surface.Bridge ? 1 : 0;
+    }
+  }
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = new Float32Array(cellMask.length);
+    for (let cz = 0; cz < cellH; cz += 1) {
+      for (let cx = 0; cx < cellW; cx += 1) {
+        let sum = 0;
+        let count = 0;
+        for (let dz = -1; dz <= 1; dz += 1) {
+          const nz = cz + dz;
+          if (nz < 0 || nz >= cellH) continue;
+          for (let dx = -1; dx <= 1; dx += 1) {
+            const nx = cx + dx;
+            if (nx < 0 || nx >= cellW) continue;
+            sum += cellMask[nz * cellW + nx];
+            count += 1;
+          }
+        }
+        next[cz * cellW + cx] = sum / count;
+      }
+    }
+    cellMask = next;
+  }
+
+  const sampleBilinear = (source: Float32Array, stride: number, xm: number, zm: number, channel = 0): number => {
+    const fx = (xm + widthMeters / 2) / cellMeters - 0.5;
+    const fz = (zm + depthMeters / 2) / cellMeters - 0.5;
+    const x0 = Math.max(0, Math.min(cellW - 1, Math.floor(fx)));
+    const z0 = Math.max(0, Math.min(cellH - 1, Math.floor(fz)));
+    const x1 = Math.min(cellW - 1, x0 + 1);
+    const z1 = Math.min(cellH - 1, z0 + 1);
+    const tx = Math.max(0, Math.min(1, fx - x0));
+    const tz = Math.max(0, Math.min(1, fz - z0));
+    const a = source[(z0 * cellW + x0) * stride + channel];
+    const b = source[(z0 * cellW + x1) * stride + channel];
+    const c = source[(z1 * cellW + x0) * stride + channel];
+    const d = source[(z1 * cellW + x1) * stride + channel];
+    return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
+  };
+
+  for (let py = 0; py < height; py += 1) {
+    const z = (py + 0.5) / perMeter - depthMeters / 2;
+    for (let px = 0; px < width; px += 1) {
+      const x = (px + 0.5) / perMeter - widthMeters / 2;
+      let r = sampleBilinear(cellColor, 3, x, z, 0);
+      let g = sampleBilinear(cellColor, 3, x, z, 1);
+      let b = sampleBilinear(cellColor, 3, x, z, 2);
+
+      const weight = Math.max(0, Math.min(1, sampleBilinear(cellMask, 1, x, z) * 1.6));
       if (weight > 0.01) {
         const stone = 0.62;
         const sx = Math.floor(x / stone);
@@ -177,30 +203,30 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
         const fx = x / stone - sx;
         const fz = z / stone - sz;
         const jitter = hash2(sx, sz);
-        const wobble = (valueNoise(x / 0.35, z / 0.35) - 0.5) * 0.08;
-        const edge = Math.min(fx, fz, 1 - fx, 1 - fz) + wobble;
+        const edge = Math.min(fx, fz, 1 - fx, 1 - fz);
         const mortar = edge < 0.05 ? 0.42 : edge < 0.11 ? 0.74 : 1;
         const shade = 0.78 + jitter * 0.38;
-        const grit = valueNoise(x / 1.1, z / 1.1) * 0.22;
-        const roadR = 188 * shade * mortar * (0.84 + grit);
-        const roadG = 176 * shade * mortar * (0.84 + grit);
-        const roadB = 154 * shade * mortar * (0.84 + grit);
-        r = mixChannel(r, roadR, weight);
-        g = mixChannel(g, roadG, weight);
-        b = mixChannel(b, roadB, weight);
+        const grit = hash2(px, py) * 0.18;
+        r = mix(r, 188 * shade * mortar * (0.84 + grit), weight);
+        g = mix(g, 176 * shade * mortar * (0.84 + grit), weight);
+        b = mix(b, 154 * shade * mortar * (0.84 + grit), weight);
       }
 
-      if (yard > 0) {
-        const grit = valueNoise(x / 0.8, z / 0.8) * 0.16;
-        r = mixChannel(r, 122 * (0.88 + grit), yard);
-        g = mixChannel(g, 108 * (0.88 + grit), yard);
-        b = mixChannel(b, 84 * (0.88 + grit), yard);
+      // 院落压在路面之上：据点那一圈泥地不会被石路盖住。
+      const yard = Math.max(0, Math.min(1, sampleBilinear(cellYard, 1, x, z)));
+      if (yard > 0.01) {
+        const grit = hash2(px * 7 + 11, py * 13 + 5) * 0.14;
+        r = mix(r, 122 * (0.88 + grit), yard);
+        g = mix(g, 108 * (0.88 + grit), yard);
+        b = mix(b, 84 * (0.88 + grit), yard);
       }
 
+      // 一格一米的底色插值后很平滑，加一点逐像素噪点找回颗粒感。
+      const grain = (hash2(px * 3 + 7, py * 5 + 13) - 0.5) * 9;
       const index = (py * width + px) * 4;
-      data[index] = r;
-      data[index + 1] = g;
-      data[index + 2] = b;
+      data[index] = r + grain;
+      data[index + 1] = g + grain;
+      data[index + 2] = b + grain;
       data[index + 3] = 255;
     }
   }
