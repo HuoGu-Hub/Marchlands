@@ -4,6 +4,7 @@ import type { CityId, MapDef, SimState, SquadState } from "@marchlands/sim";
 interface CityProjection {
   projectCity(id: CityId): { x: number; y: number } | null;
   projectGround(xDm: number, zDm: number, height?: number): { x: number; y: number } | null;
+  groundHeight?(xDm: number, zDm: number): number;
 }
 
 interface ScreenPoint {
@@ -154,6 +155,7 @@ export class RouteOverlay {
   private readonly panelRefs: Record<string, HTMLElement> = {};
   private plan: PlannedAssignment[] = [];
   private dragArrows: DragArrowView[] = [];
+  private previewRoute: Array<[number, number]> = [];
   private width = 0;
   private height = 0;
   private pixelRatio = 0;
@@ -224,6 +226,11 @@ export class RouteOverlay {
     this.dragArrows = views ? views.slice() : [];
   }
 
+  /** 选中建筑后单点目的地时的预览路线，点为单位的地图坐标。 */
+  setPreviewRoute(points: ReadonlyArray<readonly [number, number]> | null): void {
+    this.previewRoute = points ? points.map(([x, z]) => [x, z] as [number, number]) : [];
+  }
+
   setPlan(assignments: readonly PlannedAssignment[]): void {
     this.plan = assignments.map((group) => ({
       sources: group.sources.slice(),
@@ -282,6 +289,7 @@ export class RouteOverlay {
     if (!selected) {
       this.setPanel(null, state);
       this.drawPlan();
+      this.drawPreviewRoute();
       this.drawDragArrow();
       return;
     }
@@ -290,6 +298,7 @@ export class RouteOverlay {
     this.drawOwnSquadDot(selected, state);
     this.setPanel(selected, state);
     this.drawPlan();
+    this.drawPreviewRoute();
     this.drawDragArrow();
   }
 
@@ -407,6 +416,19 @@ export class RouteOverlay {
       { x: point.x - this.rect.left, y: point.y - this.rect.top },
       selected ? "rgba(133,226,157,.95)" : "rgba(133,226,157,.55)",
     );
+  }
+
+  private drawPreviewRoute(): void {
+    if (this.previewRoute.length < 2) return;
+    const points: ScreenPoint[] = [];
+    for (const [x, z] of this.previewRoute) {
+      const height = this.scene.groundHeight ? this.scene.groundHeight(x, z) + 0.12 : 0.2;
+      const point = this.scene.projectGround(x, z, height);
+      if (point) points.push(point);
+    }
+    if (points.length < 2) return;
+    this.stroke(points, "rgba(126,201,139,.85)", 2.5, [7, 6]);
+    this.diamond(points[points.length - 1], "rgba(126,201,139,.95)");
   }
 
   private drawRoutes(squad: SquadState, state: SimState): void {

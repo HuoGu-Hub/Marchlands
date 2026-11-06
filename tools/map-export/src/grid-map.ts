@@ -320,15 +320,15 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
       const bottomZ = centerZ + dirZ * bottomStart;
       const bottomHeight = heights[Math.round(bottomZ) * cols + Math.round(bottomX)] ?? 0;
       const rise = Math.abs(topHeight - bottomHeight);
-      const steps = Math.max(4, Math.ceil(rise / 38));
+      const steps = Math.max(4, Math.ceil(rise / 25));
       const runLength = Math.hypot(topX - bottomX, topZ - bottomZ);
       const totalSteps = Math.max(steps, Math.ceil(runLength));
       let previous = bottomHeight;
       for (let step = 0; step <= totalSteps; step += 1) {
         const t = step / totalSteps;
         const target = bottomHeight + (topHeight - bottomHeight) * t;
-        // 每一格最多爬 38 厘米，接缝处不会留下迈不上去的台。
-        const tall = previous + Math.max(-38, Math.min(38, target - previous));
+        // 每一格最多爬 25 厘米，精锐战士（260‰）也上得去。
+        const tall = previous + Math.max(-25, Math.min(25, target - previous));
         previous = tall;
         const px = bottomX + (topX - bottomX) * t;
         const pz = bottomZ + (topZ - bottomZ) * t;
