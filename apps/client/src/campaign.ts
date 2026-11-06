@@ -19,15 +19,16 @@ export const CAMPAIGN: SeriesDef[] = [
     title: "边境线",
     levels: [
       {
-        mapId: "frontier01",
-        title: "Frontier 01",
+        mapId: "highland01",
+        title: "岩脊高地",
         blurb:
-          "三十二座产兵据点铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
+          "二十六座产兵据点散落在起伏的岩台上，台地边缘是爬不上去的岩壁，只有坡道能上。抢占台顶就能俯瞰整片谷地。",
       },
       {
-        mapId: "highland01",
-        title: "Highland 01",
-        blurb: "岩脊高地：三十一座据点散落在起伏的岩台上，碎石路顺着坡道上下，站住高处就能看清整片谷地。",
+        mapId: "frontier01",
+        title: "边境线",
+        blurb:
+          "三十六座产兵据点铺成一张大边地图。道路被中立据点截断时，兵团不能借道；先拿下挡路的城，或者找绕城的连续道路。",
       },
     ],
   },
