@@ -1,4 +1,5 @@
 import type { Level, MapCity, MapDef, MapEdge, Owner, SiteKind, Stance } from "@marchlands/sim";
+import { toGridMap } from "./grid-map";
 import { withMageSites } from "./mage-sites";
 
 interface SiteSeed {
@@ -126,7 +127,7 @@ export function buildCrossroads01(): MapDef {
     return { from, to, length: Math.round(Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])) };
   });
 
-  return withMageSites({
+  return toGridMap(withMageSites({
     schema: 1,
     slug: "crossroads01",
     name: "Crossroads 01",
@@ -144,5 +145,5 @@ export function buildCrossroads01(): MapDef {
       { type: "capture_all" },
       { type: "time_limit", ticks: 18000 },
     ],
-  });
+  }), { stables: 2 });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RULESET, isProductionSiteKind } from "@marchlands/sim";
+import { DEFAULT_RULESET, isProductionSiteKind, mapHashOf } from "@marchlands/sim";
 import { loadContent } from "../src/node";
 import { ContentError, validateContent, validateMap, validateRules } from "../src";
 import type { MapCity, MapDef } from "@marchlands/sim";
@@ -7,14 +7,15 @@ import type { MapCity, MapDef } from "@marchlands/sim";
 describe("forest01", () => {
   const { map, rules } = loadContent();
 
-  it("loads nine producing sites, two granaries and two outposts", () => {
-    expect(map.cities).toHaveLength(13);
-    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(9);
+  it("loads eleven producing sites, two granaries and two outposts", () => {
+    expect(map.cities).toHaveLength(15);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(11);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(2);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(2);
     expect(map.cities.filter((city) => city.kind === "mage")).toHaveLength(2);
+    expect(map.cities.filter((city) => city.kind === "cavalry")).toHaveLength(2);
     expect(map.players).toHaveLength(2);
-    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(11);
+    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(13);
     expect(map.edges).toHaveLength(20);
     expect(map.cities.every((city) => city.layer === 0)).toBe(true);
   });
@@ -86,13 +87,14 @@ describe("forest01", () => {
 describe("crossroads01", () => {
   const { map, rules } = loadContent("maps/crossroads01.json");
 
-  it("loads twenty-two sites with fourteen producing sites", () => {
-    expect(map.cities).toHaveLength(22);
-    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(14);
+  it("loads twenty-four sites with sixteen producing sites", () => {
+    expect(map.cities).toHaveLength(24);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(16);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "mage")).toHaveLength(2);
-    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(20);
+    expect(map.cities.filter((city) => city.kind === "cavalry")).toHaveLength(2);
+    expect(map.cities.filter((city) => city.owner === 0)).toHaveLength(22);
     expect(map.players).toHaveLength(2);
     expect(map.edges).toHaveLength(35);
     expect(map.cities.every((city) => city.layer === 0)).toBe(true);
@@ -120,6 +122,17 @@ describe("crossroads01", () => {
   });
 });
 
+/** 网格地图带内容哈希，测试里改完地图要重算，否则会先报哈希不匹配。 */
+function rehash(map: MapDef): MapDef {
+  return { ...map, mapHash: mapHashOf(map) };
+}
+
+/** 连通性和叶子据点这类规则只属于据点图，网格地图按网格判断可达性。 */
+function asGraphMap(source: MapDef): MapDef {
+  const { grid: _grid, mapHash: _hash, navigation: _nav, ...rest } = source;
+  return { ...rest, schema: 1 } as MapDef;
+}
+
 describe("validation", () => {
   const { map, rules } = loadContent();
 
@@ -128,14 +141,15 @@ describe("validation", () => {
       ...map,
       cities: [...map.cities, { ...map.cities[0] }],
     };
-    expect(() => validateMap(broken)).toThrow(ContentError);
+    expect(() => validateMap(rehash(broken))).toThrow(ContentError);
   });
 
   it("rejects a disconnected graph", () => {
-    const towns = map.cities.filter((city) => isProductionSiteKind(city.kind));
+    const graph = asGraphMap(map);
+    const towns = graph.cities.filter((city) => isProductionSiteKind(city.kind));
     const ids = new Set(towns.map((city) => city.id));
-    const townEdges = map.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
-    const broken: MapDef = { ...map, cities: towns, edges: [townEdges[0], townEdges[3]] };
+    const townEdges = graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
+    const broken: MapDef = { ...graph, cities: towns, edges: [townEdges[0], townEdges[3]] };
     expect(() => validateMap(broken)).toThrow(/not connected/);
   });
 
@@ -144,21 +158,22 @@ describe("validation", () => {
       ...map,
       edges: map.edges.map((edge, index) => (index === 0 ? { ...edge, length: 999 } : edge)),
     };
-    expect(() => validateMap(broken)).toThrow(/does not match positions/);
+    expect(() => validateMap(rehash(broken))).toThrow(/does not match positions/);
   });
 
   it("rejects a duplicate edge", () => {
     const first = map.edges[0];
     const broken: MapDef = { ...map, edges: [...map.edges, { ...first, from: first.to, to: first.from }] };
-    expect(() => validateMap(broken)).toThrow(/duplicated/);
+    expect(() => validateMap(rehash(broken))).toThrow(/duplicated/);
   });
 
   it("rejects a building with more than one road", () => {
-    const granary = map.cities.find((city) => city.kind === "granary");
+    const graph = asGraphMap(map);
+    const granary = graph.cities.find((city) => city.kind === "granary");
     if (!granary) throw new Error("missing granary");
     const broken: MapDef = {
-      ...map,
-      edges: [...map.edges, { from: granary.id, to: "c1", length: 63 }],
+      ...graph,
+      edges: [...graph.edges, { from: granary.id, to: "c1", length: 63 }],
     };
     expect(() => validateMap(broken)).toThrow(/must be a leaf site/);
   });
@@ -170,7 +185,7 @@ describe("validation", () => {
         city.id === "o1" ? ({ ...city, watch: undefined } as MapCity) : city,
       ),
     };
-    expect(() => validateMap(broken)).toThrow(/watch must be/);
+    expect(() => validateMap(rehash(broken))).toThrow(/watch must be/);
   });
 
   it("rejects an outpost watching a road that does not exist", () => {
@@ -180,7 +195,7 @@ describe("validation", () => {
         city.id === "o1" ? ({ ...city, watch: ["c1", "c2"] } as MapCity) : city,
       ),
     };
-    expect(() => validateMap(broken)).toThrow(/watch edge not found/);
+    expect(() => validateMap(rehash(broken))).toThrow(/watch edge not found/);
   });
 
   it("rejects a building with a town level", () => {
@@ -190,7 +205,7 @@ describe("validation", () => {
         city.id === "g1" ? ({ ...city, level: 2 } as MapCity) : city,
       ),
     };
-    expect(() => validateMap(broken)).toThrow(/level must be 1/);
+    expect(() => validateMap(rehash(broken))).toThrow(/level must be 1/);
   });
 
   it("rejects missing granary and outpost rules", () => {
@@ -227,19 +242,20 @@ describe("validation", () => {
         city.id === "g1" ? ({ ...city, pop: rules.granary.capacity + 1 } as MapCity) : city,
       ),
     };
-    expect(() => validateContent(broken, rules)).toThrow(/granary capacity/);
+    expect(() => validateContent(rehash(broken), rules)).toThrow(/granary capacity/);
   });
 });
 
 describe("frontier01", () => {
   const { map } = loadContent("maps/frontier01.json");
 
-  it("builds a forty-two-site frontier with thirty-four producing sites", () => {
-    expect(map.cities).toHaveLength(42);
-    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(34);
+  it("builds a forty-four-site frontier with thirty-six producing sites", () => {
+    expect(map.cities).toHaveLength(44);
+    expect(map.cities.filter((city) => isProductionSiteKind(city.kind))).toHaveLength(36);
     expect(map.cities.filter((city) => city.kind === "granary")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "outpost")).toHaveLength(4);
     expect(map.cities.filter((city) => city.kind === "mage")).toHaveLength(2);
+    expect(map.cities.filter((city) => city.kind === "cavalry")).toHaveLength(2);
     expect(map.edges).toHaveLength(79);
   });
 

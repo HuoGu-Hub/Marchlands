@@ -48,7 +48,8 @@ describe("self play", () => {
     const base = runMatch(map, rules, 1).state;
     const flipped = runMatch(mirrored, rules, 1).state;
     const mirroredWinner = base.winner === 1 ? 2 : base.winner === 2 ? 1 : 0;
-    expect(base.finishReason).toBe("eliminated");
+    // 网格地图上结束方式可能是占满也可能是歼灭，这里只要求是决定性的结束。
+    expect(["capture_all", "eliminated"]).toContain(base.finishReason);
     expect(flipped.winner).toBe(mirroredWinner);
     // 结束原因取决于当时还剩不剩中立据点，这里只要求它是决定性的胜负。
     expect(["capture_all", "eliminated"]).toContain(flipped.finishReason);

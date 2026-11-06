@@ -1,4 +1,5 @@
 import type { Level, MapCity, MapDef, MapEdge, Owner, SiteKind, Stance } from "@marchlands/sim";
+import { toGridMap } from "./grid-map";
 import { withMageSites } from "./mage-sites";
 
 export interface TerrainMapRecipe {
@@ -231,7 +232,7 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
     ...(site.watch ? { watch: site.watch } : {}),
   }));
 
-  return withMageSites({
+  return toGridMap(withMageSites({
     schema: 1,
     slug: recipe.slug,
     name: recipe.name,
@@ -246,7 +247,7 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
     cities,
     edges,
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
-  });
+  }), { stables: 2 });
 }
 
 export const TERRAIN_MAP_RECIPES: TerrainMapRecipe[] = [
