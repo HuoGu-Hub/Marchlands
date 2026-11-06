@@ -909,11 +909,12 @@ function islandRim(
     let bermNoise = 0.58;
     let depthScale = 0.82 + valueNoise(cos * 1.6 + shift, sin * 1.6, seed + 307) * 0.34;
     if (shape === "plateau") {
-      // 台地地基铺满整张图，边缘只留一圈很窄的收边。
-      base = support + 1.6;
-      radiusScale = 1 + fine * 0.015;
-      bermBase = 0.05;
-      bermNoise = 0.1;
+      // 台地地基铺满整张图：侧壁顶端必须和地形边缘完全重合，
+      // 否则两者之间会露出一道缝，从固定的预览机位看就是一条白边。
+      base = support;
+      radiusScale = 1;
+      bermBase = 0.02;
+      bermNoise = 0.04;
       depthScale = 1;
     } else if (shape === "mesa") {
       base = support + 4 + broad * 2.2;
