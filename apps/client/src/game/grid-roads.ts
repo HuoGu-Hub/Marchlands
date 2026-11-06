@@ -60,6 +60,10 @@ export function buildGridRoadMesh(options: GridRoadOptions): THREE.Group {
     expand: number,
     y: number,
   ): void => {
+    // 相邻格会叠一点点边，共面重叠会 z-fighting 出深浅不一的方块，
+    // 给每格加一个毫米级的错位，图层顺序就稳定了。
+    const jitter = (((cellX * 73856093) ^ (cellZ * 19349663)) & 7) * 0.0006;
+    y += jitter;
     const x0 = cellX * cellMeters - halfX - expand;
     const x1 = (cellX + 1) * cellMeters - halfX + expand;
     const z0 = cellZ * cellMeters - halfZ - expand;
@@ -79,8 +83,8 @@ export function buildGridRoadMesh(options: GridRoadOptions): THREE.Group {
     target.indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
   };
 
-  // 每格向外铺半格：斜向的路段连成一条粗带，不会有锯齿状的孤立格。
-  const expand = cellMeters * 0.45;
+  // 每格只向外扩 0.22 格：刚好补上斜向相邻格之间的缺口，不会叠太多。
+  const expand = cellMeters * 0.22;
   for (let z = 0; z < grid.height; z += 1) {
     for (let x = 0; x < grid.width; x += 1) {
       if (!isRoad(x, z)) continue;
