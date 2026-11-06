@@ -10,11 +10,9 @@ import {
   applyGridBrush,
   cloneDocument,
   compileDocument,
-  connect,
   convertToGrid,
   createGridDocument,
   createStarterDocument,
-  disconnect,
   documentBounds,
   documentLabel,
   duplicateFoundation,
@@ -410,7 +408,6 @@ export class EditorController {
   private foundationResize: FoundationResizeState | null = null;
   private foundationFloatElevation = 12;
   private validationTimer = 0;
-  private paletteMode: "site" | "foundation" | "terrain" | "decor" = "site";
 
   private canvas!: HTMLCanvasElement;
   private overlay!: HTMLCanvasElement;
@@ -758,7 +755,6 @@ export class EditorController {
   }
 
   private setPaletteMode(mode: "site" | "foundation" | "terrain" | "decor"): void {
-    this.paletteMode = mode;
     for (const button of this.options.root.querySelectorAll<HTMLElement>("[data-mode]")) {
       button.classList.toggle("active", button.dataset.mode === mode);
     }

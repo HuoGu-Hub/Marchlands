@@ -1036,7 +1036,6 @@ function resolveGridOutposts(state: SimState, events: SimEvent[], removed: Set<s
 
 const SQUAD_COMBAT_COLUMNS = 3;
 const SQUAD_COMBAT_ROW_CM = 68;
-const SQUAD_DISENGAGE_CM = 480;
 /** 脱离交战的余量：双方射程之外再留一段，避免边界上来回抖。 */
 const SQUAD_DISENGAGE_MARGIN_CM = 160;
 

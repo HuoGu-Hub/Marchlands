@@ -55,7 +55,6 @@ class HeightTestScene {
   private zoom = 1;
   private elapsed = 0;
   private last = 0;
-  private raf = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -82,7 +81,7 @@ class HeightTestScene {
     window.addEventListener("keydown", this.onKeyDown);
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.last = performance.now();
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   }
 
   private buildLights(): void {
@@ -252,7 +251,7 @@ class HeightTestScene {
     }
 
     this.renderer.render(this.scene, this.camera);
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {

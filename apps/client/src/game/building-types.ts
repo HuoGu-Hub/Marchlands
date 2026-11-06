@@ -4,9 +4,6 @@ import {
   PLASTERS,
   ModelBuilder,
   STONE,
-  STONE_DARK,
-  STONE_LIGHT,
-  TIMBER,
   archShape,
   gableEnd,
   material,
@@ -16,7 +13,6 @@ import {
 } from "./building-kit";
 import type { TeamPalette } from "./building-kit";
 import {
-  BURLAP_MAT,
   DARK_MAT,
   GLOW_MAT,
   GOLD_MAT,
@@ -28,13 +24,10 @@ import {
   STONE_MAT,
   TIMBER_MAT,
   WATER_MAT,
-  anvil,
   archDoor,
   barrel,
-  bench,
   cart,
   clothMat,
-  coalPile,
   crate,
   doorRect,
   edgeMat,
@@ -121,9 +114,6 @@ export const BUILDING_SPECS: Record<BuildingKind, BuildingSpec> = {
   mine: { footprint: 1.6, height: 2.8 },
 };
 
-export function buildingFootprint(kind: BuildingKind, level: BuildingLevel): number {
-  return BUILDING_SPECS[kind].footprint * (0.82 + level * 0.06);
-}
 
 function levelOf(value: number): BuildingLevel {
   if (value <= 1) return 1;
@@ -237,10 +227,6 @@ function rock(builder: ModelBuilder, x: number, y: number, z: number, sx: number
   );
 }
 
-function stoneYard(builder: ModelBuilder, width: number, depth: number, height = 0.34): void {
-  builder.box([width, height, depth], STONE_MAT, 0, height / 2, 0);
-  builder.box([width + 0.08, 0.06, depth + 0.08], STONE_LIGHT_MAT, 0, height + 0.03, 0);
-}
 
 function buildInfantry(palette: TeamPalette, level: BuildingLevel, variant: number): THREE.Group {
   const builder = new ModelBuilder();

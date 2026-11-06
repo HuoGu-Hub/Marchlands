@@ -1,4 +1,4 @@
-import { isProductionSiteKind, siteUnitKind } from "@marchlands/sim";
+import { siteUnitKind } from "@marchlands/sim";
 import type { SiteKind, UnitKind } from "@marchlands/sim";
 import type { BuildingKind } from "./building-types";
 
@@ -45,6 +45,3 @@ export function producingUnitKind(kind: SiteKind): UnitKind | null {
   return siteUnitKind(kind);
 }
 
-export function isProducing(kind: SiteKind): boolean {
-  return isProductionSiteKind(kind);
-}

@@ -1,14 +1,48 @@
+# 依赖与构建产物
 node_modules/
 dist/
 .turbo/
-*.log
-.work/
-tools/harness/out/
+*.tsbuildinfo
+
+# 应用构建
 apps/client/dist/
 apps/client/.package/
+tools/harness/out/
+
+# 发布与素材工作区
 release/
+resource/
+.work/
+
+# 测试产物
 test-results/
 playwright-report/
+coverage/
+
+# 本地压缩包与临时文件
 *.rar
 *.7z
-resource/
+*.zip
+*.log
+smoke.json
+*.tmp
+*.local
+
+# 打包工具误生成的绝对路径目录
+%SystemDrive%/
+NVIDIA Corporation/
+
+# Python 工具缓存
+__pycache__/
+*.py[cod]
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 环境变量
+.env
+.env.*
+!.env.example

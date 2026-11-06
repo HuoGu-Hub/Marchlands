@@ -362,30 +362,6 @@ function torus(
   builder.add(geometry, material, new THREE.Vector3(x, y, z), quaternion);
 }
 
-function roundedPanel(
-  builder: ModelBuilder,
-  width: number,
-  height: number,
-  material: THREE.Material,
-  x: number,
-  y: number,
-  z: number,
-): void {
-  const shape = new THREE.Shape();
-  const w = width / 2;
-  const h = height / 2;
-  shape.moveTo(-w + 0.02, -h);
-  shape.quadraticCurveTo(-w, -h, -w, -h + 0.02);
-  shape.lineTo(-w, h - 0.02);
-  shape.quadraticCurveTo(-w, h, -w + 0.02, h);
-  shape.lineTo(w - 0.02, h);
-  shape.quadraticCurveTo(w, h, w, h - 0.02);
-  shape.lineTo(w, -h + 0.02);
-  shape.quadraticCurveTo(w, -h, w - 0.02, -h);
-  shape.closePath();
-  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false });
-  builder.add(geometry, material, new THREE.Vector3(x, y, z));
-}
 
 function texturedPanel(
   builder: ModelBuilder,

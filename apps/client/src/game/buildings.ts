@@ -1,11 +1,7 @@
 import * as THREE from "three";
 import {
   ModelBuilder,
-  STONE,
-  STONE_DARK,
-  STONE_LIGHT,
   TEAM_PALETTES,
-  TIMBER_DARK,
   archShape,
   bannerShape,
   flagShape,
@@ -16,18 +12,11 @@ import {
   DARK_MAT,
   IRON_MAT,
   STONE_DARK_MAT,
-  STONE_LIGHT_MAT,
   STONE_MAT,
   TIMBER_MAT,
-  WATER_MAT,
-  archDoor,
   barrel,
-  cart,
   clothMat,
   crate,
-  edgeMat,
-  lamp,
-  roofMat,
   sack,
 } from "./building-props";
 import { buildBuilding } from "./building-types";

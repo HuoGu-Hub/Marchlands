@@ -50,8 +50,6 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
   private readonly actions = new Map<string, THREE.AnimationAction>();
   private current: THREE.AnimationAction | null = null;
   private attackAction: THREE.AnimationAction | null = null;
-  /** 一直叠加播放的第二条动作轨，骑兵用它保持骑乘姿势。 */
-  private overlay: THREE.AnimationAction | null = null;
   private moving = false;
   /** 每个小兵自己的播放速度，让同一队列的动作逐渐错开。 */
   private timeScale = 1;
@@ -79,7 +77,6 @@ export class GlbUnitActor extends THREE.Group implements UnitActorView {
       if (!name.endsWith("ride")) continue;
       action.setEffectiveWeight(1);
       action.play();
-      this.overlay = action;
       break;
     }
     // 剪辑顺序不固定，优先播放待机，避免一进场就循环挥击。

@@ -62,10 +62,6 @@ export function unitSkinAssetId(key: string): string {
   return `builtin:unit.${key}`;
 }
 
-export function unitSkinByKey(key: string | undefined): UnitSkinDef | null {
-  if (!key) return null;
-  return ALL_UNIT_SKINS.find((skin) => skin.key === key) ?? null;
-}
 
 /** 皮肤能否装到这个兵种：未声明属性的一律放行，声明了就必须完全一致。 */
 export function skinFitsKind(skin: UnitSkinDef, kind: UnitSkinKind): boolean {

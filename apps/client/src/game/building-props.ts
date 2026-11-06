@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import {
-  BARN,
   GLOW,
   HAY,
   IRON,
@@ -309,13 +308,3 @@ export function bench(builder: ModelBuilder, x: number, z: number, rotY = 0): vo
   }
 }
 
-export function well(builder: ModelBuilder, x: number, z: number): void {
-  builder.cylinder(0.3, 0.33, 0.26, 10, STONE_DARK_MAT, x, 0.13, z);
-  builder.cylinder(0.23, 0.23, 0.27, 10, material(0x171310), x, 0.14, z);
-  for (const side of [-0.3, 0.3]) {
-    builder.box([0.05, 0.56, 0.05], TIMBER_MAT, x + side, 0.45, z);
-  }
-  builder.box([0.78, 0.045, 0.05], TIMBER_MAT, x, 0.71, z);
-  builder.box([0.86, 0.06, 0.74], roofMat({ ...TEAM_PALETTES[0] } as TeamPalette, 0.9), x, 0.78, z, 0.56, 0, 0);
-  builder.cylinder(0.015, 0.015, 0.14, 5, IRON_MAT, x + 0.22, 0.66, z);
-}

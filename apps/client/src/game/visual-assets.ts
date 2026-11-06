@@ -412,7 +412,6 @@ function buildRuin(seed: number, palette: TerrainPalette): THREE.Group {
 }
 
 function buildCamp(seed: number, palette: TerrainPalette): THREE.Group {
-  const random = seeded(seed);
   const group = new THREE.Group();
   const cloth = material(0x9a6a4a);
   const clothLight = material(0xb9855e);

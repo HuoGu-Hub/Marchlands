@@ -39,7 +39,6 @@ class LabScene {
   private zoom = 1;
   private last = 0;
   private elapsed = 0;
-  private raf = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -59,7 +58,7 @@ class LabScene {
 
   start(): void {
     this.last = performance.now();
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   }
 
   private build(): void {
@@ -209,7 +208,7 @@ class LabScene {
     );
     this.camera.lookAt(2, 3, 0);
     this.renderer.render(this.scene, this.camera);
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {

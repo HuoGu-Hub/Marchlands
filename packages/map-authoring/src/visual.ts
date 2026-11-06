@@ -20,15 +20,6 @@ interface Point {
   radius: number;
 }
 
-const TERRAIN_FEATURES = [
-  "builtin:terrain.hill",
-  "builtin:terrain.ridge",
-  "builtin:terrain.grove",
-  "builtin:terrain.pond",
-  "builtin:terrain.field",
-  "builtin:terrain.ruin",
-];
-
 const TREES = [
   "builtin:prop.tree.pine-tall",
   "builtin:prop.tree.oak",

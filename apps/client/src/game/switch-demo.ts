@@ -38,7 +38,6 @@ class SwitchDemo {
   private index = 0;
   private paused = false;
   private last = 0;
-  private raf = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -88,7 +87,7 @@ class SwitchDemo {
     window.addEventListener("keydown", this.onKeyDown);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.last = performance.now();
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   }
 
   private makeLabel(name: string, level: string): THREE.Sprite {
@@ -163,7 +162,7 @@ class SwitchDemo {
       if (this.timer >= STEP_MS) this.advance();
     }
     this.renderer.render(this.scene, this.camera);
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {

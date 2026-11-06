@@ -286,7 +286,6 @@ export class EditorNext {
     startCell: [number, number];
     changed: boolean;
   } | null = null;
-  private brushRing: THREE.Mesh | null = null;
   private pointer: { x: number; y: number; ground: [number, number] | null } = { x: 0, y: 0, ground: null };
   private resizeObserver: ResizeObserver | null = null;
   private toastTimer = 0;

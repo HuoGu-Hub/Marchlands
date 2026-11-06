@@ -348,6 +348,3 @@ export function roofTileTexture(): THREE.CanvasTexture {
   return texture;
 }
 
-export function disposableSharedMaterial(mat: THREE.Material): boolean {
-  return mat.userData.shared === true;
-}

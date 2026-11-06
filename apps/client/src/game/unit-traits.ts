@@ -27,15 +27,3 @@ export function traitTags(traits: UnitTraits): string[] {
   return TRAIT_FIELDS.filter((field) => traits[field]).map((field) => TRAIT_LABELS[field]);
 }
 
-/** 校验外部传入的属性对象，缺字段或类型不对返回 null。 */
-export function parseTraits(value: unknown): UnitTraits | null {
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  const read = (key: string): boolean | null =>
-    typeof record[key] === "boolean" ? (record[key] as boolean) : null;
-  const river = read("river");
-  const flying = read("flying");
-  const ranged = read("ranged");
-  if (river === null || flying === null || ranged === null) return null;
-  return { river, flying, ranged };
-}

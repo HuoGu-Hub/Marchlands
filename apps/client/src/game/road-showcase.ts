@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ROAD_KINDS, ROAD_NAMES, buildRoad } from "./road-kit";
+import { ROAD_NAMES, buildRoad } from "./road-kit";
 import type { RoadKind } from "./road-kit";
 
 const PITCH = (45 * Math.PI) / 180;
@@ -63,7 +63,6 @@ class RoadShowcase {
   private yaw = 0.35;
   private targetYaw = 0.35;
   private zoom = 1;
-  private raf = 0;
   private last = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -88,7 +87,7 @@ class RoadShowcase {
     window.addEventListener("keydown", this.onKeyDown);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.last = performance.now();
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   }
 
   private build(): void {
@@ -131,7 +130,7 @@ class RoadShowcase {
     );
     this.camera.lookAt(TARGET);
     this.renderer.render(this.scene, this.camera);
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {

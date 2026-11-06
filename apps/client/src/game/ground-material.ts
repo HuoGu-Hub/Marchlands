@@ -58,4 +58,3 @@ export function groundMaterial(name: string | undefined): THREE.MeshStandardMate
   return material;
 }
 
-export const GROUND_MATERIALS = ["rocks007", "ground068", "snow014"] as const;

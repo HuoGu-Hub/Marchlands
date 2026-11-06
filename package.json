@@ -2,6 +2,13 @@
   "name": "marchlands",
   "version": "0.1.0",
   "private": true,
+  "description": "3D 领地争夺游戏，Three.js 客户端与确定性 TypeScript 模拟核心",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HuoGu-Hub/Marchlands.git"
+  },
+  "homepage": "https://github.com/HuoGu-Hub/Marchlands#readme",
   "packageManager": "pnpm@11.17.0",
   "engines": {
     "node": ">=20"

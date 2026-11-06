@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { paletteFor } from "./buildings";
 import { UNIT_DESCRIPTIONS, UNIT_KINDS, UNIT_NAMES } from "./unit-models";
-import type { UnitKind } from "./unit-models";
 import { UnitActor } from "./unit-actor";
 
 const PITCH = (27 * Math.PI) / 180;
@@ -66,7 +65,6 @@ class UnitGallery {
   private yaw = 0;
   private targetYaw = 0;
   private zoom = 1;
-  private raf = 0;
   private last = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -94,7 +92,7 @@ class UnitGallery {
     window.addEventListener("keydown", this.onKeyDown);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.last = performance.now();
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   }
 
   private build(): void {
@@ -172,7 +170,7 @@ class UnitGallery {
     this.camera.lookAt(TARGET);
     for (const actor of this.actors) actor.update(delta);
     this.renderer.render(this.scene, this.camera);
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {

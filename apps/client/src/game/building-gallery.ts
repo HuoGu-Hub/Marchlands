@@ -9,7 +9,6 @@ const TARGET = new THREE.Vector3(0, 1.2, 0);
 const COLUMNS = [-3.7, 0, 3.7];
 const ROWS = [-7.5, -2.5, 2.5, 7.5];
 const TEAM_NAMES = ["中立", "绿方", "红方"];
-const TEAM_COLORS = ["#c2bcaa", "#8ed9a0", "#ef9278"];
 
 const GROUPS: Array<{ kinds: BuildingKind[]; title: string }> = [
   { kinds: ["barbarian", "warrior", "ranger", "archer"], title: "兵营一组" },
@@ -75,7 +74,6 @@ class BuildingGallery {
   private yaw = 0;
   private targetYaw = 0;
   private zoom = 1;
-  private raf = 0;
   private last = 0;
 
   constructor(
@@ -104,7 +102,7 @@ class BuildingGallery {
     window.addEventListener("keydown", this.onKeyDown);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.last = performance.now();
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   }
 
   private build(): void {
@@ -191,7 +189,7 @@ class BuildingGallery {
     );
     this.camera.lookAt(TARGET);
     this.renderer.render(this.scene, this.camera);
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {

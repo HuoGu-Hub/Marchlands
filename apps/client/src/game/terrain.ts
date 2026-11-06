@@ -11,11 +11,6 @@ import {
   decodeUint8Base64,
 } from "@marchlands/nav";
 
-const CITY_PAD = 4.2;
-const CITY_FADE = 7.4;
-const ROAD_PAD = 1.9;
-const ROAD_FADE = 3.2;
-
 function hash2(x: number, z: number, seed: number): number {
   let h = Math.imul(x | 0, 374761393) ^ Math.imul(z | 0, 668265263) ^ seed;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -46,11 +41,6 @@ function segmentDistance(px: number, pz: number, ax: number, az: number, bx: num
   let t = ((px - ax) * dx + (pz - az) * dz) / lengthSq;
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
-}
-
-function smoothstep(edge0: number, edge1: number, value: number): number {
-  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
 }
 
 
@@ -170,10 +160,6 @@ export const TERRAIN_PALETTES: Record<string, TerrainStylePalette> = {
   },
 };
 
-export function terrainAtmosphere(style: string | undefined): { background: number; fog: number } {
-  const palette = TERRAIN_PALETTES[style ?? "frontier"] ?? TERRAIN_PALETTES.frontier;
-  return { background: palette.background, fog: palette.fog };
-}
 
 export interface IslandMetrics {
   centerX: number;
@@ -1166,7 +1152,6 @@ function buildIsland(
   const centerZ = (minZ + maxZ) / 2;
   const halfX = Math.max(1, (maxX - minX) / 2);
   const halfZ = Math.max(1, (maxZ - minZ) / 2);
-  const span = Math.max(halfX, halfZ) * 2;
   const depth = depthOverride ?? THREE.MathUtils.clamp(Math.hypot(halfX, halfZ) * 0.24, 14, 38);
   const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt, shape);
   const group = new THREE.Group();
@@ -1200,63 +1185,4 @@ function buildIsland(
       })),
     },
   };
-}
-
-function buildRockRidge(
-  x: number,
-  z: number,
-  size: number,
-  heightAt: (x: number, z: number) => number,
-  random: () => number,
-  palette: TerrainStylePalette,
-): THREE.Group {
-  const group = new THREE.Group();
-  group.position.set(x, heightAt(x, z), z);
-  const rock = new THREE.MeshStandardMaterial({ color: palette.ridge, roughness: 0.95, flatShading: true });
-  const dark = new THREE.MeshStandardMaterial({ color: palette.ridgeDark, roughness: 1, flatShading: true });
-  for (let index = 0; index < 5; index += 1) {
-    const radius = (0.8 + random() * 0.9) * size;
-    const height = (1.4 + random() * 2.6) * size;
-    const geometry = new THREE.CylinderGeometry(radius * 0.55, radius, height, 6, 2);
-    const position = geometry.getAttribute("position") as THREE.BufferAttribute;
-    for (let vertex = 0; vertex < position.count; vertex += 1) {
-      const factor = 0.78 + random() * 0.44;
-      position.setX(vertex, position.getX(vertex) * factor);
-      position.setZ(vertex, position.getZ(vertex) * factor);
-    }
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, index % 2 === 0 ? rock : dark);
-    mesh.position.set((index - 2) * 1.25 * size, height / 2, (random() - 0.5) * 1.8 * size);
-    mesh.rotation.y = random() * Math.PI;
-    group.add(mesh);
-  }
-  return group;
-}
-
-function buildMesa(
-  x: number,
-  z: number,
-  size: number,
-  heightAt: (x: number, z: number) => number,
-  random: () => number,
-  palette: TerrainStylePalette,
-): THREE.Group {
-  const group = new THREE.Group();
-  group.position.set(x, heightAt(x, z), z);
-  const height = 2.4 * size;
-  const top = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.9 * size, 2.4 * size, height, 7, 1),
-    new THREE.MeshStandardMaterial({ color: palette.mesa, roughness: 1, flatShading: true }),
-  );
-  top.position.y = height / 2;
-  top.rotation.y = random() * Math.PI;
-  group.add(top);
-  const cap = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.0 * size, 1.9 * size, 0.28 * size, 7, 1),
-    new THREE.MeshStandardMaterial({ color: palette.mesaCap, roughness: 1, flatShading: true }),
-  );
-  cap.position.y = height + 0.03;
-  cap.rotation.y = top.rotation.y;
-  group.add(cap);
-  return group;
 }

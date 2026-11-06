@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createGame, step } from "../src/game";
 import { hash } from "../src/hash";
-import { DEFAULT_RULESET } from "../src/rules";
 import type { Command } from "../src/types";
 import { THREE_CITY_MAP, TWO_CITY_MAP, rulesWith, TIMED_RULES } from "./fixtures";
 

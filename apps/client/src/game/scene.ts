@@ -8,19 +8,14 @@ import { buildBuilding, paletteFor } from "./buildings";
 import { siteBuildingKind, siteDefaultAsset, producingUnitKind } from "./site-kind";
 import { GlbUnitActor } from "./unit-glb";
 import { UnitActor } from "./unit-actor";
+import { ProjectileField } from "./projectiles";
+import { SquadInstanceField } from "./squad-instances";
+import type { SquadInstanceEntry } from "./squad-instances";
 import { buildTerrain } from "./terrain";
 import type { Terrain } from "./terrain";
 import { buildAtmosphere } from "./atmosphere";
 import type { Atmosphere } from "./atmosphere";
 import type { UnitKind } from "./unit-models";
-import { SquadInstanceField } from "./squad-instances";
-import type { SquadInstanceEntry } from "./squad-instances";
-
-const PLAYER_COLORS: Record<Owner, number> = {
-  0: 0x97917f,
-  1: 0x5cc07f,
-  2: 0xe06a4a,
-};
 
 const PITCH = (28 * Math.PI) / 180;
 const FIELD_OF_VIEW = 28;
@@ -212,6 +207,8 @@ export class BattleScene {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly cityViews = new Map<CityId, CityView>();
   private readonly squadViews = new Map<string, SquadView>();
+  private readonly projectiles = new ProjectileField();
+  private readonly squadInstances = new SquadInstanceField();
   private readonly frustum = new THREE.Frustum();
   private readonly squadSphere = new THREE.Sphere();
   private readonly rings = new Map<CityId, THREE.Mesh>();
@@ -226,7 +223,6 @@ export class BattleScene {
   private readonly reachGroup = new THREE.Group();
   private readonly reachCellGroup = new THREE.Group();
   private readonly squadPathGroup = new THREE.Group();
-  private readonly squadInstances = new SquadInstanceField();
   private readonly squadPathViews = new Map<string, { fill: THREE.Mesh; edges: THREE.LineSegments; key: string }>();
   private reachCellMesh: THREE.Mesh | null = null;
   private reachCorners: Float32Array | null = null;
@@ -306,11 +302,14 @@ export class BattleScene {
   private elapsed = 0;
   /** 渲染分辨率倍率：帧时偏高时自动降，恢复后再升回来。 */
   private renderScale = 1;
-  private frameTimeEma = 16.7;
-  private adaptCooldown = 1500;
+  /** 开局测帧用的采样，测完就定死倍率，不再逐帧来回调整。 */
+  private benchFrames: number[] = [];
+  private benchDone = false;
+  private settleFrames: number[] = [];
+  private settleTimer = 2000;
+  private corrections = 0;
   private selectedIds: CityId[] = [];
   private selectedSquadId: string | null = null;
-  private readonly pathHeights = new Map<number, number>();
   private disposed = false;
   private propBuildToken = 0;
   private propPoints: Array<{ x: number; z: number; radius: number }> = [];
@@ -344,6 +343,7 @@ export class BattleScene {
   private readonly pickPoint = new THREE.Vector3();
   private readonly projectPoint = new THREE.Vector3();
   private readonly pickPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly pathHeights = new Map<number, number>();
   private viewport = { left: 0, top: 0, width: 0, height: 0 };
 
   constructor(
@@ -386,6 +386,8 @@ export class BattleScene {
     this.computeBounds();
 
     this.buildLights();
+    this.scene.add(this.projectiles.group);
+    this.projectiles.load();
     this.scene.add(this.roadGroup);
     this.scene.add(this.propGroup);
     this.scene.add(this.sceneryGroup);
@@ -883,6 +885,7 @@ export class BattleScene {
     this.updateCamera(deltaMs);
     this.updateCities(state);
     this.updateSquads(state);
+    this.projectiles.update(state, deltaMs, (id) => this.squadAnchorPosition(id));
     this.updateRings();
     if (this.reachTiles.length > 0) {
       this.reachFillMaterial.opacity = 0.3 + (Math.sin(this.elapsed / 620) + 1) * 0.05;
@@ -918,6 +921,7 @@ export class BattleScene {
     this.squadFillSelectedMaterial.dispose();
     this.squadEdgeMaterial.dispose();
     this.squadEdgeSelectedMaterial.dispose();
+    this.projectiles.dispose();
     this.renderer.dispose();
   }
 
@@ -1150,7 +1154,7 @@ export class BattleScene {
         }
         if (this.squadInstances.has(skin as string, squad.owner)) {
           view.instanced = true;
-          // 50 米外改用静态替身：人数不减少，但不跑骨骼、不做逐单位绘制。
+          // 远处改用静态替身：人数不减少，但不跑骨骼、不做逐单位绘制。
           for (const unit of view.units) unit.visible = false;
           const total = Math.min(squad.count, MAX_GLB_SQUAD_UNITS);
           const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
@@ -1174,6 +1178,7 @@ export class BattleScene {
       }
       view.instanced = false;
       for (const unit of view.units) unit.visible = true;
+      // 近景兵团全速更新；20 到 100 米的兵团 15 Hz 更新。
       const near = visible && distance2 < 400;
       const interval = near ? 0 : 66;
       view.animAccum += delta;
@@ -1386,16 +1391,23 @@ export class BattleScene {
     view.shadow.scale.set(halfX + 0.08, halfZ + 0.08, 1);
   }
 
+  /** 兵团在场景里的世界坐标，飞行物从这里出发、飞向对方。 */
+  private squadAnchorPosition(id: string): THREE.Vector3 | null {
+    const view = this.squadViews.get(id);
+    if (!view) return null;
+    return view.group.position.clone().setY(view.group.position.y + 0.9);
+  }
+
   private createSquadView(squad: SquadState): SquadView {
     const group = new THREE.Group();
     const kind = this.unitKindFor(squad.from);
-    const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
+    const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const unitAssetId = this.skinFor(kind, squad.owner);
     const baseMax = unitAssetId && assetRegistry.has(unitAssetId) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
     const start = this.positions.get(squad.from);
     const maxUnits = start ? this.squadLodCap(baseMax, start.x, start.z) : baseMax;
     const renderCount = Math.min(squad.count, maxUnits);
-    const offsets = squadFormation(renderCount, spacing, kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z);
+    const offsets = squadFormation(renderCount, spacing, kind === "ranger" ? 0.82 : SQUAD_SPACING_Z);
 
     const canvas = document.createElement("canvas");
     canvas.width = 256;
@@ -1454,8 +1466,8 @@ export class BattleScene {
   /** 兵团外观由出发建筑类型固定决定；弓箭塔与粮仓不产兵。 */
   private unitKindFor(siteId: CityId): UnitKind {
     const site = this.map.cities.find((city) => city.id === siteId);
-    if (!site) return "infantry";
-    return producingUnitKind(site.kind) ?? "infantry";
+    if (!site) return "barbarian";
+    return producingUnitKind(site.kind) ?? "barbarian";
   }
 
   private populateProceduralUnits(
@@ -1476,23 +1488,6 @@ export class BattleScene {
       view.group.add(unit);
       view.units.push(unit);
     }
-  }
-
-  /** 路径格角高度只采样一次，路线每 200ms 重画时不再重复跑地形噪声。 */
-  private pathHeight(x: number, z: number): number {
-    const key = Math.round(x * 100) * 100000 + Math.round(z * 100);
-    const cached = this.pathHeights.get(key);
-    if (cached !== undefined) return cached;
-    const height = this.terrain.heightAt(x, z);
-    this.pathHeights.set(key, height);
-    return height;
-  }
-
-  /** 100 米内保留完整真实模型，更远交给静态替身；替身数量不减少。 */
-  private squadLodCap(base: number, x: number, z: number): number {
-    const dx = this.camera.position.x - x;
-    const dz = this.camera.position.z - z;
-    return dx * dx + dz * dz < 10000 ? base : 2;
   }
 
   /** 站位带一点随机抖动和朝向偏差，避免整队像克隆人。 */
@@ -1530,16 +1525,33 @@ export class BattleScene {
     });
   }
 
+  /** 路径格角高度只采样一次，路线每 200ms 重画时不再重复跑地形噪声。 */
+  private pathHeight(x: number, z: number): number {
+    const key = Math.round(x * 100) * 100000 + Math.round(z * 100);
+    const cached = this.pathHeights.get(key);
+    if (cached !== undefined) return cached;
+    const height = this.terrain.heightAt(x, z);
+    this.pathHeights.set(key, height);
+    return height;
+  }
+
+  /** 100 米内保留完整真实模型，更远交给静态替身；替身数量不减少。 */
+  private squadLodCap(base: number, x: number, z: number): number {
+    const dx = this.camera.position.x - x;
+    const dz = this.camera.position.z - z;
+    return dx * dx + dz * dz < 10000 ? base : 2;
+  }
+
   /** 兵团人数减少时同步撤掉模型，编队按当前人数重新收拢。 */
   private syncSquadUnits(view: SquadView, squad: SquadState): void {
     if (view.loading) return;
     const kind = this.unitKindFor(squad.from);
-    const spacing = kind === "cavalry" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
-    const spacingZ = kind === "cavalry" ? 0.82 : SQUAD_SPACING_Z;
+    const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
+    const spacingZ = kind === "ranger" ? 0.82 : SQUAD_SPACING_Z;
     const skin = this.skinFor(kind, squad.owner);
-    const glbSkin = !!skin && assetRegistry.has(skin);
-    const baseMax = glbSkin ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
-    const maxUnits = this.selectedSquadId === squad.id ? baseMax : view.instanced ? 2 : baseMax;
+    const baseMax = skin && assetRegistry.has(skin) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
+    const maxUnits =
+      this.selectedSquadId === squad.id ? baseMax : view.instanced ? 2 : baseMax;
     const target = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(target, spacing, spacingZ);
     let changed = false;
@@ -1550,8 +1562,9 @@ export class BattleScene {
       unit.dispose();
       changed = true;
     }
-    if (glbSkin && view.units.length < target) {
-      // 放大回近景时补 GLB，而不是混入程序化小兵。
+    const growsWithGlb = !!skin && assetRegistry.has(skin);
+    if (growsWithGlb && view.units.length < target) {
+      // GLB 兵团补员也要补 GLB，否则会和程序化小兵混编。
       void this.populateGlbUnits(view, skin as string, squad, offsets, kind, view.units.length);
       changed = true;
     } else {
@@ -1622,6 +1635,8 @@ export class BattleScene {
       this.populateProceduralUnits(view, squad, offsets, kind);
     } finally {
       view.loading = false;
+      // 补员期间体型可能已经变化，收一次队形。
+      view.units.forEach((unit, index) => this.placeSquadUnit(unit, index, offsets, squad.id, kind));
     }
   }
 
@@ -1881,14 +1896,14 @@ export class BattleScene {
     this.clearGroup(this.roadGroup);
     this.prepareRoadGrid();
     const width = this.visual?.roads.width ?? 1.6;
-    const centerId = "c3";
     const cityRadius = () => 1.95;
     const dirt = this.visual?.roads.style === "dirt";
     const roadMaterial = dirt
       ? new THREE.MeshStandardMaterial({ map: dirtTexture(1, 6), roughness: 1 })
       : new THREE.MeshStandardMaterial({ map: cobbleTexture(1, 1), roughness: 1 });
-    const plazaMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(2, 2), roughness: 1 });
-    const curbMaterial = new THREE.MeshStandardMaterial({ color: dirt ? 0x736348 : 0xb3aa96, roughness: 1 });
+
+    // 网格地图的路面直接画进地表贴图，不再单独铺网格。
+    if (this.roadGrid) return;
 
     const covered = new Set<string>();
     for (const road of this.map.roads ?? []) {
@@ -2150,46 +2165,6 @@ export class BattleScene {
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     return geometry;
-  }
-
-  private addRoundabout(centerId: string, width: number, plazaMaterial: THREE.Material, curbMaterial: THREE.Material): void {
-    const center = this.positions.get(centerId);
-    if (!center) return;
-    const inner = 3.75;
-    const outer = inner + width;
-    const ringMaterial = new THREE.MeshStandardMaterial({ map: cobbleTexture(10, 2), roughness: 1 });
-    const shoulder = new THREE.Mesh(
-      new THREE.RingGeometry(inner - 0.3, outer + 0.3, 64),
-      new THREE.MeshStandardMaterial({ color: 0x4b4a36, roughness: 1 }),
-    );
-    shoulder.rotation.x = -Math.PI / 2;
-    const ground = this.terrain.heightAt(center.x, center.z);
-    shoulder.position.set(center.x, ground + 0.035, center.z);
-    this.roadGroup.add(shoulder);
-
-    const ring = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 64), ringMaterial);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(center.x, ground + 0.05, center.z);
-    this.roadGroup.add(ring);
-
-    for (const radius of [inner, outer]) {
-      const curb = new THREE.Mesh(new THREE.RingGeometry(radius - 0.09, radius + 0.09, 64), curbMaterial);
-      curb.rotation.x = -Math.PI / 2;
-      curb.position.set(center.x, ground + 0.11, center.z);
-      this.roadGroup.add(curb);
-    }
-
-    const neighbours = this.map.cities.filter((city) => city.id !== centerId);
-    neighbours.forEach((city, index) => {
-      const position = this.positions.get(city.id);
-      if (!position) return;
-      const direction = new THREE.Vector3().subVectors(position, center).normalize();
-      const pad = new THREE.Mesh(new THREE.CircleGeometry(1.55, 20), plazaMaterial);
-      pad.rotation.x = -Math.PI / 2;
-      pad.position.set(center.x + direction.x * outer, ground + 0.055, center.z + direction.z * outer);
-      this.roadGroup.add(pad);
-
-    });
   }
 
   private buildScenery(): void {
@@ -2562,24 +2537,50 @@ export class BattleScene {
   }
 
   /**
-   * 按实测帧时调整渲染分辨率。
-   * 帧时高于 22 毫秒（低于约 45 帧）降一档，低于 13 毫秒再升回去。
+   * 开局采样约 90 帧，按目标帧率一次性定下渲染倍率。
+   * 目标 90 帧；如果测出来正好卡在刷新率上，说明是垂直同步在限速，不降分辨率。
    */
   private adaptResolution(deltaMs: number): void {
     if (deltaMs <= 0 || deltaMs > 250) return;
-    this.frameTimeEma += (deltaMs - this.frameTimeEma) * 0.08;
-    this.adaptCooldown -= deltaMs;
-    if (this.adaptCooldown > 0) return;
-    this.adaptCooldown = 1500;
-    if (this.frameTimeEma > 22 && this.renderScale > 0.6) {
-      this.renderScale = Math.max(0.6, this.renderScale - 0.12);
-      this.renderer.setPixelRatio(this.basePixelRatio() * this.renderScale);
-      this.resize();
-    } else if (this.frameTimeEma < 14.5 && this.renderScale < 1) {
-      this.renderScale = Math.min(1, this.renderScale + 0.08);
-      this.renderer.setPixelRatio(this.basePixelRatio() * this.renderScale);
-      this.resize();
+    const target = 11.1;
+
+    if (!this.benchDone) {
+      this.benchFrames.push(deltaMs);
+      if (this.benchFrames.length < 90) return;
+      this.benchDone = true;
+      const median = medianOf(this.benchFrames);
+      if (median > target * 1.05) {
+        const scale = Math.min(1, Math.max(0.5, Math.sqrt(target / median)));
+        this.applyRenderScale(scale);
+      }
+      this.settleFrames = [];
+      return;
     }
+
+    if (this.corrections >= 2) return;
+    this.settleFrames.push(deltaMs);
+    this.settleTimer -= deltaMs;
+    if (this.settleTimer > 0) return;
+
+    const median = medianOf(this.settleFrames);
+    const fastest = Math.min(...this.settleFrames);
+    const atRefresh = median <= fastest * 1.08;
+    this.settleFrames = [];
+    this.settleTimer = 2000;
+    if (atRefresh || median <= target * 1.05) {
+      this.corrections = 3;
+      return;
+    }
+    this.corrections += 1;
+    this.applyRenderScale(this.renderScale - 0.1);
+  }
+
+  private applyRenderScale(scale: number): void {
+    const next = Math.min(1, Math.max(0.6, scale));
+    if (Math.abs(next - this.renderScale) < 0.001) return;
+    this.renderScale = next;
+    this.renderer.setPixelRatio(this.basePixelRatio() * next);
+    this.resize();
   }
 
   private canvasRect(): { left: number; top: number; width: number; height: number } {
@@ -2601,6 +2602,12 @@ export class BattleScene {
     this.camera.fov = this.editorMode ? 45 : FIELD_OF_VIEW;
     this.camera.updateProjectionMatrix();
   }
+}
+
+function medianOf(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 function hashId(id: string): number {

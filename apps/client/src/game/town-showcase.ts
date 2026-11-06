@@ -59,7 +59,6 @@ class TownShowcase {
   private yaw = 0;
   private targetYaw = 0;
   private zoom = 1;
-  private raf = 0;
   private last = 0;
   private readonly resizeObserver: ResizeObserver;
 
@@ -86,7 +85,7 @@ class TownShowcase {
     window.addEventListener("keydown", this.onKeyDown);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.last = performance.now();
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   }
 
   private build(): void {
@@ -152,7 +151,7 @@ class TownShowcase {
     );
     this.camera.lookAt(TARGET);
     this.renderer.render(this.scene, this.camera);
-    this.raf = requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.frame);
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {

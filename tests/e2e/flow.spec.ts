@@ -64,7 +64,7 @@ test("creates a map in the editor and returns from playtest", async ({ page }) =
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");
   const box = await page.locator("#ml-ed-canvas").boundingBox();
   if (!box) throw new Error("editor canvas has no box");
-  await page.click('[data-tool="barracks"]');
+  await page.click('[data-tool="barbarian"]');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.locator("#ml-ed-map-label")).toContainText("5 据点");
   await expect(page.locator("#ml-ed-status")).toContainText("错误");
@@ -834,7 +834,7 @@ test("skin cards live on the home page and save the chosen look", async ({ page 
   await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
   await page.click("#btn-skins");
   await expect(page.locator("#page-skins")).toBeVisible();
-  await expect(page.locator("#skin-tabs .skin-tab")).toHaveCount(5);
+  await expect(page.locator("#skin-tabs .skin-tab")).toHaveCount(6);
   await expect(page.locator("#skin-grid .skin-card")).not.toHaveCount(0);
   await expect(page.locator('.skin-card[data-skin-key^="frontier-"]')).toHaveCount(0);
   await expect(page.locator("#skin-grid .skin-card img").first()).toHaveAttribute("src", /\/skins\//);
@@ -879,12 +879,12 @@ test("campaign opens a series, a level sheet, difficulty and full map preview", 
   await expect(page.locator("#page-series")).toBeVisible();
   await expect(page.locator(".level-card")).toHaveCount(2);
   await expect(page.locator('[data-level="frontier01"]')).toContainText("Frontier 01");
-  await expect(page.locator('[data-level="frontier01"]')).toContainText("32 座产兵据点");
+  await expect(page.locator('[data-level="frontier01"]')).toContainText("36 座产兵据点");
 
   await page.click('[data-level="frontier01"]');
   await expect(page.locator("#level-overlay")).toHaveClass(/on/);
   await expect(page.locator("#level-title")).toHaveText("Frontier 01");
-  await expect(page.locator("#level-objective")).toContainText("32");
+  await expect(page.locator("#level-objective")).toContainText("36");
   await expect(page.locator('input[name="level-difficulty"]')).toHaveCount(3);
 
   await page.click('.difficulty-option:has(input[value="hard"])');

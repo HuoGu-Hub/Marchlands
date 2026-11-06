@@ -47,9 +47,15 @@ async function runSmoke() {
           })`,
         );
         await win.webContents.executeJavaScript(
-          `(() => {
+          `(async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             document.querySelector("#btn-start")?.click();
-            document.querySelector("#btn-brief-start")?.click();
+            await wait(220);
+            document.querySelector(".series-card .card-hit")?.click();
+            await wait(220);
+            document.querySelector(".level-card .card-hit")?.click();
+            await wait(320);
+            document.querySelector("#btn-level-start")?.click();
             return true;
           })()`,
         );
