@@ -32,6 +32,8 @@ const REACH_CELL_LIFT = 0.1;
 const CITY_LABEL_HEIGHT = 4.3;
 /** 兵团路线要压在道路面之上，否则与道路重叠时会被完全遮住。 */
 const SQUAD_PATH_LIFT = 0.3;
+/** 单击目的地路线预览的保留路径 id。 */
+const PREVIEW_PATH_ID = "__route-preview";
 /** 所有小兵统一缩放到这个身高，和程序化小兵、建筑保持同一档。 */
 const GLB_UNIT_HEIGHT = 0.95;
 const SQUAD_LABEL_HEIGHT = 1.55;
@@ -339,8 +341,8 @@ export class BattleScene {
   private readonly pickRaycaster = new THREE.Raycaster();
   private readonly pickNdc = new THREE.Vector2();
   private readonly pickPoint = new THREE.Vector3();
-  private readonly projectPoint = new THREE.Vector3();
   private readonly pickPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly projectPoint = new THREE.Vector3();
   private readonly pathHeights = new Map<number, number>();
   private viewport = { left: 0, top: 0, width: 0, height: 0 };
 
@@ -439,67 +441,16 @@ export class BattleScene {
     }>,
     cellSizeCm = 100,
   ): void {
-    const dispose = (view: { fill: THREE.Mesh; edges: THREE.LineSegments }): void => {
-      this.squadPathGroup.remove(view.fill);
-      this.squadPathGroup.remove(view.edges);
-      view.fill.geometry.dispose();
-      view.edges.geometry.dispose();
-    };
     const active = new Set(paths.map((path) => path.id));
     for (const [id, view] of this.squadPathViews) {
+      // 路线预览占一个保留 id，不能被每 200ms 的兵团路线刷新清掉。
+      if (id === PREVIEW_PATH_ID) continue;
       if (active.has(id)) continue;
-      dispose(view);
+      this.disposePathView(view);
       this.squadPathViews.delete(id);
     }
-    const half = cellSizeCm / 200;
     for (const path of paths) {
-      if (path.cells.length === 0) continue;
-      const key = `${cellSizeCm}:${path.selected ? 1 : 0}:${path.cells
-        .map(([x, z]) => `${x},${z}`)
-        .join(";")}`;
-      const existing = this.squadPathViews.get(path.id);
-      if (existing?.key === key) continue;
-      if (existing) dispose(existing);
-      const positions: number[] = [];
-      const indices: number[] = [];
-      const edgePositions: number[] = [];
-      for (const [xCm, zCm] of path.cells) {
-        const x = xCm / 100;
-        const z = zCm / 100;
-        const corners: Array<[number, number]> = [
-          [x - half, z - half],
-          [x + half, z - half],
-          [x + half, z + half],
-          [x - half, z + half],
-        ];
-        const base = positions.length / 3;
-        const lifted = corners.map(([px, pz]): [number, number, number] => [
-          px,
-          this.pathHeight(px, pz) + SQUAD_PATH_LIFT,
-          pz,
-        ]);
-        for (const point of lifted) positions.push(...point);
-        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        for (let index = 0; index < 4; index += 1) {
-          const a = lifted[index];
-          const b = lifted[(index + 1) % 4];
-          edgePositions.push(...a, ...b);
-        }
-      }
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      geometry.setIndex(indices);
-      const material = path.selected ? this.squadFillSelectedMaterial : this.squadFillMaterial;
-      const fill = new THREE.Mesh(geometry, material);
-      fill.renderOrder = 3;
-      this.squadPathGroup.add(fill);
-      const edgeGeometry = new THREE.BufferGeometry();
-      edgeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
-      const edgeMaterial = path.selected ? this.squadEdgeSelectedMaterial : this.squadEdgeMaterial;
-      const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
-      edges.renderOrder = 4;
-      this.squadPathGroup.add(edges);
-      this.squadPathViews.set(path.id, { fill, edges, key });
+      this.syncPathView(path.id, path.cells, cellSizeCm, path.selected);
     }
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__mlPath = {
@@ -507,6 +458,86 @@ export class BattleScene {
         cells: paths.reduce((sum, path) => sum + path.cells.length, 0),
       };
     }
+  }
+
+  /** 单击目的地时的行军预览：和兵团实际行军一样，在地面铺同一套绿格。 */
+  setPreviewPath(cells: ReadonlyArray<readonly [number, number]> | null, cellSizeCm = 100): void {
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__mlPreview = { cells: cells?.length ?? 0 };
+    }
+    const existing = this.squadPathViews.get(PREVIEW_PATH_ID);
+    if (!cells || cells.length === 0) {
+      if (existing) {
+        this.disposePathView(existing);
+        this.squadPathViews.delete(PREVIEW_PATH_ID);
+      }
+      return;
+    }
+    this.syncPathView(PREVIEW_PATH_ID, cells, cellSizeCm, true);
+  }
+
+  private disposePathView(view: { fill: THREE.Mesh; edges: THREE.LineSegments }): void {
+    this.squadPathGroup.remove(view.fill);
+    this.squadPathGroup.remove(view.edges);
+    view.fill.geometry.dispose();
+    view.edges.geometry.dispose();
+  }
+
+  /** 按格心铺一层贴地四边形；兵团路线与单击预览共用同一份几何。 */
+  private syncPathView(
+    id: string,
+    cells: ReadonlyArray<readonly [number, number]>,
+    cellSizeCm: number,
+    selected: boolean,
+  ): void {
+    if (cells.length === 0) return;
+    const key = `${cellSizeCm}:${selected ? 1 : 0}:${cells
+      .map(([x, z]) => `${x},${z}`)
+      .join(";")}`;
+    const existing = this.squadPathViews.get(id);
+    if (existing?.key === key) return;
+    if (existing) this.disposePathView(existing);
+    const half = cellSizeCm / 200;
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const edgePositions: number[] = [];
+    for (const [xCm, zCm] of cells) {
+      const x = xCm / 100;
+      const z = zCm / 100;
+      const corners: Array<[number, number]> = [
+        [x - half, z - half],
+        [x + half, z - half],
+        [x + half, z + half],
+        [x - half, z + half],
+      ];
+      const base = positions.length / 3;
+      const lifted = corners.map(([px, pz]): [number, number, number] => [
+        px,
+        this.pathHeight(px, pz) + SQUAD_PATH_LIFT,
+        pz,
+      ]);
+      for (const point of lifted) positions.push(...point);
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      for (let index = 0; index < 4; index += 1) {
+        const a = lifted[index];
+        const b = lifted[(index + 1) % 4];
+        edgePositions.push(...a, ...b);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    const material = selected ? this.squadFillSelectedMaterial : this.squadFillMaterial;
+    const fill = new THREE.Mesh(geometry, material);
+    fill.renderOrder = 3;
+    this.squadPathGroup.add(fill);
+    const edgeGeometry = new THREE.BufferGeometry();
+    edgeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
+    const edgeMaterial = selected ? this.squadEdgeSelectedMaterial : this.squadEdgeMaterial;
+    const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    edges.renderOrder = 4;
+    this.squadPathGroup.add(edges);
+    this.squadPathViews.set(id, { fill, edges, key });
   }
 
   /** 开局预采样地形格角高度，避免第一次点建筑时才算两万多个点。 */
@@ -824,6 +855,14 @@ export class BattleScene {
     };
   }
 
+  /**
+   * 屏幕坐标落到哪块地面。
+   *
+   * 不逐三角面射线：整张地形有四五万面，一次拾取要 3~4ms，
+   * 拖动箭头时每个 pointermove 都做一次会直接把帧率拖垮。
+   * 地形是高度场，沿射线按 0.4 米步进取第一次穿面，再二分收敛，
+   * 精度到毫米级，单次约 5~10 微秒。
+   */
   screenToGround(clientX: number, clientY: number): [number, number] | null {
     const rect = this.canvasRect();
     this.pickNdc.set(
@@ -831,36 +870,100 @@ export class BattleScene {
       -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
     );
     this.pickRaycaster.setFromCamera(this.pickNdc, this.camera);
+    const hit = this.pickHeightfield(this.pickRaycaster.ray);
+    if (hit) return hit;
+    // 岛外没有地形网格：退回 y=0 平面，编辑器的浮动地基需要落在岛外。
     const point = this.pickPoint;
-    for (const mesh of this.terrain.meshes) mesh.updateMatrixWorld(true);
-    const hits = this.pickRaycaster.intersectObjects(this.terrain.meshes, false);
-    if (hits.length > 0) {
-      point.copy(hits[0].point);
-      return [point.x * 10, point.z * 10];
-    }
     this.pickPlane.constant = 0;
     if (!this.pickRaycaster.ray.intersectPlane(this.pickPlane, point)) return null;
     return [point.x * 10, point.z * 10];
   }
 
-  /**
-   * 拖拽预览用的地面拾取：不做地形三角面射线，只解地面平面并按高度迭代一次。
-   * 指针移动频率可能远高于帧率，这里主要避免每个 pointermove 都遍历地形网格。
-   */
-  screenToGroundFast(clientX: number, clientY: number): [number, number] | null {
-    const rect = this.canvasRect();
-    this.pickNdc.set(
-      ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
-      -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
-    );
-    this.pickRaycaster.setFromCamera(this.pickNdc, this.camera);
+  /** 沿射线在高度场里步进，找到射线第一次穿入地形表面的位置。 */
+  private pickHeightfield(ray: THREE.Ray): [number, number] | null {
+    const terrain = this.terrain;
+    const bounds = terrain.bounds;
+    const top = Math.max(terrain.island.topY, 0) + 40;
+    const bottom = -Math.max(24, terrain.island.depth + 24);
+    const range = this.rayBoxRange(ray, bounds.minX, bounds.maxX, bottom, top, bounds.minZ, bounds.maxZ);
+    if (!range) return null;
+    let start = Math.max(0, range[0]);
+    const end = range[1];
+    if (end <= start) return null;
+
     const point = this.pickPoint;
-    this.pickPlane.constant = 0;
-    if (!this.pickRaycaster.ray.intersectPlane(this.pickPlane, point)) return null;
-    const height = this.terrain.heightAt(point.x, point.z);
-    this.pickPlane.constant = -height;
-    if (!this.pickRaycaster.ray.intersectPlane(this.pickPlane, point)) return null;
-    return [point.x * 10, point.z * 10];
+    const step = 0.4;
+    const span = end - start;
+    const steps = Math.min(2048, Math.max(1, Math.ceil(span / step)));
+    let previous = start;
+    ray.at(start, point);
+    let gap = point.y - terrain.heightAt(point.x, point.z);
+    if (gap <= 0) {
+      // 相机已经在地表以下，拾取没有意义。
+      return null;
+    }
+    for (let index = 1; index <= steps; index += 1) {
+      const t = Math.min(end, start + (span * index) / steps);
+      ray.at(t, point);
+      const height = terrain.heightAt(point.x, point.z);
+      const nextGap = point.y - height;
+      if (nextGap <= 0) {
+        // 找到穿面区间后用二分收敛，0.4 米步长不会影响落点精度。
+        let low = previous;
+        let high = t;
+        for (let round = 0; round < 12; round += 1) {
+          const middle = (low + high) / 2;
+          ray.at(middle, point);
+          if (point.y - terrain.heightAt(point.x, point.z) > 0) low = middle;
+          else high = middle;
+        }
+        ray.at(high, point);
+        return [point.x * 10, point.z * 10];
+      }
+      previous = t;
+      gap = nextGap;
+    }
+    return null;
+  }
+
+  /** 射线与轴对齐包围盒的相交区间，用于把步进限制在地形范围内。 */
+  private rayBoxRange(
+    ray: THREE.Ray,
+    minX: number,
+    maxX: number,
+    minY: number,
+    maxY: number,
+    minZ: number,
+    maxZ: number,
+  ): [number, number] | null {
+    let near = 0;
+    let far = Number.POSITIVE_INFINITY;
+    const origin = ray.origin;
+    const direction = ray.direction;
+    const axes: ReadonlyArray<readonly [number, number, number, number]> = [
+      [origin.x, direction.x, minX, maxX],
+      [origin.y, direction.y, minY, maxY],
+      [origin.z, direction.z, minZ, maxZ],
+    ];
+    for (const [value, delta, min, max] of axes) {
+      if (Math.abs(delta) < 1e-9) {
+        if (value < min || value > max) return null;
+        continue;
+      }
+      const inverse = 1 / delta;
+      let t1 = (min - value) * inverse;
+      let t2 = (max - value) * inverse;
+      if (t1 > t2) {
+        const swap = t1;
+        t1 = t2;
+        t2 = swap;
+      }
+      if (t1 > near) near = t1;
+      if (t2 < far) far = t2;
+      if (near > far) return null;
+    }
+    if (far <= 0) return null;
+    return [Math.max(0, near), far];
   }
 
   /** 离屏幕坐标最近的据点及像素距离，供点击与任务箭头判定优先级。 */

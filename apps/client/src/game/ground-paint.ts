@@ -58,7 +58,9 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
   const { navGrid, size, palette } = options;
   const widthMeters = size[0] / 10;
   const depthMeters = size[1] / 10;
-  const perMeter = Math.min(options.pixelsPerMeter ?? 32, Math.floor(4096 / Math.max(widthMeters, depthMeters)));
+  // 二三十像素一米已经够用：近景由细节层的三平面贴图负责。
+  // 上限从 4096 收到 2560，地表烘焙的像素数减少四成，画质几乎看不出差别。
+  const perMeter = Math.min(options.pixelsPerMeter ?? 32, Math.floor(2560 / Math.max(widthMeters, depthMeters)));
   const width = Math.max(64, Math.round(widthMeters * perMeter));
   const height = Math.max(64, Math.round(depthMeters * perMeter));
   const canvas = document.createElement("canvas");
@@ -171,58 +173,101 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
     cellMask = next;
   }
 
-  const sampleBilinear = (source: Float32Array, stride: number, xm: number, zm: number, channel = 0): number => {
-    const fx = (xm + widthMeters / 2) / cellMeters - 0.5;
-    const fz = (zm + depthMeters / 2) / cellMeters - 0.5;
+  // 每个像素只算一次双线性权重，颜色、道路遮罩和院落遮罩共用。
+  // 旧实现每个像素要调四次闭包函数、每个通道各算一遍坐标，是烘焙慢的主因。
+  const invPixelCell = 1 / (perMeter * cellMeters);
+  const x0Of = new Int32Array(width);
+  const x1Of = new Int32Array(width);
+  const txOf = new Float32Array(width);
+  for (let px = 0; px < width; px += 1) {
+    const fx = (px + 0.5) * invPixelCell - 0.5;
     const x0 = Math.max(0, Math.min(cellW - 1, Math.floor(fx)));
+    x0Of[px] = x0;
+    x1Of[px] = Math.min(cellW - 1, x0 + 1);
+    txOf[px] = Math.max(0, Math.min(1, fx - x0));
+  }
+  const z0Of = new Int32Array(height);
+  const z1Of = new Int32Array(height);
+  const tzOf = new Float32Array(height);
+  for (let py = 0; py < height; py += 1) {
+    const fz = (py + 0.5) * invPixelCell - 0.5;
     const z0 = Math.max(0, Math.min(cellH - 1, Math.floor(fz)));
-    const x1 = Math.min(cellW - 1, x0 + 1);
-    const z1 = Math.min(cellH - 1, z0 + 1);
-    const tx = Math.max(0, Math.min(1, fx - x0));
-    const tz = Math.max(0, Math.min(1, fz - z0));
-    const a = source[(z0 * cellW + x0) * stride + channel];
-    const b = source[(z0 * cellW + x1) * stride + channel];
-    const c = source[(z1 * cellW + x0) * stride + channel];
-    const d = source[(z1 * cellW + x1) * stride + channel];
-    return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
-  };
+    z0Of[py] = z0;
+    z1Of[py] = Math.min(cellH - 1, z0 + 1);
+    tzOf[py] = Math.max(0, Math.min(1, fz - z0));
+  }
+  const hasMask = cellMask.some((value) => value > 0.02);
+  const hasYard = cellYard.some((value) => value > 0.001);
 
   for (let py = 0; py < height; py += 1) {
     const z = (py + 0.5) / perMeter - depthMeters / 2;
+    const z0 = z0Of[py];
+    const z1 = z1Of[py];
+    const tz = tzOf[py];
+    const row0 = z0 * cellW;
+    const row1 = z1 * cellW;
     for (let px = 0; px < width; px += 1) {
       const x = (px + 0.5) / perMeter - widthMeters / 2;
-      let r = sampleBilinear(cellColor, 3, x, z, 0);
-      let g = sampleBilinear(cellColor, 3, x, z, 1);
-      let b = sampleBilinear(cellColor, 3, x, z, 2);
+      const x0 = x0Of[px];
+      const x1 = x1Of[px];
+      const tx = txOf[px];
+      const i00 = row0 + x0;
+      const i10 = row0 + x1;
+      const i01 = row1 + x0;
+      const i11 = row1 + x1;
+      const w00 = (1 - tx) * (1 - tz);
+      const w10 = tx * (1 - tz);
+      const w01 = (1 - tx) * tz;
+      const w11 = tx * tz;
 
-      const weight = Math.max(0, Math.min(1, (sampleBilinear(cellMask, 1, x, z) - 0.22) / 0.5));
+      const c00 = i00 * 3;
+      const c10 = i10 * 3;
+      const c01 = i01 * 3;
+      const c11 = i11 * 3;
+      let r = cellColor[c00] * w00 + cellColor[c10] * w10 + cellColor[c01] * w01 + cellColor[c11] * w11;
+      let g = cellColor[c00 + 1] * w00 + cellColor[c10 + 1] * w10 + cellColor[c01 + 1] * w01 + cellColor[c11 + 1] * w11;
+      let b = cellColor[c00 + 2] * w00 + cellColor[c10 + 2] * w10 + cellColor[c01 + 2] * w01 + cellColor[c11 + 2] * w11;
+
+      let weight = 0;
+      if (hasMask) {
+        const mask = cellMask[i00] * w00 + cellMask[i10] * w10 + cellMask[i01] * w01 + cellMask[i11] * w11;
+        weight = Math.max(0, Math.min(1, (mask - 0.22) / 0.5));
+      }
       if (weight > 0.01) {
         const stone = 0.62;
         const sx = Math.floor(x / stone);
         const sz = Math.floor(z / stone);
         const fx = x / stone - sx;
         const fz = z / stone - sz;
-        const jitter = hash2(sx, sz);
         const edge = Math.min(fx, fz, 1 - fx, 1 - fz);
         const mortar = edge < 0.05 ? 0.42 : edge < 0.11 ? 0.74 : 1;
-        const shade = 0.78 + jitter * 0.38;
+        const shade = 0.78 + hash2(sx, sz) * 0.38;
         const grit = hash2(px, py) * 0.18;
-        r = mix(r, 188 * shade * mortar * (0.84 + grit), weight);
-        g = mix(g, 176 * shade * mortar * (0.84 + grit), weight);
-        b = mix(b, 154 * shade * mortar * (0.84 + grit), weight);
+        const tone = shade * mortar * (0.84 + grit);
+        r = r + (188 * tone - r) * weight;
+        g = g + (176 * tone - g) * weight;
+        b = b + (154 * tone - b) * weight;
       }
 
       // 院落压在路面之上：据点那一圈泥地不会被石路盖住。
-      const yard = Math.max(0, Math.min(1, sampleBilinear(cellYard, 1, x, z)));
-      if (yard > 0.01) {
-        const grit = hash2(px * 7 + 11, py * 13 + 5) * 0.14;
-        r = mix(r, 122 * (0.88 + grit), yard);
-        g = mix(g, 108 * (0.88 + grit), yard);
-        b = mix(b, 84 * (0.88 + grit), yard);
+      if (hasYard && cellYard[i00] + cellYard[i10] + cellYard[i01] + cellYard[i11] > 0.001) {
+        const yard = Math.max(
+          0,
+          Math.min(1, cellYard[i00] * w00 + cellYard[i10] * w10 + cellYard[i01] * w01 + cellYard[i11] * w11),
+        );
+        if (yard > 0.01) {
+          const grit = hash2(px * 7 + 11, py * 13 + 5) * 0.14;
+          const target = 122 * (0.88 + grit);
+          r = r + (target - r) * yard;
+          g = g + (108 * (0.88 + grit) - g) * yard;
+          b = b + (84 * (0.88 + grit) - b) * yard;
+        }
       }
 
       // 一格一米的底色插值后很平滑，加一点逐像素噪点找回颗粒感。
-      const grain = (hash2(px * 3 + 7, py * 5 + 13) - 0.5) * 9;
+      let hash = Math.imul((px * 3 + 7) | 0, 374761393) ^ Math.imul((py * 5 + 13) | 0, 668265263);
+      hash = Math.imul(hash ^ (hash >>> 13), 1274126177);
+      const grain = (((hash ^ (hash >>> 16)) >>> 0) / 4294967296 - 0.5) * 9;
       const index = (py * width + px) * 4;
       data[index] = r + grain;
       data[index + 1] = g + grain;

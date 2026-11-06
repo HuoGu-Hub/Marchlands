@@ -19,7 +19,7 @@ import type { TerrainAssetKind } from "./visual-assets";
 import { CLASSIC_UNIT_SKINS as UNIT_SKINS } from "./unit-skins";
 
 const BUILDING_URLS = import.meta.glob("../assets/converted/buildings/*.glb", {
-  query: "?inline",
+  query: "?url",
   import: "default",
   eager: true,
 }) as Record<string, string>;
@@ -262,6 +262,8 @@ export class AssetRegistry {
   private readonly foundationTemplates = new Map<string, THREE.Object3D>();
   private registered = false;
   private loading: Promise<number> | null = null;
+  private pendingBuilds = 0;
+  private buildWaiters: Array<() => void> = [];
 
   get builtinReady(): boolean {
     return this.registered;
@@ -555,6 +557,10 @@ export class AssetRegistry {
   }
 
   async build(id: string, context: AssetBuildContext = {}): Promise<THREE.Object3D> {
+    return this.trackBuild(this.buildInternal(id, context));
+  }
+
+  private async buildInternal(id: string, context: AssetBuildContext): Promise<THREE.Object3D> {
     const frame = normalizeContext(context);
     const builtin = this.builtins.get(id);
     if (builtin) return builtin.build(frame);
@@ -566,6 +572,13 @@ export class AssetRegistry {
   async buildAnimated(
     id: string,
     context: AssetBuildContext = {},
+  ): Promise<{ object: THREE.Object3D; animations: THREE.AnimationClip[] }> {
+    return this.trackBuild(this.buildAnimatedInternal(id, context));
+  }
+
+  private async buildAnimatedInternal(
+    id: string,
+    context: AssetBuildContext,
   ): Promise<{ object: THREE.Object3D; animations: THREE.AnimationClip[] }> {
     const builtin = this.builtins.get(id);
     if (builtin) {
@@ -579,6 +592,26 @@ export class AssetRegistry {
     const asset = this.packAssets.get(id);
     if (!asset) throw new Error(`未知资产：${id}`);
     return { object: this.packObject(asset, normalizeContext(context)), animations: asset.animations };
+  }
+
+  /** 等待当前正在构建的模型全部完成，用于首帧后把加载画面留到模型真正落位。 */
+  async whenBuildsIdle(): Promise<void> {
+    while (this.pendingBuilds > 0) {
+      await new Promise<void>((resolve) => this.buildWaiters.push(resolve));
+    }
+  }
+
+  private trackBuild<T>(work: Promise<T>): Promise<T> {
+    this.pendingBuilds += 1;
+    const settle = (): void => {
+      this.pendingBuilds -= 1;
+      if (this.pendingBuilds > 0) return;
+      const waiters = this.buildWaiters;
+      this.buildWaiters = [];
+      for (const resolve of waiters) resolve();
+    };
+    work.then(settle, settle);
+    return work;
   }
 
   async loadPack(

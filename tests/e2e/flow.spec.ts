@@ -1195,3 +1195,29 @@ test("drags an arched arrow from a building to dispatch", async ({ page }) => {
     )
     .toBeGreaterThan(0);
 });
+
+test("single click previews the actual grid route", async ({ page }) => {
+  await openGame(page, "frontier01");
+  // 等开场镜头落位，避免按开场相机取到的屏幕坐标已经偏了。
+  await page.waitForTimeout(4200);
+  const c1 = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } }).__mlDebug
+        ?.projectCity("c1"),
+  );
+  if (!c1) throw new Error("c1 has no screen position");
+  await page.mouse.click(c1.x, c1.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
+
+  const target = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectGround(x: number, z: number): { x: number; y: number } | null } })
+        .__mlDebug?.projectGround(-500, -250),
+  );
+  if (!target) throw new Error("target cell has no screen position");
+  await page.mouse.click(target.x, target.y);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __mlPreview?: { cells: number } }).__mlPreview?.cells ?? 0))
+    .toBeGreaterThan(2);
+});
+

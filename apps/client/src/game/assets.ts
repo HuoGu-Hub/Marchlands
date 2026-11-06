@@ -1,20 +1,22 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
+// 用 ?url 让每个 GLB 独立成文件；?inline 会把几十兆 base64 塞进主包，
+// 启动时先卡在 JS 解析上。资源仍在启动画面里加载，但主包小了约十倍。
 const CASTLE_URLS = import.meta.glob("../assets/kenney/castle-glb/*.glb", {
-  query: "?inline",
+  query: "?url",
   import: "default",
   eager: true,
 }) as Record<string, string>;
 
 const TOWN_URLS = import.meta.glob("../assets/kenney/town/*.glb", {
-  query: "?inline",
+  query: "?url",
   import: "default",
   eager: true,
 }) as Record<string, string>;
 
 const NATURE_URLS = import.meta.glob("../assets/kenney/nature/*.glb", {
-  query: "?inline",
+  query: "?url",
   import: "default",
   eager: true,
 }) as Record<string, string>;

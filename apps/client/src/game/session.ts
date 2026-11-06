@@ -12,8 +12,17 @@ import type {
   SimState,
   SquadState,
 } from "@marchlands/sim";
-import { isProductionSiteKind, planGridRoute, reachableGridCells, reachableGridCities, sendReachableTargets } from "@marchlands/sim";
+import {
+  createUnitNavGrid,
+  isProductionSiteKind,
+  planGridRoute,
+  reachableGridCells,
+  reachableGridCities,
+  sendReachableTargets,
+  siteUnitKind,
+} from "@marchlands/sim";
 import { audio } from "../audio";
+import { assetRegistry } from "./asset-registry";
 import { RouteOverlay } from "./route-overlay";
 import { synthesizeGrid } from "./nav-synthesis";
 import type { DragArrowView, PlannedAssignment } from "./route-overlay";
@@ -140,7 +149,17 @@ export class GameSession {
 
   start(): void {
     this.ready = this.introDisabled;
-    if (this.introDisabled) this.beginIntro();
+    if (this.introDisabled) {
+      this.beginIntro();
+      // 开发用 intro=0 直接进对局，没有准备帧；在首帧前补一次 ready 通知。
+      requestAnimationFrame(() => {
+        if (this.disposed) return;
+        if (import.meta.env.DEV) {
+          (window as unknown as Record<string, unknown>).__mlReadyAt = performance.now();
+        }
+        this.options.onReady?.();
+      });
+    }
     this.lastTime = performance.now();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -356,6 +375,8 @@ export class GameSession {
 
   private setSelection(ids: CityId[]): void {
     this.selected = ids;
+    // 选择一变，上一条路线预览就不再对应当前编组。
+    this.scene.setPreviewPath(null);
     this.scene.setSelected(ids);
     this.refreshReach(true);
     this.options.onSelect(this.primary, ids.length);
@@ -717,16 +738,18 @@ export class GameSession {
     this.scene.dispose();
   }
 
-  /** 把一支兵团实际行走折线栅格化成格心。 */
-  private squadPathCells(
-    squad: SquadState,
+  /**
+   * 把一条地图坐标折线栅格化成格心；兵团路线和单击预览共用，
+   * 保证预览看到的就是出兵后实际会铺出来的格子。
+   */
+  private rasterizeRoute(
+    path: ReadonlyArray<readonly [number, number]>,
+    startIndex: number,
     nav: NonNullable<SimState["nav"]>,
     offsetX: number,
     offsetZ: number,
   ): Array<[number, number]> {
-    if (!squad.gridPath || squad.gridPath.length === 0 || squad.xCm === undefined || squad.zCm === undefined) {
-      return [];
-    }
+    if (path.length === 0) return [];
     const cells: Array<[number, number]> = [];
     const seen = new Set<number>();
     const add = (xCm: number, zCm: number): void => {
@@ -743,15 +766,30 @@ export class GameSession {
         add(x0 + ((x1 - x0) * k) / steps, z0 + ((z1 - z0) * k) / steps);
       }
     };
-    // 先把整段路线栅格化，再按兵团当前所在格切片，避免随移动反复抖动。
-    const start = Math.max(0, (squad.gridIndex ?? 0) - 1);
-    const [firstX, firstZ] = squad.gridPath[start];
+    const start = Math.max(0, Math.min(path.length - 1, startIndex));
+    const [firstX, firstZ] = path[start];
     add(firstX, firstZ);
-    for (let index = start; index < squad.gridPath.length - 1; index += 1) {
-      const [x0, z0] = squad.gridPath[index];
-      const [x1, z1] = squad.gridPath[index + 1];
+    for (let index = start; index < path.length - 1; index += 1) {
+      const [x0, z0] = path[index];
+      const [x1, z1] = path[index + 1];
       sampleLine(x0, z0, x1, z1);
     }
+    return cells;
+  }
+
+  /** 把一支兵团实际行走折线栅格化成格心。 */
+  private squadPathCells(
+    squad: SquadState,
+    nav: NonNullable<SimState["nav"]>,
+    offsetX: number,
+    offsetZ: number,
+  ): Array<[number, number]> {
+    if (!squad.gridPath || squad.gridPath.length === 0 || squad.xCm === undefined || squad.zCm === undefined) {
+      return [];
+    }
+    // 先把整段路线栅格化，再按兵团当前所在格切片，避免随移动反复抖动。
+    const start = Math.max(0, (squad.gridIndex ?? 0) - 1);
+    const cells = this.rasterizeRoute(squad.gridPath, start, nav, offsetX, offsetZ);
     if (cells.length === 0) return cells;
     const squadIndex = nav.cellFromWorld(squad.xCm + offsetX, squad.zCm + offsetZ);
     let current = cells.findIndex(
@@ -801,12 +839,22 @@ export class GameSession {
       // 第一帧把地形、建筑与材质真正画出来；这期间的停顿由准备画面盖住。
       this.scene.update(this.state, 0);
       this.routeOverlay.render(this.state, this.selectedSquad);
-      this.ready = true;
-      this.options.onReady?.();
-      this.beginIntro();
-      this.scheduleReachPreparation();
-      this.lastTime = now;
-      this.raf = requestAnimationFrame(this.frame);
+      // 建筑 GLB 在首帧后异步解析，几百毫秒才落位。等它们完成再撤准备画面，
+      // 否则进入对局半秒后会卡一下。加载期间画面被遮罩盖住，帧率不受影响。
+      void assetRegistry.whenBuildsIdle().then(() => {
+        if (this.disposed) return;
+        this.scene.update(this.state, 0);
+        this.routeOverlay.render(this.state, this.selectedSquad);
+        this.ready = true;
+        if (import.meta.env.DEV) {
+          (window as unknown as Record<string, unknown>).__mlReadyAt = performance.now();
+        }
+        this.options.onReady?.();
+        this.beginIntro();
+        this.scheduleReachPreparation();
+        this.lastTime = performance.now();
+        this.raf = requestAnimationFrame(this.frame);
+      });
       return;
     }
     const delta = Math.min(250, Math.max(0, now - this.lastTime));
@@ -990,6 +1038,8 @@ export class GameSession {
     if (event.button !== 0) return;
     if (this.introActive) this.finishIntro();
     this.cancelDragPreview();
+    // 按下鼠标就开始新的操作，上一条预览路线先撤掉；单击后需要时再重画。
+    this.scene.setPreviewPath(null);
     this.dragMoved = false;
     this.dragStartX = event.clientX;
     this.dragStartY = event.clientY;
@@ -1240,7 +1290,7 @@ export class GameSession {
     if (target.city) {
       const city = this.getCity(target.city);
       if (!city) return [];
-      const ring = this.scene.projectGround(city.pos[0], city.pos[1], this.scene.groundHeight(city.pos[0], city.pos[1]) + 0.5);
+      const ring = this.scene.projectGround(city.pos[0], city.pos[1], 0.5);
       if (!ring) return [];
       to = ring;
       marker = { ring };
@@ -1254,8 +1304,8 @@ export class GameSession {
         [x + half, z - half],
         [x + half, z + half],
         [x - half, z + half],
-      ].map(([px, pz]) => this.scene.projectGround(px, pz, this.scene.groundHeight(px, pz) + 0.08));
-      const center = this.scene.projectGround(x, z, this.scene.groundHeight(x, z) + 0.12);
+      ].map(([px, pz]) => this.scene.projectGround(px, pz, 0.08));
+      const center = this.scene.projectGround(x, z, 0.12);
       if (!center) return [];
       to = center;
       const square = corners.every((point): point is { x: number; y: number } => point !== null)
@@ -1268,7 +1318,7 @@ export class GameSession {
     for (const id of this.planDragSources) {
       const city = this.getCity(id);
       if (!city) continue;
-      const from = this.scene.projectGround(city.pos[0], city.pos[1], this.scene.groundHeight(city.pos[0], city.pos[1]) + 3.6);
+      const from = this.scene.projectGround(city.pos[0], city.pos[1], 3.6);
       if (!from) continue;
       views.push({ fromX: from.x, fromY: from.y, toX: to.x, toY: to.y });
     }
@@ -1307,7 +1357,7 @@ export class GameSession {
     if (!source) return null;
     const city = this.getCity(source);
     if (!city) return null;
-    const from = this.scene.projectGround(city.pos[0], city.pos[1], this.scene.groundHeight(city.pos[0], city.pos[1]) + 3.6);
+    const from = this.scene.projectGround(city.pos[0], city.pos[1], 3.6);
     if (!from) return null;
     const target = this.dispatchTargetAt(clientX, clientY, source, true);
     if (target?.cell) {
@@ -1320,8 +1370,8 @@ export class GameSession {
         [x + half, z - half],
         [x + half, z + half],
         [x - half, z + half],
-      ].map(([px, pz]) => this.scene.projectGround(px, pz, this.scene.groundHeight(px, pz) + 0.08));
-      const center = this.scene.projectGround(x, z, this.scene.groundHeight(x, z) + 0.08);
+      ].map(([px, pz]) => this.scene.projectGround(px, pz, 0.08));
+      const center = this.scene.projectGround(x, z, 0.08);
       if (center) {
         const square = corners.every((point): point is { x: number; y: number } => point !== null)
           ? corners
@@ -1329,8 +1379,9 @@ export class GameSession {
         return {
           fromX: from.x,
           fromY: from.y,
-          toX: clientX,
-          toY: clientY,
+          // 箭头落在格心而不是鼠标像素上：准星、方框和箭尖指向同一格。
+          toX: center.x,
+          toY: center.y,
           ...(square ? { square } : {}),
           ring: center,
         };
@@ -1401,25 +1452,32 @@ export class GameSession {
     this.setSelection([]);
   }
 
-  /** 选中建筑后单击目的地，按网格算出一条路线并画出来，不派兵。 */
-  private previewRouteTo(xCm: number, zCm: number): void {
+  /** 选中建筑后单击目的地，按实际行军路线铺出同样的绿格，不派兵。 */
+  private previewRouteTo(xCm: number, zCm: number, destination?: CityId): void {
     const nav = this.state.nav;
     const city = this.getCity(this.selected[0]);
     if (!nav || !city) return;
-    const route = planGridRoute(
-      this.state.map,
-      nav,
-      [city.pos[0] * 10, city.pos[1] * 10],
-      [xCm, zCm],
-      40,
-      isProductionSiteKind(city.kind) ? city.kind : "warrior",
-    );
+    // 不产兵的据点派不出兵团，也就不画实际路线。
+    if (!isProductionSiteKind(city.kind)) {
+      this.scene.setPreviewPath(null);
+      return;
+    }
+    const unitKind = siteUnitKind(city.kind) ?? "barbarian";
+    // 和 sim 派兵时用的是同一张兵种导航图：非己方据点会挡路，兵种地形限制也一致。
+    const unitNav = createUnitNavGrid(this.state.map, this.state.cities, city.owner, unitKind, destination);
+    if (!unitNav) return;
+    const origin: [number, number] = [city.pos[0] * 10, city.pos[1] * 10];
+    const route = planGridRoute(this.state.map, unitNav, origin, [xCm, zCm], 40, unitKind);
     if (!route) {
-      this.routeOverlay.setPreviewRoute(null);
+      this.scene.setPreviewPath(null);
       this.options.onToast("这里走不过去");
       return;
     }
-    this.routeOverlay.setPreviewRoute(route.points.map((point) => [point[0] / 10, point[1] / 10] as [number, number]));
+    const offsetX = this.state.map.size[0] * 5;
+    const offsetZ = this.state.map.size[1] * 5;
+    // 和 sim 里兵团实际携带的网格路径一致：出发点 + A* 折线。
+    const cells = this.rasterizeRoute([origin, ...route.points], 0, unitNav, offsetX, offsetZ);
+    this.scene.setPreviewPath(cells, unitNav.cellSizeCm);
   }
 
   private clickCity(cityId: CityId): void {
@@ -1543,13 +1601,14 @@ export class GameSession {
     // 选中一座己方建筑时，单击目的地会先画出这张行走路线预览。
     const cell = this.gridCellAt(event.clientX, event.clientY);
     if (this.selected.length === 1) {
-      if (cell) {
-        this.previewRouteTo(cell.xCm, cell.zCm);
-        return;
-      }
+      // 和双击派兵的判定顺序一致：先认据点，再认网格。
       if (cityId) {
         const target = this.getCity(cityId);
-        if (target) this.previewRouteTo(target.pos[0] * 10, target.pos[1] * 10);
+        if (target) this.previewRouteTo(target.pos[0] * 10, target.pos[1] * 10, target.id);
+        return;
+      }
+      if (cell) {
+        this.previewRouteTo(cell.xCm, cell.zCm);
         return;
       }
     }
