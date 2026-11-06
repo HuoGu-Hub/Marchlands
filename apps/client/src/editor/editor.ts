@@ -231,6 +231,13 @@ const TEMPLATE = `
       </details>
       </div>
       <div class="ml-ed-grid-actions">
+        <select class="ml-ed-grid-cell" id="ml-ed-grid-cell" title="网格分辨率">
+          <option value="5">格宽 0.5 米</option>
+          <option value="10" selected>格宽 1 米</option>
+          <option value="20">格宽 2 米</option>
+          <option value="25">格宽 2.5 米</option>
+          <option value="50">格宽 5 米</option>
+        </select>
         <button class="ml-ed-btn" id="ml-ed-new-grid">新建网格</button>
         <button class="ml-ed-btn" id="ml-ed-grid-enable">启用网格</button>
         <button class="ml-ed-btn" id="ml-ed-nav-preview">导航预览</button>
@@ -504,7 +511,7 @@ export class EditorController {
       void this.exportBuiltinPack();
     });
     this.options.root.querySelector("#ml-ed-new-grid")?.addEventListener("click", () => {
-      this.commit(createGridDocument(), "已新建网格地图");
+      this.commit(createGridDocument([700, 700], { cellSizeDm: this.gridCellSize() }), "已新建网格地图");
     });
     this.options.root.querySelector("#ml-ed-grid-enable")?.addEventListener("click", () => this.enableGrid());
     this.navButton.addEventListener("click", () => this.toggleNavPreview());
@@ -774,13 +781,18 @@ export class EditorController {
     this.navButton.classList.toggle("active", this.navPreview);
   }
 
+  private gridCellSize(): number {
+    const select = this.options.root.querySelector<HTMLSelectElement>("#ml-ed-grid-cell");
+    return Math.max(5, Math.round(Number(select?.value) || 10));
+  }
+
   private enableGrid(): void {
     if (this.doc.navigation === "grid" && this.doc.grid) {
       this.notice("已经是网格地图");
       return;
     }
     try {
-      this.commit(convertToGrid(this.doc), "已启用网格导航");
+      this.commit(convertToGrid(this.doc, { cellSizeDm: this.gridCellSize() }), "已启用网格导航");
     } catch {
       this.notice("地图尺寸必须能被网格边长整除");
     }
@@ -1985,7 +1997,10 @@ export class EditorController {
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (!this.running) return;
     const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) {
+    // 只有文本输入保留原生撤销；数字框、下拉框聚焦时 Ctrl+Z 仍要撤销地图编辑。
+    const tag = target?.tagName;
+    const inputType = tag === "INPUT" ? (target as HTMLInputElement).type : "";
+    if (tag === "TEXTAREA" || (tag === "INPUT" && inputType !== "number" && inputType !== "range" && inputType !== "checkbox")) {
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {

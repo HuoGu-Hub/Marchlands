@@ -68,4 +68,11 @@ export {
 export type { CombatModifiers, CombatOutcome, FieldOutcome } from "./combat";
 export { applyUpgrade, growCity, growGold } from "./economy";
 
-export { createUnitNavGrid, gridSpeedCmPerTick, gridTravelTicks, planGridRoute } from "./grid";
+export {
+  GRID_CAPTURE_RADIUS_CM,
+  GRID_UNIT_RADIUS_CM,
+  createUnitNavGrid,
+  gridSpeedCmPerTick,
+  gridTravelTicks,
+  planGridRoute,
+} from "./grid";

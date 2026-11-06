@@ -70,8 +70,9 @@ function requireBase64<T>(
 }
 
 function validateGrid(grid: Record<string, unknown>, width: number, height: number, issues: string[]): void {
-  const cellSize = requireInt(grid.cellSizeCm, "grid.cellSizeCm", issues, 1);
-  if (cellSize !== 100) issues.push("grid.cellSizeCm must be 100");
+  const cellSize = requireInt(grid.cellSizeCm, "grid.cellSizeCm", issues, 10);
+  // 单元格是整数分米；1 米只是默认值，编辑器可以按 0.5/2/2.5/5 米建图。
+  if (cellSize > 0 && cellSize % 10 !== 0) issues.push("grid.cellSizeCm must be a multiple of 10");
   const gridWidth = requireInt(grid.width, "grid.width", issues, 1);
   const gridHeight = requireInt(grid.height, "grid.height", issues, 1);
   if (gridWidth > 0 && cellSize > 0 && width > 0 && gridWidth * cellSize !== width * 10) {

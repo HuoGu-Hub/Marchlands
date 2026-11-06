@@ -792,6 +792,52 @@ test("next editor converts to a grid map and sculpts terrain", async ({ page }) 
   await expect(page.locator("#mlnx-toast")).toContainText("已撤销");
 });
 
+test("next editor creates a grid map at a chosen cell size and shows per-unit reach", async ({ page }) => {
+  page.on("dialog", (dialog) => void dialog.accept());
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.keyboard.press("g");
+  await page.fill("#mlnx-grid-w", "40");
+  await page.fill("#mlnx-grid-h", "30");
+  await page.selectOption("#mlnx-grid-cell", "20");
+  await page.click("#mlnx-new-grid");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const doc = (window as unknown as { __mlnxDoc: () => { grid?: { cellSizeDm: number; width: number; height: number } } }).__mlnxDoc();
+        return doc.grid ? [doc.grid.cellSizeDm, doc.grid.width, doc.grid.height] : null;
+      }),
+    )
+    .toEqual([20, 20, 15]);
+  await page.click("#mlnx-reach-toggle");
+  await expect(page.locator("#mlnx-reach-toggle")).toContainText("关闭可达范围");
+  await page.selectOption("#mlnx-reach-unit", "warrior");
+  await expect(page.locator("#mlnx-reach-unit")).toHaveValue("warrior");
+  await page.click("#mlnx-reach-toggle");
+  await expect(page.locator("#mlnx-reach-toggle")).toContainText("显示可达范围");
+});
+
+test("next editor converts to half-metre grid cells", async ({ page }) => {
+  page.on("dialog", (dialog) => void dialog.accept());
+  await page.goto("/");
+  await expect(page.locator("#page-menu")).toBeVisible({ timeout: 10_000 });
+  await page.click("#btn-editor");
+  await expect(page.locator("#mlnx-root")).toBeVisible();
+  await page.keyboard.press("g");
+  await page.selectOption("#mlnx-grid-cell", "5");
+  await page.click("#mlnx-convert-grid");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const doc = (window as unknown as { __mlnxDoc: () => { grid?: { cellSizeDm: number; width: number } } }).__mlnxDoc();
+        return doc.grid ? [doc.grid.cellSizeDm, doc.grid.width] : null;
+      }),
+    )
+    .toEqual([5, 140]);
+});
+
 test("pauses and resumes without losing the match", async ({ page }) => {
   await openGame(page);
   const timer = page.locator("#hud-timer");

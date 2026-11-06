@@ -11,8 +11,15 @@ import {
   TreeViewItem,
 } from "@playcanvas/pcui";
 import "@playcanvas/pcui/styles";
-import { createGame, isProductionSiteKind } from "@marchlands/sim";
-import type { CityId, MapDef, Ruleset, SimState, SiteKind } from "@marchlands/sim";
+import {
+  GRID_UNIT_RADIUS_CM,
+  UNIT_PROFILES,
+  createGame,
+  createUnitNavGrid,
+  isProductionSiteKind,
+} from "@marchlands/sim";
+import type { CityId, MapDef, Ruleset, SimState, SiteKind, UnitKind } from "@marchlands/sim";
+import type { NavGrid } from "@marchlands/nav";
 import { SITE_KIND_OPTIONS, siteKindLabel } from "../../game/site-kind";
 import {
   addFoundation,
@@ -25,7 +32,6 @@ import {
   compileDocument,
   convertToGrid,
   createGridDocument,
-  createGridDraft,
   createStarterDocument,
   documentBounds,
   duplicateFoundation,
@@ -231,6 +237,47 @@ const TEMPLATE = [
   '</div>',
 ].join("\n");
 
+const REACH_NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
+
+/** 从一格洪泛出该兵种能走到的所有格子；和派兵用同一套 NavGrid.canStep。 */
+function floodCells(nav: NavGrid, start: number, coverage: Uint8Array): Uint8Array {
+  const cells = new Uint8Array(nav.cellCount);
+  const queue = new Int32Array(nav.cellCount);
+  let head = 0;
+  let tail = 0;
+  cells[start] = 1;
+  queue[tail] = start;
+  tail += 1;
+  while (head < tail) {
+    const current = queue[head];
+    head += 1;
+    const cx = nav.cellX(current);
+    const cz = nav.cellZ(current);
+    for (const [dx, dz] of REACH_NEIGHBOURS) {
+      const nx = cx + dx;
+      const nz = cz + dz;
+      if (!nav.inBounds(nx, nz)) continue;
+      const next = nav.index(nx, nz);
+      if (cells[next] === 1) continue;
+      if (!nav.isWalkable(next, coverage)) continue;
+      if (!nav.canStep(current, next, coverage)) continue;
+      cells[next] = 1;
+      queue[tail] = next;
+      tail += 1;
+    }
+  }
+  return cells;
+}
+
 export class EditorNext {
   private readonly options: EditorNextOptions;
   private doc: MapDocument = createStarterDocument();
@@ -238,6 +285,11 @@ export class EditorNext {
   private preview: SimState | null = null;
   private scene: BattleScene | null = null;
   private terrainPassability = false;
+  private terrainReachable = false;
+  private reachUnit: UnitKind = "barbarian";
+  private reachFrom: string | null = null;
+  private reachMesh: THREE.Mesh | null = null;
+  private rampPreview: THREE.Line | null = null;
   private orbit: OrbitControls | null = null;
   private gizmo: TransformControls | null = null;
   private editorRoot: THREE.Group | null = null;
@@ -473,6 +525,7 @@ export class EditorNext {
     const axes = new THREE.AxesHelper(12);
     axes.position.set(0, 0.03, 0);
     this.editorRoot.add(axes);
+    this.updateReachOverlay();
 
     this.proxyRoot = new THREE.Group();
     this.proxyRoot.name = "editor-proxies";
@@ -603,6 +656,8 @@ export class EditorNext {
     this.roadSelectionRoot = null;
     this.roadPointDrag = null;
     this.faceDrag = null;
+    this.reachMesh = null;
+    this.rampPreview = null;
     this.proxies.length = 0;
     this.selectedProxy = null;
     this.treeItems.clear();
@@ -1147,26 +1202,39 @@ export class EditorNext {
         '<p class="mlnx-note">当前是据点图。转换为网格地图后可以用笔刷抬高、压低、刷水与阻挡。</p>' +
         '<label class="mlnx-switch">宽 <input id="mlnx-grid-w" type="number" min="20" max="300" step="5" value="70"></label>' +
         '<label class="mlnx-switch">高 <input id="mlnx-grid-h" type="number" min="20" max="300" step="5" value="70"></label>' +
+        '<label class="mlnx-switch">格宽 <select class="mlnx-search" id="mlnx-grid-cell">' +
+        '<option value="5">0.5 米</option><option value="10" selected>1 米</option><option value="20">2 米</option><option value="25">2.5 米</option><option value="50">5 米</option>' +
+        '</select></label>' +
         '<button class="mlnx-btn" id="mlnx-convert-grid">转换为网格地图</button>' +
         '<button class="mlnx-btn" id="mlnx-new-grid">新建网格地图</button>';
       this.leftContent.appendChild(host);
       host.querySelector("#mlnx-convert-grid")?.addEventListener("click", () => {
         if (!window.confirm("转换为网格地图会创建与地图同心的网格地基，确定继续？")) return;
-        this.commit(convertToGrid(this.doc), "已转换为网格地图", { rebuild: true });
+        const cellInput = host.querySelector<HTMLSelectElement>("#mlnx-grid-cell");
+        const cellSizeDm = Math.max(5, Math.round(Number(cellInput?.value) || 10));
+        try {
+          this.commit(convertToGrid(this.doc, { cellSizeDm }), "已转换为网格地图", { rebuild: true });
+        } catch (error) {
+          this.notice(error instanceof Error ? error.message : "转换失败");
+          return;
+        }
         this.setTool("terrain");
-        this.notice("已转换为网格地图，选择笔刷开始刷地形");
+        this.notice("已转换为网格地图 · 格宽 " + (cellSizeDm / 10).toFixed(1) + " 米，选择笔刷开始刷地形");
       });
       host.querySelector("#mlnx-new-grid")?.addEventListener("click", () => {
         if (this.dirty && !window.confirm("当前草稿还没保存，确定新建网格地图？")) return;
         const widthInput = host.querySelector<HTMLInputElement>("#mlnx-grid-w");
         const heightInput = host.querySelector<HTMLInputElement>("#mlnx-grid-h");
-        const widthM = Math.max(20, Math.min(300, Number(widthInput?.value) || 70));
-        const heightM = Math.max(20, Math.min(300, Number(heightInput?.value) || 70));
+        const cellInput = host.querySelector<HTMLSelectElement>("#mlnx-grid-cell");
+        const cellSizeDm = Math.max(5, Math.round(Number(cellInput?.value) || 10));
+        const stepM = cellSizeDm / 10;
+        // 地图尺寸必须能被格宽整除：向上取整到一格，免得格子被裁掉半格。
+        const rawWidth = Math.max(20, Math.min(300, Number(widthInput?.value) || 70));
+        const rawHeight = Math.max(20, Math.min(300, Number(heightInput?.value) || 70));
+        const widthM = Math.ceil(rawWidth / stepM) * stepM;
+        const heightM = Math.ceil(rawHeight / stepM) * stepM;
         const size: [number, number] = [Math.round(widthM * 10), Math.round(heightM * 10)];
-        const next = createGridDocument();
-        next.size = size;
-        next.grid = createGridDraft(size);
-        this.doc = next;
+        this.doc = createGridDocument(size, { cellSizeDm });
         this.undoStack = [];
         this.redoStack = [];
         this.selection = null;
@@ -1174,7 +1242,7 @@ export class EditorNext {
         this.rebuildScene();
         this.renderAll();
         this.setTool("terrain");
-        this.notice("已新建网格地图 " + widthM + " × " + heightM + " 米");
+        this.notice("已新建网格地图 " + widthM + " × " + heightM + " 米 · 格宽 " + stepM.toFixed(1) + " 米");
       });
       return;
     }
@@ -1201,7 +1269,27 @@ export class EditorNext {
     html += '<div class="mlnx-group-label">地表</div>';
     html += '<select class="mlnx-search" id="mlnx-surface-brush">' +
       '<option value="0">草地</option><option value="1">泥土</option><option value="2">岩石</option><option value="3">雪地</option></select>';
-    html += '<p class="mlnx-note">左键拖动刷地形。坡道先点起点再拖到终点；笔刷只影响画面与网格导航。</p>';
+    const cellMeters = (this.doc.grid.cellSizeDm / 10).toFixed(1);
+    html += '<div class="mlnx-group-label">网格</div>';
+    html += '<div class="mlnx-sub">格宽 ' + cellMeters + ' 米 · ' + this.doc.grid.width + ' × ' + this.doc.grid.height + ' 格</div>';
+    const reachSite = this.reachSite();
+    html += '<div class="mlnx-group-label">可达性</div>';
+    html += '<label class="mlnx-switch">兵种 <select class="mlnx-search" id="mlnx-reach-unit">' +
+      Object.values(UNIT_PROFILES)
+        .map((profile) => '<option value="' + profile.kind + '"' + (profile.kind === this.reachUnit ? " selected" : "") + ">" + profile.label + "</option>")
+        .join("") +
+      '</select></label>';
+    html += '<label class="mlnx-switch">出发点 <select class="mlnx-search" id="mlnx-reach-from">' +
+      this.doc.sites
+        .map((site) => {
+          const owner = site.owner === 1 ? "我方" : site.owner === 2 ? "敌方" : "中立";
+          return '<option value="' + site.id + '"' + (site.id === reachSite?.id ? " selected" : "") + ">" + site.id + " · " + siteKindLabel(site.kind) + " · " + owner + "</option>";
+        })
+        .join("") +
+      '</select></label>';
+    html += '<button class="mlnx-btn" id="mlnx-reach-toggle">' + (this.terrainReachable ? "关闭可达范围" : "显示可达范围") + '</button>';
+    html += '<div class="mlnx-actions-row"><button class="mlnx-btn" id="mlnx-terrain-undo">撤销</button><button class="mlnx-btn" id="mlnx-terrain-redo">重做</button></div>';
+    html += '<p class="mlnx-note">左键拖动刷地形。坡道先点起点再拖到终点；可达范围按兵种的坡度、地表和建筑阻挡从出发点洪泛，橙色格是出发点。Ctrl+Z 撤销，Ctrl+Shift+Z 重做。</p>';
     host.innerHTML = html;
     this.leftContent.appendChild(host);
     for (const button of host.querySelectorAll<HTMLElement>("[data-brush]")) {
@@ -1229,6 +1317,171 @@ export class EditorNext {
         this.surfaceBrush = Math.max(0, Math.min(9, Math.round(Number(surface.value) || 0)));
       });
     }
+    const reachUnit = host.querySelector<HTMLSelectElement>("#mlnx-reach-unit");
+    reachUnit?.addEventListener("change", () => {
+      this.reachUnit = reachUnit.value as UnitKind;
+      this.updateReachOverlay();
+    });
+    const reachFrom = host.querySelector<HTMLSelectElement>("#mlnx-reach-from");
+    reachFrom?.addEventListener("change", () => {
+      this.reachFrom = reachFrom.value;
+      this.updateReachOverlay();
+    });
+    host.querySelector("#mlnx-reach-toggle")?.addEventListener("click", () => {
+      this.terrainReachable = !this.terrainReachable;
+      this.updateReachOverlay();
+      this.renderTerrainPanel();
+    });
+    host.querySelector("#mlnx-terrain-undo")?.addEventListener("click", () => this.undo());
+    host.querySelector("#mlnx-terrain-redo")?.addEventListener("click", () => this.redo());
+  }
+
+  private reachSite(): SiteDraft | null {
+    const selected = this.reachFrom ? this.doc.sites.find((site) => site.id === this.reachFrom) : undefined;
+    return selected ?? this.doc.sites.find((site) => site.owner === 1) ?? this.doc.sites[0] ?? null;
+  }
+
+  private clearReachOverlay(): void {
+    const mesh = this.reachMesh;
+    this.reachMesh = null;
+    if (!mesh) return;
+    this.editorRoot?.remove(mesh);
+    mesh.geometry.dispose();
+    (mesh.material as THREE.Material).dispose();
+  }
+
+  /** 按所选兵种和出发点重建可达性叠加；地形改动后重新调用。 */
+  private updateReachOverlay(): void {
+    this.clearReachOverlay();
+    const grid = this.doc.grid;
+    if (!this.terrainReachable || !grid || !this.scene || !this.editorRoot) return;
+    const site = this.reachSite();
+    if (!site) return;
+    const map = this.compiled.map;
+    const cities = this.preview?.cities ?? [];
+    const nav = createUnitNavGrid(map, cities, site.owner, this.reachUnit, site.id);
+    if (!nav) return;
+    const offsetX = map.size[0] * 5;
+    const offsetZ = map.size[1] * 5;
+    const start = nav.cellFromWorld(site.pos[0] * 10 + offsetX, site.pos[1] * 10 + offsetZ);
+    if (start < 0) return;
+    const coverage = nav.clearance(GRID_UNIT_RADIUS_CM);
+    if (!nav.isWalkable(start, coverage)) {
+      this.notice("出发点对 " + UNIT_PROFILES[this.reachUnit].label + " 不可走");
+      return;
+    }
+    const reachable = floodCells(nav, start, coverage);
+    const cellSize = grid.cellSizeDm;
+    const halfX = this.doc.size[0] / 2;
+    const halfZ = this.doc.size[1] / 2;
+    const ground = (x: number, z: number): number => (this.scene?.groundHeight(x, z) ?? 0) + 0.1;
+    const positions: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    const reachableColor = [0.2, 0.85, 1];
+    const originColor = [1, 0.72, 0.3];
+    for (let index = 0; index < reachable.length; index += 1) {
+      if (reachable[index] !== 1) continue;
+      const cx = nav.cellX(index);
+      const cz = nav.cellZ(index);
+      const x0 = cx * cellSize - halfX;
+      const x1 = x0 + cellSize;
+      const z0 = cz * cellSize - halfZ;
+      const z1 = z0 + cellSize;
+      const base = positions.length / 3;
+      positions.push(
+        x0 / 10, ground(x0, z0), z0 / 10,
+        x1 / 10, ground(x1, z0), z0 / 10,
+        x0 / 10, ground(x0, z1), z1 / 10,
+        x1 / 10, ground(x1, z1), z1 / 10,
+      );
+      const color = index === start ? originColor : reachableColor;
+      for (let corner = 0; corner < 4; corner += 1) colors.push(color[0], color[1], color[2]);
+      indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+    }
+    if (indices.length === 0) return;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeBoundingSphere();
+    const material = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      fog: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = "editor-reach";
+    mesh.renderOrder = 6;
+    this.editorRoot.add(mesh);
+    this.reachMesh = mesh;
+  }
+
+  private ensureRampPreview(): THREE.Line {
+    if (this.rampPreview) return this.rampPreview;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * 160), 3));
+    geometry.setDrawRange(0, 0);
+    const material = new THREE.LineDashedMaterial({
+      color: 0xffc46b,
+      dashSize: 0.7,
+      gapSize: 0.45,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+      fog: false,
+    });
+    const line = new THREE.Line(geometry, material);
+    line.frustumCulled = false;
+    line.renderOrder = 7;
+    this.editorRoot?.add(line);
+    this.rampPreview = line;
+    return line;
+  }
+
+  private updateRampPreview(cell: [number, number]): void {
+    const stroke = this.gridStroke;
+    const grid = this.doc.grid;
+    if (!stroke || !grid) return;
+    const line = this.ensureRampPreview();
+    const halfX = this.doc.size[0] / 2;
+    const halfZ = this.doc.size[1] / 2;
+    const from: [number, number] = [
+      (stroke.startCell[0] + 0.5) * grid.cellSizeDm - halfX,
+      (stroke.startCell[1] + 0.5) * grid.cellSizeDm - halfZ,
+    ];
+    const to: [number, number] = [
+      (cell[0] + 0.5) * grid.cellSizeDm - halfX,
+      (cell[1] + 0.5) * grid.cellSizeDm - halfZ,
+    ];
+    const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
+    const steps = Math.max(1, Math.min(150, Math.ceil(length / 4)));
+    const attribute = line.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const array = attribute.array as Float32Array;
+    for (let index = 0; index <= steps; index += 1) {
+      const t = index / steps;
+      const x = from[0] + (to[0] - from[0]) * t;
+      const z = from[1] + (to[1] - from[1]) * t;
+      array[index * 3] = x / 10;
+      array[index * 3 + 1] = (this.scene?.groundHeight(x, z) ?? 0) + 0.28;
+      array[index * 3 + 2] = z / 10;
+    }
+    line.geometry.setDrawRange(0, steps + 1);
+    attribute.needsUpdate = true;
+    line.computeLineDistances();
+  }
+
+  private clearRampPreview(): void {
+    const line = this.rampPreview;
+    this.rampPreview = null;
+    if (!line) return;
+    this.editorRoot?.remove(line);
+    line.geometry.dispose();
+    (line.material as THREE.Material).dispose();
   }
 
   private renderInspector(): void {
@@ -2838,6 +3091,7 @@ export class EditorNext {
       changed: false,
     };
     this.applyGridAt(cell);
+    if (this.terrainBrush === "ramp") this.updateRampPreview(cell);
   }
 
   private applyGridAt(cell: [number, number]): void {
@@ -2858,14 +3112,17 @@ export class EditorNext {
     this.compiled = compileDocument(next, { validateNavigation: false });
     this.scene?.updateTerrain(this.compiled.map, this.compiled.visual);
     this.syncProxies();
+    if (this.terrainBrush === "ramp") this.updateRampPreview(cell);
   }
 
   private finishGridStroke(): void {
+    this.clearRampPreview();
     const stroke = this.gridStroke;
     this.gridStroke = null;
     if (!stroke) return;
     if (!stroke.changed) {
       this.doc = stroke.before;
+      this.updateReachOverlay();
       return;
     }
     this.undoStack.push(stroke.before);
@@ -2876,6 +3133,7 @@ export class EditorNext {
     this.preview = this.createPreview();
     this.scene?.updateTerrain(this.compiled.map, this.compiled.visual);
     this.syncProxies();
+    this.updateReachOverlay();
     this.renderTree();
     this.renderInspector();
     this.updateTop();
@@ -3122,8 +3380,14 @@ export class EditorNext {
     if (options.rebuild || !this.scene) {
       this.rebuildScene();
     } else {
-      if (options.terrain) this.scene.updateTerrain(this.compiled.map, this.compiled.visual);
-      if (options.sites) this.updateSitesScene();
+      if (options.terrain) {
+        this.scene.updateTerrain(this.compiled.map, this.compiled.visual);
+        this.updateReachOverlay();
+      }
+      if (options.sites) {
+        this.updateSitesScene();
+        this.updateReachOverlay();
+      }
       if (options.props) this.scene.updateProps(this.compiled.visual);
       if (options.roads) this.scene.updateRoads(this.compiled.map, this.compiled.visual);
       this.syncProxies();
@@ -3316,7 +3580,12 @@ export class EditorNext {
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (!this.running) return;
     const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;
+    // 只有文本输入保留原生撤销；数字框、下拉框聚焦时 Ctrl+Z 仍要撤销地图编辑。
+    const tag = target?.tagName;
+    const inputType = tag === "INPUT" ? (target as HTMLInputElement).type : "";
+    if (tag === "TEXTAREA" || (tag === "INPUT" && inputType !== "number" && inputType !== "range" && inputType !== "checkbox")) {
+      return;
+    }
     if (event.ctrlKey || event.metaKey) {
       if (event.key.toLowerCase() === "z") {
         event.preventDefault();

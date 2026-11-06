@@ -101,15 +101,18 @@ export function createStarterDocument(): MapDocument {
   return document;
 }
 
-export function createGridDocument(): MapDocument {
+export function createGridDocument(
+  size: [number, number] = [700, 700],
+  options: { cellSizeDm?: number } = {},
+): MapDocument {
   const document: MapDocument = {
     schema: 3,
     navigation: "grid",
-    grid: createGridDraft([700, 700]),
+    grid: createGridDraft(size, options),
     vision: { enabled: false },
     slug: "custom-grid",
     name: "新网格地图",
-    size: [700, 700],
+    size: [size[0], size[1]],
     biome: "frontier",
     players: DEFAULT_PLAYERS.map((player) => ({ ...player })),
     sites: [
@@ -126,16 +129,25 @@ export function createGridDocument(): MapDocument {
     climbCm: 60,
     visual: createDefaultVisual(),
   };
+  // 小地图上新网格的默认据点会落到边界外，按尺寸收一收。
+  for (const site of document.sites) {
+    const limitX = Math.max(10, size[0] / 2 - 60);
+    const limitZ = Math.max(10, size[1] / 2 - 60);
+    site.pos = [Math.max(-limitX, Math.min(limitX, site.pos[0])), Math.max(-limitZ, Math.min(limitZ, site.pos[1]))];
+  }
   document.visual = createStarterVisual(document);
   return document;
 }
 
-export function convertToGrid(document: MapDocument): MapDocument {
+export function convertToGrid(
+  document: MapDocument,
+  options: { cellSizeDm?: number } = {},
+): MapDocument {
   const next = cloneDocument(document);
   next.schema = 3;
   next.navigation = "grid";
   next.vision = { enabled: false };
-  if (!next.grid) next.grid = createGridDraft(next.size);
+  if (!next.grid) next.grid = createGridDraft(next.size, { cellSizeDm: options.cellSizeDm });
   // 网格导航只支持一块与网格同心的地基，转换时收拢。
   const primary = next.visual.foundations[0];
   next.visual.foundations = [
