@@ -123,9 +123,17 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
       // 据点院落：把建筑周围压成一片泥土地，边缘柔和过渡到草地。
       let yard = 0;
       for (const entry of yards) {
-        const distance = Math.hypot(x - entry.x, z - entry.z);
-        if (distance > entry.radius) continue;
-        yard = Math.max(yard, Math.min(1, (entry.radius - distance) / 0.6));
+        const dx = x - entry.x;
+        const dz = z - entry.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance > entry.radius * 1.5) continue;
+        // 半径按两档噪声扰动，边界变成不规则的泥地，而不是一个圆。
+        const wobble =
+          valueNoise(entry.x * 0.6 + dx * 0.8, entry.z * 0.6 + dz * 0.8) * 0.6 +
+          valueNoise(entry.x * 1.7 + dx * 2.1, entry.z * 1.7 + dz * 2.1) * 0.3;
+        const radius = entry.radius * (0.74 + wobble * 0.62);
+        if (distance > radius) continue;
+        yard = Math.max(yard, Math.min(1, (radius - distance) / 0.55));
       }
       const slope = Math.abs(heightAt(x + 0.5, z) - heightAt(x - 0.5, z));
       const grade = slope / 1;

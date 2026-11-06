@@ -699,7 +699,7 @@ export function buildTerrain(
           yards: map.cities.map((city) => ({
             x: city.pos[0] / 10,
             z: city.pos[1] / 10,
-            radius: city.kind === "granary" || city.kind === "outpost" ? 2.4 : 3.4,
+            radius: city.kind === "granary" || city.kind === "outpost" ? 2 : 2.9,
           })),
         }),
           roughness: 1,
