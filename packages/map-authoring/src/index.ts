@@ -97,6 +97,13 @@ export { applyGridBrush, gridCellFromGround } from "./grid-ops";
 export type { GridBrushMode, GridBrushOptions } from "./grid-ops";
 export { createHeightField, edgeGrade } from "./height";
 export type { HeightField, HeightFieldOptions } from "./height";
+export { CLIFF_THRESHOLD_CM, buildGridSurface } from "./terrain-surface";
+export type {
+  GridSurface,
+  GridSurfaceInput,
+  GridSurfaceOptions,
+  GridSurfaceWall,
+} from "./terrain-surface";
 export { FOUNDATION_SHAPES, isFoundationShape, TERRAIN_STYLE_IDS, TERRAIN_STYLES } from "./types";
 export type {
   CompileResult,

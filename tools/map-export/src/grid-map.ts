@@ -106,9 +106,10 @@ function sampleHeights(
     }
     values = next;
   }
-  // 限制相邻格高差：坡再陡也能走，陡坎交给 blocked 标记。
+  // 限制相邻格高差：坡再陡也能走，陡坎交给台地边缘。
+  // 只跑十几轮扩散收敛不了，陡坡上仍会残留一米多的高差，渲染时会被当成悬崖。
   const MAX_RISE_CM = 70;
-  for (let pass = 0; pass < 12; pass += 1) {
+  for (let pass = 0; pass < 600; pass += 1) {
     let changed = false;
     for (let z = 0; z < rows; z += 1) {
       for (let x = 0; x < cols; x += 1) {
@@ -278,24 +279,42 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
     });
   }
 
-  // 台地：把一块圆形区域整体抬升，边缘在几格内收拢成陡坡，
-  // 重甲单位上不去，轻装和游侠还能爬。
+  // 台地：一圈硬边的平顶高台，边缘一格直接立起来，才是悬崖而不是缓坡。
+  // 顶面取台地范围内最高点再抬一层，保证四周都低于台面；
+  // 边缘加一点径向抖动，不会像圆规画出来的圆。
   if (options.plateaus && options.plateaus.length > 0) {
     const cellCm = CELL_CM;
     for (const plateau of options.plateaus) {
-      const centerX = (plateau.pos[0] + map.size[0] * 5) / cellCm - 0.5;
-      const centerZ = (plateau.pos[1] + map.size[1] * 5) / cellCm - 0.5;
+      const centerX = (plateau.pos[0] * 10 + map.size[0] * 5) / cellCm - 0.5;
+      const centerZ = (plateau.pos[1] * 10 + map.size[1] * 5) / cellCm - 0.5;
       const radiusCells = plateau.radiusCm / cellCm;
       const reach = Math.ceil(radiusCells) + 5;
+      let top = Number.NEGATIVE_INFINITY;
       for (let dz = -reach; dz <= reach; dz += 1) {
         for (let dx = -reach; dx <= reach; dx += 1) {
           const cx = Math.round(centerX) + dx;
           const cz = Math.round(centerZ) + dz;
           if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
-          const distance = Math.hypot(cx - centerX, cz - centerZ);
-          // 台地边缘是硬边：一格里直接抬起来，才算悬崖，不是缓坡。
-          const t = Math.min(1, Math.max(0, radiusCells - distance + 0.5));
-          heights[cz * cols + cx] += Math.round(plateau.heightCm * t);
+          if (Math.hypot(cx - centerX, cz - centerZ) > radiusCells) continue;
+          top = Math.max(top, heights[cz * cols + cx]);
+        }
+      }
+      if (!Number.isFinite(top)) continue;
+      top += plateau.heightCm;
+      const phase = centerX * 0.37 + centerZ * 0.61;
+      for (let dz = -reach; dz <= reach; dz += 1) {
+        for (let dx = -reach; dx <= reach; dx += 1) {
+          const cx = Math.round(centerX) + dx;
+          const cz = Math.round(centerZ) + dz;
+          if (cx < 0 || cz < 0 || cx >= cols || cz >= rows) continue;
+          const offsetX = cx - centerX;
+          const offsetZ = cz - centerZ;
+          const distance = Math.hypot(offsetX, offsetZ);
+          if (distance > radiusCells * 1.14) continue;
+          const angle = Math.atan2(offsetZ, offsetX);
+          const wobble = 1 + Math.sin(angle * 3 + phase) * 0.12 + Math.sin(angle * 7 - phase * 1.7) * 0.055;
+          if (distance > radiusCells * wobble) continue;
+          heights[cz * cols + cx] = Math.round(top);
         }
       }
     }
@@ -306,8 +325,8 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
   if (options.plateaus && options.plateaus.length > 0) {
     const cellCm = CELL_CM;
     for (const plateau of options.plateaus) {
-      const centerX = (plateau.pos[0] + map.size[0] * 5) / cellCm - 0.5;
-      const centerZ = (plateau.pos[1] + map.size[1] * 5) / cellCm - 0.5;
+      const centerX = (plateau.pos[0] * 10 + map.size[0] * 5) / cellCm - 0.5;
+      const centerZ = (plateau.pos[1] * 10 + map.size[1] * 5) / cellCm - 0.5;
       const radiusCells = plateau.radiusCm / cellCm;
       const angle = Math.atan2(-centerZ, -centerX);
       const dirX = Math.cos(angle);

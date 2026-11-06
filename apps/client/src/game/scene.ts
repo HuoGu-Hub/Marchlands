@@ -914,10 +914,8 @@ export class BattleScene {
       const mesh = object as THREE.Mesh;
       if (mesh.geometry && mesh.geometry.userData.shared !== true) mesh.geometry.dispose();
       const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(material)) material.forEach((entry) => {
-        if (entry.userData.shared !== true) entry.dispose();
-      });
-      else if (material && material.userData.shared !== true) material.dispose();
+      if (Array.isArray(material)) material.forEach((entry) => disposeMaterial(entry));
+      else disposeMaterial(material);
     });
     for (const view of this.cityViews.values()) view.texture.dispose();
     for (const view of this.squadViews.values()) view.texture.dispose();
@@ -2659,15 +2657,24 @@ function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: n
 }
 
 
+function disposeMaterial(material: THREE.Material | undefined): void {
+  if (!material) return;
+  // 地表材质每次重建都带一张新的烘焙贴图，贴图跟着材质一起释放。
+  const owned = material.userData.ownedTextures as THREE.Texture[] | undefined;
+  if (owned) {
+    for (const texture of owned) texture.dispose();
+    material.userData.ownedTextures = undefined;
+  }
+  if (material.userData.shared !== true) material.dispose();
+}
+
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh) return;
     if (mesh.geometry && mesh.geometry.userData.shared !== true) mesh.geometry.dispose();
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const material of materials) {
-      if (material && material.userData.shared !== true) material.dispose();
-    }
+    for (const material of materials) disposeMaterial(material);
   });
 }
 

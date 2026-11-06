@@ -1,8 +1,15 @@
 import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
 import { paintGroundTexture } from "./ground-paint";
+import { createTerrainCliffMaterial, createTerrainGroundMaterial } from "./terrain-detail";
+import { buildGridTerrainMeshes } from "./terrain-grid";
 import type { CityId, MapDef } from "@marchlands/sim";
-import { createHeightField, foundationDepth, foundationRect } from "@marchlands/map-authoring";
+import {
+  buildGridSurface,
+  createHeightField,
+  foundationDepth,
+  foundationRect,
+} from "@marchlands/map-authoring";
 import type { FoundationShape, MapVisual, TerrainStyle } from "@marchlands/map-authoring";
 import {
   NavGrid,
@@ -480,9 +487,7 @@ function buildPlatformSurface(
   geometry.rotateX(-Math.PI / 2);
   geometry.translate((platform.minX + platform.maxX) / 2, 0, (platform.minZ + platform.maxZ) / 2);
   const tile = 9;
-  // 程序化地表贴图是整张铺满的，不能按 9 米重复。
-  const stretchUv = ground !== null && (ground.userData as { stretchUv?: boolean }).stretchUv === true;
-  if (ground && !stretchUv) {
+  if (ground) {
     const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
     for (let index = 0; index < uv.count; index += 1) {
       uv.setXY(index, uv.getX(index) * (width / tile), uv.getY(index) * (depth / tile));
@@ -560,6 +565,20 @@ export function buildTerrain(
 
   const navGrid = navGridOf(map);
   const platforms = resolvePlatforms(map, options.visual ?? null);
+  // 网格地图把格高整理成带竖直陡壁的显示面：缓坡共享格角顶点，陡壁另补墙。
+  const gridPlatform = navGrid ? platforms[0] ?? null : null;
+  const gridSurface =
+    navGrid && gridPlatform
+      ? buildGridSurface(
+          {
+            width: navGrid.width,
+            height: navGrid.height,
+            cellSizeCm: navGrid.cellSizeCm,
+            heightCmAt: (x, z) => navGrid.heightCm(z * navGrid.width + x),
+          },
+          { originX: gridPlatform.minX, originZ: gridPlatform.minZ },
+        )
+      : null;
   const heightField = createHeightField({
     cities: [...positions.values()].map((city) => [city.x, city.z] as [number, number]),
     terrain: { seed, amplitude },
@@ -567,7 +586,9 @@ export function buildTerrain(
   const offsetX = map.size[0] * 5;
   const offsetZ = map.size[1] * 5;
   const baseHeightAt = (x: number, z: number): number => {
-    if (navGrid) return sharpHeightAt(x, z);
+    if (navGrid) {
+      return navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100;
+    }
     return heightField.heightAt(x, z);
   };
   const platformFields = new Map<string, ReturnType<typeof createHeightField>>();
@@ -589,40 +610,11 @@ export function buildTerrain(
     x >= platform.minX && x <= platform.maxX && z >= platform.minZ && z <= platform.maxZ;
   const platformHeightAt = (platform: FoundationPlatform, x: number, z: number): number =>
     platform.elevation +
-    (navGrid
-      ? navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100
-      : fieldFor(platform).heightAt(x, z));
-  // 陡壁格改用最近格高度，网格在这里直接立起来，视觉上才是坎而不是缓坡。
-  const cliffCells = navGrid ? new Uint8Array(navGrid.width * navGrid.height) : null;
-  if (navGrid && cliffCells) {
-    const wallThreshold = 120;
-    for (let z = 0; z < navGrid.height; z += 1) {
-      for (let x = 0; x < navGrid.width; x += 1) {
-        const index = z * navGrid.width + x;
-        const here = navGrid.heightCm(index);
-        let steep = false;
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-          const nx = x + dx;
-          const nz = z + dz;
-          if (nx < 0 || nz < 0 || nx >= navGrid.width || nz >= navGrid.height) continue;
-          if (Math.abs(navGrid.heightCm(nz * navGrid.width + nx) - here) >= wallThreshold) {
-            steep = true;
-            break;
-          }
-        }
-        if (steep) cliffCells[index] = 1;
-      }
-    }
-  }
-  const sharpHeightAt = (x: number, z: number): number => {
-    if (!navGrid || !cliffCells) return baseHeightAt(x, z);
-    const cx = Math.floor((x * 100 + offsetX) / navGrid.cellSizeCm);
-    const cz = Math.floor((z * 100 + offsetZ) / navGrid.cellSizeCm);
-    if (cx < 0 || cz < 0 || cx >= navGrid.width || cz >= navGrid.height) return baseHeightAt(x, z);
-    if (!cliffCells[cz * navGrid.width + cx]) return baseHeightAt(x, z);
-    if ((globalThis as { __noSharp?: boolean }).__noSharp) return baseHeightAt(x, z);
-    return navGrid.heightCm(cz * navGrid.width + cx) / 100;
-  };
+    (gridSurface && platform === gridPlatform
+      ? gridSurface.heightAt(x, z)
+      : navGrid
+        ? navGrid.heightCmAtXZ(Math.round(x * 100 + offsetX), Math.round(z * 100 + offsetZ)) / 100
+        : fieldFor(platform).heightAt(x, z));
 
   const heightAt = (x: number, z: number): number => {
     let best: number | null = null;
@@ -690,28 +682,37 @@ export function buildTerrain(
   const meshes: THREE.Mesh[] = [];
   const builtPlatforms: TerrainPlatform[] = [];
   // 网格地图整张地表画成一张贴图，路面直接画在上面。
-  const paintedGround = navGrid
-    ? Object.assign(
-        new THREE.MeshStandardMaterial({
-          map: (() => {
-            const texture = paintGroundTexture({
-              navGrid,
-              size: map.size,
-              palette,
-              yards: map.cities.map((city) => ({
-                x: city.pos[0] / 10,
-                z: city.pos[1] / 10,
-                radius: city.kind === "granary" || city.kind === "outpost" ? 2 : 2.9,
-              })),
-            });
-            return texture;
-          })(),
-          roughness: 1,
-          metalness: 0,
-        }),
-        { userData: { stretchUv: true } },
-      )
+  // 这张图只有二三十像素一米，近景交给细节层：法线 + 三平面投影。
+  const paintedTexture = navGrid
+    ? paintGroundTexture({
+        navGrid,
+        size: map.size,
+        palette,
+        yards: map.cities.map((city) => ({
+          x: city.pos[0] / 10,
+          z: city.pos[1] / 10,
+          radius: city.kind === "granary" || city.kind === "outpost" ? 2 : 2.9,
+        })),
+      })
     : null;
+  const paintedGround = paintedTexture ? createTerrainGroundMaterial(paintedTexture, style) : null;
+  if (paintedGround && paintedTexture) {
+    paintedGround.userData.ownedTextures = [paintedTexture];
+  }
+  const gridMeshes =
+    gridSurface && gridPlatform && paintedGround
+      ? buildGridTerrainMeshes(gridSurface, {
+          topMaterial: paintedGround,
+          cliffMaterial: createTerrainCliffMaterial(
+            gridPlatform.terrainStyle ?? style,
+            (TERRAIN_PALETTES[gridPlatform.terrainStyle ?? style] ?? palette).ridge,
+          ),
+          uvOriginX: gridPlatform.minX,
+          uvOriginZ: gridPlatform.minZ,
+          uvSizeX: gridPlatform.maxX - gridPlatform.minX,
+          uvSizeZ: gridPlatform.maxZ - gridPlatform.minZ,
+        })
+      : null;
 
   for (let index = 0; index < platforms.length; index += 1) {
     const platform = platforms[index];
@@ -719,7 +720,10 @@ export function buildTerrain(
     const platformPalette = TERRAIN_PALETTES[platform.terrainStyle ?? style] ?? palette;
     const platformHeight = (x: number, z: number): number => platformHeightAt(platform, x, z);
     const platformSeed = platform.terrainSeed ?? seed;
-    const mesh = buildPlatformSurface(platform, platformHeight, platformPalette, navGrid, map, ground, platformSeed, noiseShift);
+    const useGrid = gridMeshes !== null && platform === gridPlatform;
+    const mesh = useGrid
+      ? gridMeshes.top
+      : buildPlatformSurface(platform, platformHeight, platformPalette, navGrid, map, ground, platformSeed, noiseShift);
     group.add(mesh);
     meshes.push(mesh);
     if (reused) {
@@ -743,6 +747,11 @@ export function buildTerrain(
     built.group.name = `island-${platform.id}`;
     islandGroup.add(built.group);
     builtPlatforms.push({ platform, mesh, shell: built.group, metrics: built.metrics });
+  }
+  // 陡壁墙面单独一张网格：顶面在崖口直接断开，墙把两截接起来。
+  if (gridMeshes?.cliffs) {
+    group.add(gridMeshes.cliffs);
+    meshes.push(gridMeshes.cliffs);
   }
   if (!reused) {
     islandGroup.traverse((object) => {

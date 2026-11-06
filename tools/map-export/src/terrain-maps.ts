@@ -201,15 +201,27 @@ export function buildTerrainMap(recipe: TerrainMapRecipe): MapDef {
   }));
 
   // 台地：远离据点的高地，边缘几格收成陡坡，重甲单位得绕路。
+  // 坐标一律用分米；radiusCm 换成分米再参与放置与避让。
   const plateaus: Array<{ pos: [number, number]; radiusCm: number; heightCm: number }> = [];
-  for (let attempt = 0; attempt < 2000 && plateaus.length < 7; attempt += 1) {
+  for (let attempt = 0; attempt < 8000 && plateaus.length < 6; attempt += 1) {
+    const radiusCm = 700 + Math.round(random() * 450);
+    const radiusDm = radiusCm / 10;
     const pos: [number, number] = [
-      (random() * 2 - 1) * (width / 2 - 220),
-      (random() * 2 - 1) * (height / 2 - 220),
+      (random() * 2 - 1) * (width / 2 - 220 - radiusDm),
+      (random() * 2 - 1) * (height / 2 - 220 - radiusDm),
     ];
-    if (cities.some((city) => Math.hypot(city.pos[0] - pos[0], city.pos[1] - pos[1]) < 240)) continue;
-    if (plateaus.some((entry) => Math.hypot(entry.pos[0] - pos[0], entry.pos[1] - pos[1]) < 520)) continue;
-    plateaus.push({ pos, radiusCm: 900 + Math.round(random() * 600), heightCm: 300 + Math.round(random() * 300) });
+    if (cities.some((city) => Math.hypot(city.pos[0] - pos[0], city.pos[1] - pos[1]) < radiusDm + 30)) continue;
+    // 台地之间不重叠：叠在一起会变成一圈圈同心台阶，看起来像梯田。
+    if (
+      plateaus.some(
+        (entry) =>
+          Math.hypot(entry.pos[0] - pos[0], entry.pos[1] - pos[1]) <
+          entry.radiusCm / 10 + radiusDm + 40,
+      )
+    ) {
+      continue;
+    }
+    plateaus.push({ pos, radiusCm, heightCm: 300 + Math.round(random() * 300) });
   }
 
   return toGridMap(withMageSites({
