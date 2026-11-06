@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
+import { paintGroundTexture } from "./ground-paint";
 import type { CityId, MapDef } from "@marchlands/sim";
 import { createHeightField, foundationDepth, foundationRect } from "@marchlands/map-authoring";
 import type { FoundationShape, MapVisual, TerrainStyle } from "@marchlands/map-authoring";
@@ -459,14 +460,16 @@ function buildPlatformSurface(
 ): THREE.Mesh {
   const width = Math.max(0.5, platform.maxX - platform.minX);
   const depth = Math.max(0.5, platform.maxZ - platform.minZ);
-  const cell = navGrid ? 0.8 : 0.9;
+  const cell = navGrid ? 0.5 : 0.9;
   const segmentsX = Math.max(6, Math.round(width / cell));
   const segmentsZ = Math.max(6, Math.round(depth / cell));
   const geometry = new THREE.PlaneGeometry(width, depth, segmentsX, segmentsZ);
   geometry.rotateX(-Math.PI / 2);
   geometry.translate((platform.minX + platform.maxX) / 2, 0, (platform.minZ + platform.maxZ) / 2);
   const tile = 9;
-  if (ground) {
+  // 程序化地表贴图是整张铺满的，不能按 9 米重复。
+  const stretchUv = ground !== null && (ground.userData as { stretchUv?: boolean }).stretchUv === true;
+  if (ground && !stretchUv) {
     const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
     for (let index = 0; index < uv.count; index += 1) {
       uv.setXY(index, uv.getX(index) * (width / tile), uv.getY(index) * (depth / tile));
@@ -641,9 +644,21 @@ export function buildTerrain(
   }
   const meshes: THREE.Mesh[] = [];
   const builtPlatforms: TerrainPlatform[] = [];
+  // 网格地图整张地表画成一张贴图，路面直接画在上面。
+  const paintedGround = navGrid
+    ? Object.assign(
+        new THREE.MeshStandardMaterial({
+          map: paintGroundTexture({ navGrid, size: map.size, palette }),
+          roughness: 1,
+          metalness: 0,
+        }),
+        { userData: { stretchUv: true } },
+      )
+    : null;
+
   for (let index = 0; index < platforms.length; index += 1) {
     const platform = platforms[index];
-    const ground = platform.material ? groundMaterial(platform.material) : defaultGround;
+    const ground = paintedGround ?? (platform.material ? groundMaterial(platform.material) : defaultGround);
     const platformPalette = TERRAIN_PALETTES[platform.terrainStyle ?? style] ?? palette;
     const platformHeight = (x: number, z: number): number => platformHeightAt(platform, x, z);
     const platformSeed = platform.terrainSeed ?? seed;
@@ -712,7 +727,11 @@ export function buildTerrain(
   };
 
   const navOverlay = navGrid ? buildNavOverlay(navGrid, map) : null;
-  if (navOverlay) group.add(navOverlay);
+  // 通行预览是编辑器的调试层，对局里默认关掉，不然会把整条路网当色块盖在地面上。
+  if (navOverlay) {
+    navOverlay.visible = false;
+    group.add(navOverlay);
+  }
   const setNavPreview = (visible: boolean): void => {
     if (navOverlay) navOverlay.visible = visible;
   };

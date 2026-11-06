@@ -54,7 +54,7 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
   const { navGrid, size, palette } = options;
   const widthMeters = size[0] / 10;
   const depthMeters = size[1] / 10;
-  const perMeter = Math.min(options.pixelsPerMeter ?? 10, Math.floor(2048 / Math.max(widthMeters, depthMeters)));
+  const perMeter = Math.min(options.pixelsPerMeter ?? 16, Math.floor(4096 / Math.max(widthMeters, depthMeters)));
   const width = Math.max(64, Math.round(widthMeters * perMeter));
   const height = Math.max(64, Math.round(depthMeters * perMeter));
   const canvas = document.createElement("canvas");
@@ -114,7 +114,7 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
       distance[i] = best;
     }
   }
-  const featherPixels = Math.max(3, perMeter * 0.5);
+  const featherPixels = Math.max(4, perMeter * 1.1);
 
 
   for (let py = 0; py < height; py += 1) {
@@ -165,7 +165,8 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
         const fx = x / stone - sx;
         const fz = z / stone - sz;
         const jitter = hash2(sx, sz);
-        const edge = Math.min(fx, fz, 1 - fx, 1 - fz);
+        const wobble = (valueNoise(x / 0.35, z / 0.35) - 0.5) * 0.08;
+        const edge = Math.min(fx, fz, 1 - fx, 1 - fz) + wobble;
         const mortar = edge < 0.05 ? 0.42 : edge < 0.11 ? 0.74 : 1;
         const shade = 0.78 + jitter * 0.38;
         const grit = valueNoise(x / 1.1, z / 1.1) * 0.22;
