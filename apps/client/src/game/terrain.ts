@@ -895,6 +895,7 @@ function islandRim(
   const shift = (seed % 977) * 0.013;
   const diagonal = Math.hypot(halfX, halfZ);
   const points: IslandRimPoint[] = [];
+
   for (let index = 0; index < steps; index += 1) {
     const theta = (index / steps) * Math.PI * 2;
     const cos = Math.cos(theta);
@@ -908,7 +909,7 @@ function islandRim(
     let bermNoise = 0.58;
     let depthScale = 0.82 + valueNoise(cos * 1.6 + shift, sin * 1.6, seed + 307) * 0.34;
     if (shape === "plateau") {
-      // 台地地基铺满整张图，边缘只留一圈很窄的收边，不然会撑出一大片假地形。
+      // 台地地基铺满整张图，边缘只留一圈很窄的收边。
       base = support + 1.6;
       radiusScale = 1 + fine * 0.015;
       bermBase = 0.05;
@@ -1240,7 +1241,8 @@ function buildIsland(
   const rim = islandRim(centerX, centerZ, halfX, halfZ, depth, seed, heightAt, shape);
   const group = new THREE.Group();
   group.name = "island";
-  group.add(buildIslandApron(rim, palette, seed, ground, shape));
+  // 台地地基铺满整图，顶面收边会在地图边上留下一条亮带和竖条纹，直接不生成。
+  if (shape !== "plateau") group.add(buildIslandApron(rim, palette, seed, ground, shape));
   group.add(buildIslandBase(rim, centerX, centerZ, palette, seed, ground, shape, decorated));
   let radiusX = 0;
   let radiusZ = 0;
