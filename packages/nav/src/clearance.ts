@@ -4,7 +4,9 @@ export function buildClearanceMask(grid: NavGrid, radiusCm: number): Uint8Array 
   const radius = Math.max(0, Math.floor(radiusCm));
   const count = grid.cellCount;
   const mask = new Uint8Array(count);
-  if (radius === 0) {
+  // 半径小于半个格宽时，任何相邻格中心都还在半径之外，净空掩码就是可走掩码。
+  // 派兵大量使用 40cm 半径，跳过逐格 5×5 探测可以省下大部分寻路时间。
+  if (radius * 2 <= grid.cellSizeCm) {
     for (let index = 0; index < count; index += 1) mask[index] = grid.baseWalkable(index) ? 1 : 0;
     return mask;
   }

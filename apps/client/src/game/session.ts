@@ -86,6 +86,9 @@ export class GameSession {
   private reachKey = "";
   private reachTargets: CityId[] = [];
   private commands: Command[] = [];
+  /** AI 一次决策可能产生十几条派兵；摊到后续帧执行，避免单帧寻路卡顿。 */
+  private aiQueue: Command[] = [];
+  private aiCommandsThisFrame = 0;
   private accumulator = 0;
   private lastTime = 0;
   private raf = 0;
@@ -265,6 +268,8 @@ export class GameSession {
     this.reachKey = "";
     this.reachTargets = [];
     this.commands = [];
+    this.aiQueue = [];
+    this.aiCommandsThisFrame = 0;
     this.accumulator = 0;
     this.lastTime = performance.now();
     this.paused = false;
@@ -859,6 +864,7 @@ export class GameSession {
     }
     const delta = Math.min(250, Math.max(0, now - this.lastTime));
     this.lastTime = now;
+    this.aiCommandsThisFrame = 0;
 
     if (this.introActive) {
       if (!this.paused) {
@@ -886,15 +892,25 @@ export class GameSession {
 
   private tick(): void {
     if (this.state.status !== "playing") return;
-    const commands: Command[] = [];
-    if (this.state.tick % 40 === 0) commands.push(...this.ai.decide(this.state));
-    commands.push(...this.commands);
+    const playerCommands = this.commands;
     this.commands = [];
+    const commands: Command[] = [];
+    if (this.state.tick % 40 === 0) this.aiQueue.push(...this.ai.decide(this.state));
+    // 每帧最多执行少量 AI 指令：一条派兵要跑一次 A*，
+    // 十几条挤在同一个 tick 里会直接卡住半秒，和玩家有没有操作无关。
+    const budget = Math.max(1, Math.min(4, Math.ceil(this.timeScale / 4)));
+    while (this.aiQueue.length > 0 && this.aiCommandsThisFrame < budget) {
+      commands.push(this.aiQueue.shift() as Command);
+      this.aiCommandsThisFrame += 1;
+    }
+    commands.push(...playerCommands);
 
     const result = step(this.state, commands);
     this.state = result.state;
-    if (result.rejected.length > 0) {
-      this.options.onToast(REASONS[result.rejected[0].reason] ?? "指令无效");
+    // 只提示玩家自己的指令被拒；AI 的 no_route 不该弹给玩家。
+    const rejection = result.rejected.find((entry) => playerCommands.includes(entry.command));
+    if (rejection) {
+      this.options.onToast(REASONS[rejection.reason] ?? "指令无效");
     }
     if (this.selectedSquad && !this.getSquad(this.selectedSquad)) {
       this.clearSelection();
