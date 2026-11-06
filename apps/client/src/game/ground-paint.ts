@@ -87,35 +87,31 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
       roadPixels[py * width + px] = surface === Surface.Road || surface === Surface.Bridge ? 1 : 0;
     }
   }
-  const FAR = 1e6;
-  const distance = new Float32Array(width * height);
-  for (let i = 0; i < distance.length; i += 1) distance[i] = roadPixels[i] ? FAR : 0;
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const i = y * width + x;
-      if (distance[i] === 0) continue;
-      let best = FAR;
-      if (x > 0) best = Math.min(best, distance[i - 1] + 1);
-      if (y > 0) best = Math.min(best, distance[i - width] + 1);
-      if (x > 0 && y > 0) best = Math.min(best, distance[i - width - 1] + 1.414);
-      if (x < width - 1 && y > 0) best = Math.min(best, distance[i - width + 1] + 1.414);
-      distance[i] = best;
+  // 道路遮罩做几遍模糊来软化边缘：距离场在斜边上会有条带，
+  // 模糊过的二值遮罩不会有这种深浅斑块。
+  const maskRadius = Math.max(2, Math.round(perMeter * 0.35));
+  let mask = Float32Array.from(roadPixels);
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = new Float32Array(width * height);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        let sum = 0;
+        let count = 0;
+        for (let dy = -maskRadius; dy <= maskRadius; dy += 1) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= height) continue;
+          for (let dx = -maskRadius; dx <= maskRadius; dx += 1) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= width) continue;
+            sum += mask[ny * width + nx];
+            count += 1;
+          }
+        }
+        next[y * width + x] = sum / count;
+      }
     }
+    mask = next;
   }
-  for (let y = height - 1; y >= 0; y -= 1) {
-    for (let x = width - 1; x >= 0; x -= 1) {
-      const i = y * width + x;
-      if (distance[i] === 0) continue;
-      let best = distance[i];
-      if (x < width - 1) best = Math.min(best, distance[i + 1] + 1);
-      if (y < height - 1) best = Math.min(best, distance[i + width] + 1);
-      if (x < width - 1 && y < height - 1) best = Math.min(best, distance[i + width + 1] + 1.414);
-      if (x > 0 && y < height - 1) best = Math.min(best, distance[i + width - 1] + 1.414);
-      distance[i] = best;
-    }
-  }
-  const featherPixels = Math.max(4, perMeter * 1.1);
-
 
   for (let py = 0; py < height; py += 1) {
     const z = (py + 0.5) / perMeter - depthMeters / 2;
@@ -155,9 +151,7 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
       }
 
       // 石路：石块铺在格子坐标上，边缘按像素距离淡出。
-      // 距离是到最近的非道路像素，路面内部数值大，草地为 0。
-      const pixelDistance = distance[py * width + px];
-      const weight = Math.max(0, Math.min(1, pixelDistance / featherPixels));
+      const weight = Math.max(0, Math.min(1, mask[py * width + px] * 2.2));
       if (weight > 0.01) {
         const stone = 0.62;
         const sx = Math.floor(x / stone);
