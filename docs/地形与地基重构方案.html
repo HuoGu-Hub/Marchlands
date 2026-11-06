@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>地形与地基重构方案</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 24px 80px; background: #f5f2ea; color: #24261f;
+         font: 15px/1.75 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: .02em; }
+  h2 { font-size: 20px; margin: 48px 0 14px; padding-bottom: 8px; border-bottom: 1px solid #d8d2c2; }
+  h3 { font-size: 16px; margin: 26px 0 8px; }
+  p { margin: 10px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #ddd6c6; vertical-align: top; }
+  th { background: #ece7d8; font-weight: 600; }
+  code { background: #e9e4d5; padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+  ul, ol { margin: 10px 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  .lead { color: #55584c; font-size: 16px; }
+  .note { border-left: 3px solid #b08b3e; padding: 8px 14px; background: #efe9d8; margin: 18px 0; }
+  .num { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>地形与地基重构方案</h1>
+  <p class="lead">结论先说：现在的坡度规则被数值钳死了，装饰物根本没有进入碰撞层，路面是平贴图而不是地形的一部分。三件事各自独立，都要改。</p>
+
+  <h2>一、问题与证据</h2>
+  <table>
+    <tr><th>现象</th><th>代码里的原因</th><th>结论</th></tr>
+    <tr>
+      <td>从没见过高度差挡路</td>
+      <td><code>tools/map-export/src/grid-map.ts</code> 里把相邻格高差钳到 55 厘米，一格一米即最大坡度 560‰；而 <code>packages/sim/src/units.ts</code> 里兵种坡度上限是 600‰ 到 900‰</td>
+      <td>地形永远比最笨的兵种还平，判定不会触发</td>
+    </tr>
+    <tr>
+      <td>栅栏围起来内部仍可达</td>
+      <td><code>PropDraft</code> 有 <code>blocker</code> 字段，但全仓库只有编辑器的“阻挡”笔刷会写 <code>grid.blocked</code>，没有任何代码把装饰物的占地烘进阻挡层</td>
+      <td>装饰物是纯视觉，不参与寻路</td>
+    </tr>
+    <tr>
+      <td>路面不像路</td>
+      <td>路面是 1 米方格叠一层世界坐标 UV 的平贴图，没有法线、没有边缘过渡、没有磨损层次</td>
+      <td>材质精度和新的角色、建筑模型不匹配</td>
+    </tr>
+  </table>
+
+  <h2>二、现在的机制</h2>
+  <p>地形在数据上分成四份：<code>heightCm</code> 高度、<code>surface</code> 地表、<code>blocked</code> 阻挡、<code>walkableOverride</code> 放行。寻路时把四份合成一张 <code>NavGrid</code>，能不能走取决于三件事：地表可走、不在阻挡里、相邻格满足坡度。</p>
+  <p>问题在于三件事的阈值互相矛盾：高度是平滑噪声，钳制后坡度上限 560‰；兵种门槛从 600‰ 起。也就是说地形再怎么起伏，对任何兵种都是平地。这套规则不是“没生效”，是被自己的钳制抵消了。</p>
+
+  <h2>三、业界做法</h2>
+  <table>
+    <tr><th>模式</th><th>代表</th><th>优点</th><th>代价</th></tr>
+    <tr>
+      <td>连续高度 + 坡度</td>
+      <td>帝国时代系列、全面战争</td>
+      <td>地形自然，斜坡可以直接走，坡度越陡越慢</td>
+      <td>“不可达”只能靠坡度阈值，阈值定高了处处能爬，定低了动线断裂</td>
+    </tr>
+    <tr>
+      <td>分层悬崖</td>
+      <td>星际争霸 2、命令与征服、红警的悬崖地形</td>
+      <td>不可达边界清晰可读，玩家一眼看得出哪上不去；坡道是显式入口</td>
+      <td>地形是台阶状，需要坡道资产和层高工具</td>
+    </tr>
+    <tr>
+      <td>烘焙导航网格</td>
+      <td>Unity、Unreal、Godot 的 NavMesh</td>
+      <td>由引擎按“最大坡度 + 最大台阶”自动切出可行走面，规则集中在一处</td>
+      <td>烘焙有延迟，地图改动要重新烘焙，不适合频繁编辑</td>
+    </tr>
+    <tr>
+      <td>装饰物占地</td>
+      <td>星际争霸 2 的 Footprint 数据</td>
+      <td>装饰物、建筑、可破坏物统一走同一套占地，编辑器放下就生效</td>
+      <td>需要占地形状与烘焙流程</td>
+    </tr>
+    <tr>
+      <td>路面混合贴图</td>
+      <td>Ogre 的 splatting、现代引擎的地形图层</td>
+      <td>路面和地面是同一张格子，永远不会有缝隙，边缘可以做出泥土过渡</td>
+      <td>需要在地形材质里加一层遮罩与混合</td>
+    </tr>
+  </table>
+
+  <h2>四、推荐方案</h2>
+  <p>采用“分层悬崖 + 局部坡度”：高度连续，但高差超过阈值的相邻格被判定为悬崖边，悬崖不可跨越，只能走坡道；坡道内部仍按坡度计算移动成本。</p>
+
+  <h3>4.1 数据层</h3>
+  <ul>
+    <li><code>heightCm</code> 保留，作为视觉与坡度的唯一来源。</li>
+    <li>新增派生层 <code>cliffMask</code>：相邻格高差大于 <code>cliffHeightCm</code> 即标记，运行时不重新计算，烘焙时写进地图。</li>
+    <li>新增 <code>rampMask</code>：坡道格，允许跨越悬崖边，路面材质换成石阶。</li>
+    <li>装饰物放置时把占地圆或矩形采样写进 <code>blocked</code>，与其他阻挡同源。</li>
+  </ul>
+
+  <h3>4.2 规则层</h3>
+  <table>
+    <tr><th>判定</th><th>规则</th></tr>
+    <tr><td>可走</td><td>地表可走、不在阻挡、不跨悬崖边、坡度不超过兵种上限</td></tr>
+    <tr><td>悬崖边</td><td>相邻两格高差 ≥ 120 厘米，且不在坡道格上</td></tr>
+    <tr><td>坡度</td><td>兵种上限改为 350‰ 到 700‰，低于地形最大坡度，规则才会真正生效</td></tr>
+    <tr><td>移动成本</td><td>上坡按坡度加成，下坡减少，和现有代价模型一致</td></tr>
+  </table>
+
+  <h3>4.3 渲染层</h3>
+  <ul>
+    <li>地基材质改成三平面投影，坡度越大越偏岩石色，摆脱“贴图跟着格子走”的观感。</li>
+    <li>路面不再铺独立网格，改成地形材质的第二层：用 <code>surface</code> 生成道路遮罩并做噪声扩散，边缘自然过渡，零额外绘制。</li>
+    <li>悬崖边生成一层窄的陡壁几何，让高差在视觉上真的是一道坎。</li>
+  </ul>
+
+  <h3>4.4 编辑器</h3>
+  <ul>
+    <li>高度笔刷按层操作：抬升一层、降低一层，层高固定为 <code>cliffHeightCm</code>，避免手绘出半层高的模糊地形。</li>
+    <li>新增坡道笔刷，把选中的连续格子标成 <code>rampMask</code>。</li>
+    <li>放置装饰物时实时预览占地，并同步写阻挡。</li>
+    <li>地形工具旁常驻一个“可达性”叠加层，一眼看出哪片区域进不去。</li>
+  </ul>
+
+  <h2>五、落地顺序</h2>
+  <table>
+    <tr><th>阶段</th><th>内容</th><th>产出</th></tr>
+    <tr><td>一</td><td>让规则真正生效：悬崖边判定、坡度校准、装饰占地烘焙</td><td>围一圈栅栏能挡住；抬高台地后只能走坡道</td></tr>
+    <tr><td>二</td><td>地形与路面材质重做：三平面、道路遮罩、边坡过渡</td><td>近景材质和新模型同一精度</td></tr>
+    <tr><td>三</td><td>编辑器工具：层高笔刷、坡道笔刷、可达性叠加</td><td>新地图能直接编辑出来，不靠脚本</td></tr>
+    <tr><td>四</td><td>六张官方图重新烘焙悬崖与坡道</td><td>地形差异在实战里看得出来</td></tr>
+  </table>
+
+  <h2>六、验收标准</h2>
+  <ol>
+    <li>栅栏围合的封闭区域，任意兵种都进不去，路径会绕着走。</li>
+    <li>三米台地只有坡道能上，正面全是悬崖，寻路直接绕行。</li>
+    <li>坡道内部可走但速度下降，坡度越大越慢，玩家能感觉到代价。</li>
+    <li>近景截图里，路面、地基、角色三者的材质精度处在同一档，看不出拼凑感。</li>
+  </ol>
+
+  <h2>七、风险</h2>
+  <ul>
+    <li>六张官方图的地形要重做，工作量集中在内容侧，不是改几行代码能解决的。</li>
+    <li>悬崖边引入后，现有地图的据点可能被切断，需要一次性检查连通性并补坡道。</li>
+    <li>三平面与道路遮罩会增加地形着色器的分支，低端机上要实测帧率。</li>
+  </ul>
+</main>
+</body>
+</html>
