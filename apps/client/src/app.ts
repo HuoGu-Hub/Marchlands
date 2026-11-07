@@ -52,7 +52,7 @@ const TEMPLATE = `
       <button class="btn" id="btn-editor">地图编辑器</button>
       <button class="btn" id="btn-settings">设置</button>
       <button class="btn ghost" id="btn-exit">退出</button>
-      <div class="menu-foot" id="menu-version">v0.2.2</div>
+      <div class="menu-foot" id="menu-version">v0.2.3</div>
     </div>
   </div>
 </section>

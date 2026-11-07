@@ -1,6 +1,6 @@
 # Marchlands 边境之地
 
-![version](https://img.shields.io/badge/version-0.2.2-d6b46a)
+![version](https://img.shields.io/badge/version-0.2.3-d6b46a)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-4d7ea8)
 ![engine](https://img.shields.io/badge/Three.js-0.171-000000)
 
@@ -14,9 +14,20 @@ Marchlands 是一款 3D 领地争夺游戏。玩家从一座产兵据点起步�
 
 Windows 10 或 Windows 11，x64。
 
-[v0.2.2 发布包](https://github.com/HuoGu-Hub/Marchlands/releases/tag/v0.2.2)
+[v0.2.3 发布包](https://github.com/HuoGu-Hub/Marchlands/releases/tag/v0.2.3)
 
 下载后解压，运行 `Marchlands.exe`。无需安装，存档与设置保存在本机浏览器存储中。
+
+## 0.2.3 更新
+
+- 地基与地形改为连续显示面，替换格子台阶与纸片崖壁，台地边缘和坡道衔接更自然。
+- 通行判定改为纯坡度，格子尺寸变化会自动换算，不再依赖台阶或崖壁格。
+- 坡道两侧台面按 70 厘米一级放坡，路边不再出现孤立崖顶和侧壁。
+- 地形笔刷拖动只刷新局部网格，单帧 p90 从约 205 毫秒降到约 11 毫秒。
+- 松手后的整张地形重建从约 300 毫秒降到 50 到 70 毫秒。
+- 兵团增加警戒与强行军姿态，遭遇后警戒方停下交战。
+- 粮仓与驻兵点可以派驻军并按兵种记录，派兵数量可用滑块调整并记住比例。
+- 六张官方地图重新烘焙地形与缩略图。
 
 ## 0.2.2 更新
 
@@ -145,6 +156,6 @@ pnpm test:e2e
 
 ## 版本
 
-当前版本 0.2.2。
+当前版本 0.2.3。
 
 已知限制：仅提供 Windows x64 构建，单机对 AI，界面为简体中文，暂未加入联机、战争迷雾与正式关卡平衡。
