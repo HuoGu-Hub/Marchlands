@@ -35,6 +35,28 @@ const FIXED_STEP = 50;
 const PLAN_CANCEL_WINDOW = 500;
 /** 开局倒计时与镜头推进时长。 */
 const INTRO_MS = 3600;
+/** 全局共用的派兵比例，跨建筑、跨对局记住上一次选择。 */
+const DISPATCH_RATIO_KEY = "marchlands.dispatch-ratio";
+
+function loadDispatchRatio(): number {
+  try {
+    const raw = window.localStorage.getItem(DISPATCH_RATIO_KEY);
+    const value = raw === null ? Number.NaN : Number.parseFloat(raw);
+    if (Number.isFinite(value)) return Math.min(1, Math.max(0.0001, value));
+  } catch {
+    // 隐私模式或存储不可用时退回默认值。
+  }
+  return 0.5;
+}
+
+function saveDispatchRatio(ratio: number): void {
+  try {
+    window.localStorage.setItem(DISPATCH_RATIO_KEY, String(ratio));
+  } catch {
+    // 存不下不影响本局。
+  }
+}
+
 const REASONS: Record<string, string> = {
   unknown_city: "据点不存在",
   unknown_target: "目标不存在",
@@ -83,9 +105,8 @@ export class GameSession {
   private selected: CityId[] = [];
   private selectedSquad: string | null = null;
   private dispatchStance: SquadStance = "guard";
-  /** 滑块选择的派兵数量；null 表示默认 50%。 */
-  private dispatchAmount: number | null = null;
-  private dispatchCity: CityId | null = null;
+  /** 全局派兵比例；所有己方建筑共用，默认 50%。 */
+  private dispatchRatio = loadDispatchRatio();
   private gridReach = new Map<CityId, GridReach>();
   private gridFocus: GridReach | null = null;
   private multiSelect = false;
@@ -343,16 +364,19 @@ export class GameSession {
     this.setSquadPanelVisible(false);
   }
 
-  /** 滑块选择的数量；超过当前驻军时按驻军封顶。 */
+  /** 把主选建筑上的滑块数量换算成全局比例；后续所有己方建筑共用。 */
   setDispatchAmount(value: number): void {
-    if (!Number.isFinite(value)) return;
-    this.dispatchAmount = Math.max(1, Math.floor(value));
+    const city = this.primary ? this.getCity(this.primary) : null;
+    if (!city || city.pop <= 0 || !Number.isFinite(value)) return;
+    const amount = Math.max(1, Math.min(city.pop, Math.floor(value)));
+    this.dispatchRatio = amount / city.pop;
+    saveDispatchRatio(this.dispatchRatio);
   }
 
-  /** 当前滑块应显示的派兵数量。 */
+  /** 按全局比例换算当前建筑的派兵数量，至少 1，至多驻军。 */
   getDispatchAmount(city: CityState): number {
     const max = Math.max(1, city.pop);
-    const wanted = this.dispatchAmount ?? Math.max(1, Math.floor(city.pop / 2));
+    const wanted = Math.max(1, Math.floor(city.pop * this.dispatchRatio));
     return Math.min(max, wanted);
   }
 
@@ -462,11 +486,6 @@ export class GameSession {
 
   private setSelection(ids: CityId[]): void {
     this.selected = ids;
-    const primary = this.primary;
-    if (primary !== this.dispatchCity) {
-      this.dispatchAmount = null;
-      this.dispatchCity = primary;
-    }
     // 选择一变，上一条路线预览就不再对应当前编组。
     this.scene.setPreviewPath(null);
     if (ids.length > 0) this.setSquadPanelVisible(false);

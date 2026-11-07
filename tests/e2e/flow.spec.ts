@@ -164,6 +164,56 @@ test("dispatches the count chosen on the city slider", async ({ page }) => {
       { timeout: 10_000 },
     )
     .toBe(5);
+
+  // 等第一支队伍抵达，避免下一轮统计把它算进来。
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const hook = (window as unknown as {
+            __mlSquads?: { squads: Array<{ owner: number }> };
+          }).__mlSquads;
+          return (hook?.squads ?? []).filter((squad) => squad.owner === 1).length;
+        }),
+      { timeout: 30_000 },
+    )
+    .toBe(0);
+
+  const startAgain = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c1") : null;
+  });
+  if (!startAgain) throw new Error("c1 has no screen position");
+  await page.mouse.click(startAgain.x, startAgain.y);
+  const remembered = await page.evaluate(() => ({
+    value: Number((document.querySelector("#city-dispatch-range") as HTMLInputElement).value),
+    pop: Number(document.querySelector("#city-pop")?.textContent ?? "0"),
+  }));
+  expect(remembered.value).toBeGreaterThanOrEqual(1);
+  expect(remembered.value).toBeLessThan(Math.floor(remembered.pop / 2));
+
+  const third = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c3") : null;
+  });
+  if (!third) throw new Error("c3 has no screen position");
+  await page.mouse.dblclick(third.x, third.y);
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const hook = (window as unknown as {
+            __mlSquads?: { squads: Array<{ owner: number; count: number }> };
+          }).__mlSquads;
+          return (hook?.squads ?? [])
+            .filter((squad) => squad.owner === 1)
+            .reduce((sum, squad) => sum + squad.count, 0);
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(remembered.value);
 });
 
 test("creates a map in the editor and returns from playtest", async ({ page }) => {
