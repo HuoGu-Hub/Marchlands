@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>地形渲染与坡度通行</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 24px 80px; background: #f5f2ea; color: #24261f;
+         font: 15px/1.75 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: .02em; }
+  h2 { font-size: 20px; margin: 48px 0 14px; padding-bottom: 8px; border-bottom: 1px solid #d8d2c2; }
+  h3 { font-size: 16px; margin: 26px 0 8px; }
+  p { margin: 10px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #ddd6c6; vertical-align: top; }
+  th { background: #ece7d8; font-weight: 600; }
+  code { background: #e9e4d5; padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+  pre { background: #ece7d8; padding: 14px 16px; border-radius: 4px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+  ul, ol { margin: 10px 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  .lead { color: #55584c; font-size: 16px; }
+  .note { border-left: 3px solid #b08b3e; padding: 8px 14px; background: #efe9d8; margin: 18px 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  figure { margin: 24px 0; }
+  figure img { width: 100%; border: 1px solid #d8d2c2; border-radius: 4px; display: block; }
+  figcaption { color: #6a6d60; font-size: 13px; margin-top: 8px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .cols figure { margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>地形渲染与坡度通行</h1>
+  <p class="lead">结论先说：地形显示面不再按格子铺平顶和竖墙，改成连续曲面加噪声扰动；通行判定删掉“单格高差”，只保留相邻两格之间的坡度。两件事各自独立，渲染怎么改都不再受碰撞约束。</p>
+
+  <h2>一、问题</h2>
+  <table>
+    <tr><th>现象</th><th>原因</th><th>结果</th></tr>
+    <tr>
+      <td>地面上一片片菱形网格</td>
+      <td>路面在烘焙贴图里画 0.62 米石砖，灰缝只有半像素；整张图约 15 像素一米，放大后变成摩尔纹。另外旧显示面按格拼三角形，坡上每格的朝向都不同</td>
+      <td>远看像编织网，盖住了地形本身</td>
+    </tr>
+    <tr>
+      <td>悬崖像长方柱立在地上</td>
+      <td><code>buildGridSurface</code> 把崖顶格单独铺平顶，再沿格子边补竖直墙。墙段一米一段，崖顶轮廓就是格子边界</td>
+      <td>任何台地都是砖墙或方柱，拐角是直角</td>
+    </tr>
+    <tr>
+      <td>台地边缘一圈锯齿或薄片</td>
+      <td>补墙时按格角取顶面包络，斜对角的崖顶把包络抬高，低地一侧铺出一排很薄的纸片墙</td>
+      <td>崖脚出现鳞片和裂缝</td>
+    </tr>
+    <tr>
+      <td>规则说是高低差，实际又是坡度</td>
+      <td><code>NavGrid.canStep</code> 本来就在比 <code>高差 / 水平距离</code>，但规则字段叫 <code>maxStepCm</code>，兵种表也有一份 <code>maxStepCm</code>，读起来像“单格高差”</td>
+      <td>调参时误以为改的是高低差，改了格子尺寸就失效</td>
+    </tr>
+  </table>
+
+  <h2>二、分层</h2>
+  <table>
+    <tr><th>层</th><th>内容</th><th>谁负责</th></tr>
+    <tr><td>数据</td><td>每格整数厘米高度、地表、阻挡、可走覆盖</td><td><code>MapDef.grid</code>，编辑器烘焙</td></tr>
+    <tr><td>显示</td><td>细分曲面、圆角崖口、岩面噪声、岩石着色</td><td><code>buildGridSurface</code> 与地形材质，纯视觉</td></tr>
+    <tr><td>通行</td><td>相邻两格的坡度与兵种上限</td><td><code>NavGrid</code>，寻路与可达范围</td></tr>
+  </table>
+  <p>显示与通行只共享同一份格高，不再共享拓扑。显示面可以随便平滑、扰动、倒圆角，通行判定完全按原始格高算，任何一边调参都不会把另一边弄坏。</p>
+
+  <h2>三、显示面</h2>
+  <h3>3.1 生成步骤</h3>
+  <ol>
+    <li>读取格心高度，按 <code>smoothing</code> 做 1 到 2 次 1-2-1 可分离平滑。只平滑显示用的副本，原始格高不动。这一步把崖顶那圈一米锯齿摊圆，崖线不再是格子边界。</li>
+    <li>在显示高度场上做 Catmull-Rom 双三次插值。每个轴的插值结果都夹回参与插值的样本范围，去掉平台边缘的过冲鼓包和崖脚凹陷，得到单调的连续坡。</li>
+    <li>按坡度做水平扰动。坡度大的地方把采样点沿两层 simplex 噪声横向拧开，崖线因此是弯的，不再贴着一米网格。</li>
+    <li>叠分形起伏。平地只有 <code>relief × 0.08</code>，崖面铺满 <code>relief</code>，再加一层随高度变化的横向层理。</li>
+    <li>按 2 或 4 个采样每格生成顶点，索引网格共享顶点，法线由三角面平均，整张地形一个网格，没有独立墙面。</li>
+  </ol>
+
+  <h3>3.2 参数</h3>
+  <table>
+    <tr><th>参数</th><th>默认</th><th>说明</th></tr>
+    <tr><td><code>samplesPerCell</code></td><td>2 到 4</td><td>大图 0.5 米一个顶点，小图 0.25 米；由地图格数换算，上限 4</td></tr>
+    <tr><td><code>smoothing</code></td><td>1</td><td>1-2-1 平滑次数；0 保留原始轮廓，2 更圆但崖口更软</td></tr>
+    <tr><td><code>relief</code></td><td>0.55 米</td><td>崖面起伏上限，平地固定取 8%</td></tr>
+    <tr><td><code>warp</code></td><td>0.8 米</td><td>崖面水平扰动上限，平地几乎为零</td></tr>
+    <tr><td><code>seed</code></td><td>地图种子</td><td>同一张图每次重建的噪声一致</td></tr>
+  </table>
+  <p>170×130 格的高地地图，0.5 米顶点约 17.7 万三角形，整块地形重建约 210 毫秒。编辑器在地形笔画结束时重建一次，拖动过程不受影响。</p>
+
+  <h3>3.3 材质</h3>
+  <ul>
+    <li>三平面投影的权重陡面削弱顶投影。竖直面不再吃被拉长的俯视贴图，竖条纹消失。</li>
+    <li>草与岩石的交界不能按 <code>normal.y</code> 画一条等高线。片元里加两层世界噪声扰动阈值，交界变成犬牙交错。</li>
+    <li>陡的地方直接换成岩石色，不再只调亮度。岩石贴图本身很暗，混一层平均岩色，背光面不会黑成洞。</li>
+    <li>路面只画碎石底色和低频斑驳，不再画石砖网格，摩尔纹从源头消失。</li>
+  </ul>
+
+  <h2>四、开源方案</h2>
+  <table>
+    <tr><th>用途</th><th>采用</th><th>理由</th></tr>
+    <tr><td>噪声</td><td><code>simplex-noise</code> 4.0.3，MIT</td><td>成熟、无依赖、可复现；比手写 value noise 少了方块感，直接 <code>createNoise2D(seeded)</code></td></tr>
+    <tr><td>插值</td><td>Catmull-Rom 双三次</td><td>数学公式，不算轮子；关键是每轴夹取，避免过冲</td></tr>
+    <tr><td>材质</td><td>three.js <code>MeshStandardMaterial</code> 与 <code>onBeforeCompile</code></td><td>三平面投影是常规做法，项目里已有地面细节层</td></tr>
+    <tr><td>网格</td><td>自建规则网格</td><td>地形是 2.5D 高度场，规则网格最省；用 marching cubes 只会把高度场变成一团圆角体积，还会引入悬垂，碰撞和贴地都要重写</td></tr>
+  </table>
+  <div class="note">没有引入物理引擎的 navmesh，也没有引入地形生成库。理由不是抗拒依赖，而是当前地形是 2.5D 高度场，navmesh 需要烘焙、和编辑器实时刷地形冲突；marching cubes 会产生悬垂，破坏“一格一个高度”的数据契约。真正需要现成实现的是噪声，已经用 simplex-noise 替掉手写 noise。</div>
+
+  <h2>五、坡度通行</h2>
+  <h3>5.1 判定</h3>
+  <pre>stepSlope = |h(to) - h(from)| × 1000 / run
+run = 相邻直走用格宽，斜走用格宽 × 1.414
+可走 ⇔ 地表可走 ∧ 不在阻挡 ∧ stepSlope ≤ 兵种 maxSlopePermille ∧ 斜走两侧不贴角</pre>
+  <p>没有第二条按“单格高差”的判定。格子从 1 米换到 0.5 米，同样的物理坡度只需要爬一半的高度，规则自动跟着变。</p>
+
+  <h3>5.2 阈值</h3>
+  <table>
+    <tr><th>兵种</th><th>maxSlopePermille</th><th>约等于</th></tr>
+    <tr><td>精锐战士</td><td class="num">260</td><td>14.6°</td></tr>
+    <tr><td>骑兵</td><td class="num">300</td><td>16.7°</td></tr>
+    <tr><td>弓箭手</td><td class="num">330</td><td>18.3°</td></tr>
+    <tr><td>野蛮人</td><td class="num">380</td><td>20.8°</td></tr>
+    <tr><td>游侠</td><td class="num">420</td><td>22.8°</td></tr>
+    <tr><td>法师</td><td class="num">700</td><td>35.0°</td></tr>
+  </table>
+  <p>地图级 <code>climbCm</code> 仍然保留，含义是“一格最多爬多少厘米”，除以格宽就是坡度上限。填了它，整张图的所有兵种共用这个上限；不填就按兵种表。</p>
+
+  <h3>5.3 陡度字段</h3>
+  <p><code>NavGrid</code> 额外算一份 <code>slopePermille(cell)</code>，取四邻里最陡的一步。它只用于导航预览和编辑器着色，不直接封格：真正挡住移动的是跨过那条边的动作，不是站在坡脚这件事。</p>
+
+  <h2>六、验收</h2>
+  <div class="cols">
+    <figure>
+      <img src="screenshots/terrain-highland-before.png" alt="旧显示面" />
+      <figcaption>旧：台地是平顶加竖直砖墙，路面是石砖网格</figcaption>
+    </figure>
+    <figure>
+      <img src="screenshots/terrain-highland-overview-after.png" alt="新显示面" />
+      <figcaption>新：同一张图，崖面连续，台地是圆角岩台</figcaption>
+    </figure>
+  </div>
+  <figure>
+    <img src="screenshots/terrain-highland-cliff-after.png" alt="近景崖面" />
+    <figcaption>近景：崖面是岩石色，草岩交界被打碎，路面是碎石路</figcaption>
+  </figure>
+  <figure>
+    <img src="screenshots/terrain-highland-rim-after.png" alt="台地边缘近景" />
+    <figcaption>台地边缘：没有方格台阶，没有纸片墙，崖口是圆的</figcaption>
+  </figure>
+  <ol>
+    <li>整张地图找不到沿格子边对齐的菱形或方块图案。</li>
+    <li>悬崖是连续岩面，轮廓不是一米折线，崖顶没有独立墙面。</li>
+    <li>同一段坡，1 米格和 0.5 米格的可走性一致，<code>packages/nav/tests/slope.test.ts</code> 覆盖。</li>
+    <li>像素级近景看不到竖条拉伸和石砖摩尔纹。</li>
+  </ol>
+
+  <h2>七、还没做</h2>
+  <ul>
+    <li>崖脚没有铺落石和碎岩。现在是干净的岩面接草地，近景略显安静。</li>
+    <li>坡道入口仍是一条三格宽的窄槽，靠显示面平滑成冲沟。要更自然得改地图生成器的台地配方。</li>
+    <li>台地顶面仍是平的。真实山体可以有起伏，但那需要生成器给顶面加噪声，不能靠显示面编。</li>
+    <li>没有做侵蚀模拟。当前的层理和起伏是噪声，不是水力侵蚀。</li>
+  </ul>
+</main>
+</body>
+</html>
