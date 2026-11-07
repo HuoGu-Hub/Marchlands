@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defenseValue, resolveAttack } from "../src/combat";
+import { initialGarrison } from "../src/garrison";
 import { DEFAULT_RULESET } from "../src/rules";
 import type { CityState } from "../src/types";
 
@@ -10,6 +11,7 @@ function city(level: CityState["level"], pop: number): CityState {
     owner: 2,
     level,
     pop,
+    garrison: initialGarrison("barbarian", pop),
     maxPop: 65,
     growthCarry: 123,
     growthLockUntil: 0,

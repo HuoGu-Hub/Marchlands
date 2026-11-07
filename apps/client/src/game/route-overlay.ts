@@ -1,4 +1,4 @@
-import { blockedTransit, routeOptions } from "@marchlands/sim";
+import { UNIT_PROFILES, blockedTransit, routeOptions } from "@marchlands/sim";
 import type { CityId, MapDef, SimState, SquadState } from "@marchlands/sim";
 
 interface CityProjection {
@@ -200,6 +200,7 @@ export class RouteOverlay {
     this.panel.className = "ml-squad-card";
     this.panel.innerHTML = [
       '<div class="ml-squad-head"><b data-role="id">—</b><span data-role="count">0</span></div>',
+      '<div class="ml-squad-row"><span>兵种</span><b data-role="kind">—</b></div>',
       '<div class="ml-squad-row"><span>目的地</span><b data-role="dest">—</b></div>',
       '<div class="ml-squad-row"><span>预计抵达</span><b data-role="eta">—</b></div>',
       '<div class="ml-supply-track"><i data-role="supply-bar"></i></div>',
@@ -736,6 +737,7 @@ export class RouteOverlay {
     }
     const id = this.panelRefs.id;
     const count = this.panelRefs.count;
+    const kind = this.panelRefs.kind;
     const dest = this.panelRefs.dest;
     const eta = this.panelRefs.eta;
     const supply = this.panelRefs.supply;
@@ -743,6 +745,7 @@ export class RouteOverlay {
     const bar = this.panelRefs["supply-bar"];
     if (id) id.textContent = squad.id;
     if (count) count.textContent = `${squad.count} 兵`;
+    if (kind) kind.textContent = UNIT_PROFILES[squad.unitKind ?? "barbarian"].label;
     if (dest) dest.textContent = squad.to || (squad.toCell ? "网格" : "—");
     if (eta) eta.textContent = `${Math.max(0, Math.ceil((squad.arrivalTick - state.tick) / 20))}s`;
 

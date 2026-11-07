@@ -52,11 +52,6 @@ export function canDispatchFrom(city: CityState): boolean {
   return city.pop >= (isProductionSiteKind(city.kind) ? 2 : 1);
 }
 
-/** 实际派出人数：当前驻军的 50%，至少 1，且绝不超过剩余驻军。 */
-export function dispatchCount(city: CityState, rules: Ruleset): number {
-  return Math.min(city.pop, Math.max(1, Math.floor((city.pop * sendPercent(rules)) / 100)));
-}
-
 export function speedPerTick(rules: Ruleset): number {
   return rules.speedDmPerSecond / rules.tickHz;
 }

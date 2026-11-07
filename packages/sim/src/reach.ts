@@ -2,7 +2,7 @@ import type { NavGrid } from "@marchlands/nav";
 import { GRID_CAPTURE_RADIUS_CM, GRID_UNIT_RADIUS_CM, createUnitNavGrid } from "./grid";
 import { blockedTransit } from "./routes";
 import { canDispatchFrom } from "./rules";
-import { siteUnitKind } from "./types";
+import { defaultUnitKind, garrisonEntries, reconcileGarrison } from "./garrison";
 import type { CityId, CityState, SimState } from "./types";
 
 export interface GridReach {
@@ -36,18 +36,13 @@ function canSendFrom(city: CityState | undefined): city is CityState {
  * 从某个据点出发，兵团可以踏上的所有网格。
  * 与派兵使用同一套单位通行规则：地表、坡度、单位半径，以及非己方建筑阻挡。
  */
-export function reachableGridCells(state: SimState, fromId: CityId): GridReach | null {
-  const from = state.cities.find((city) => city.id === fromId);
-  if (!state.nav || !canSendFrom(from)) return null;
-  const unitKind = siteUnitKind(from.kind) ?? "barbarian";
-  const nav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind);
-  if (!nav) return null;
+function floodCells(state: SimState, nav: NavGrid, from: CityState): Uint8Array {
   const cells = new Uint8Array(nav.cellCount);
   const coverage = nav.clearance(GRID_UNIT_RADIUS_CM);
   const offsetX = state.map.size[0] * 5;
   const offsetZ = state.map.size[1] * 5;
   const start = nav.cellFromWorld(from.pos[0] * 10 + offsetX, from.pos[1] * 10 + offsetZ);
-  if (start < 0 || !nav.isWalkable(start, coverage)) return { nav, cells };
+  if (start < 0 || !nav.isWalkable(start, coverage)) return cells;
 
   const queue = new Int32Array(nav.cellCount);
   let head = 0;
@@ -73,7 +68,33 @@ export function reachableGridCells(state: SimState, fromId: CityId): GridReach |
       tail += 1;
     }
   }
-  return { nav, cells };
+  return cells;
+}
+
+export function reachableGridCells(state: SimState, fromId: CityId): GridReach | null {
+  const from = state.cities.find((city) => city.id === fromId);
+  if (!state.nav || !canSendFrom(from)) return null;
+  reconcileGarrison(from);
+  const kinds = garrisonEntries(from).map((entry) => entry.kind);
+  if (kinds.length === 0) kinds.push(defaultUnitKind(from.kind));
+
+  let firstNav: NavGrid | null = null;
+  let merged: Uint8Array | null = null;
+  for (const kind of kinds) {
+    const nav = createUnitNavGrid(state.map, state.cities, from.owner, kind);
+    if (!nav) continue;
+    const cells = floodCells(state, nav, from);
+    if (!merged) {
+      firstNav = nav;
+      merged = cells;
+      continue;
+    }
+    for (let index = 0; index < merged.length; index += 1) {
+      if (cells[index] === 1) merged[index] = 1;
+    }
+  }
+  if (!firstNav || !merged) return null;
+  return { nav: firstNav, cells: merged };
 }
 
 /**

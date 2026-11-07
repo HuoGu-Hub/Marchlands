@@ -1,5 +1,6 @@
+import { addGarrison, reconcileGarrison, resizeGarrison } from "./garrison";
 import { levelRule } from "./rules";
-import { isProductionSiteKind } from "./types";
+import { isProductionSiteKind, siteUnitKind } from "./types";
 import type { CityState, PlayerState, Ruleset, SiteKind } from "./types";
 
 /** 每秒基础增长：玩家 1.2，中立 0.8；建筑特性再乘系数。 */
@@ -28,12 +29,13 @@ const DECAY_MODIFIER: Record<SiteKind, number> = {
 };
 
 export function growCity(city: CityState, tick: number, tickHz: number): number {
+  reconcileGarrison(city);
   if (city.pop > city.maxPop) {
     city.growthCarry = 0;
     city.overCapCarry += (DECAY_MODIFIER[city.kind] * 1000) / tickHz;
     let lost = 0;
     while (city.overCapCarry >= 1000 && city.pop > city.maxPop) {
-      city.pop -= 1;
+      resizeGarrison(city, city.pop - 1);
       city.overCapCarry -= 1000;
       lost += 1;
     }
@@ -56,9 +58,9 @@ export function growCity(city: CityState, tick: number, tickHz: number): number 
   const base = city.owner === 0 ? NEUTRAL_GROWTH_PER_SECOND : PLAYER_GROWTH_PER_SECOND;
   const milliPerTick = (base * GROWTH_MODIFIER[city.kind] * 1000) / tickHz;
   const carry = city.growthCarry + milliPerTick;
-  const gain = Math.floor(carry / 1000);
+  const gain = Math.min(city.maxPop - city.pop, Math.floor(carry / 1000));
   city.growthCarry = carry - gain * 1000;
-  city.pop = Math.min(city.maxPop, city.pop + gain);
+  if (gain > 0) addGarrison(city, siteUnitKind(city.kind) ?? "barbarian", gain);
   if (city.pop >= city.maxPop) city.growthCarry = 0;
   return 0;
 }
@@ -73,11 +75,12 @@ export function growGold(player: PlayerState, milli: number): void {
 export function applyUpgrade(city: CityState, rules: Ruleset): boolean {
   if (!isProductionSiteKind(city.kind)) return false;
   if (city.level >= rules.maxLevel) return false;
+  reconcileGarrison(city);
   const cost = levelRule(rules, city.level).upgradeCost;
   if (city.pop < cost) return false;
-  city.pop -= cost;
+  resizeGarrison(city, city.pop - cost);
   city.level = (city.level + 1) as CityState["level"];
   city.maxPop = levelRule(rules, city.level).maxPop;
-  if (city.pop > city.maxPop) city.pop = city.maxPop;
+  if (city.pop > city.maxPop) resizeGarrison(city, city.maxPop);
   return true;
 }

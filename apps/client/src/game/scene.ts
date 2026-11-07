@@ -1250,7 +1250,7 @@ export class BattleScene {
       const visible = this.frustum.intersectsSphere(this.squadSphere);
       const distance2 = this.camera.position.distanceToSquared(view.group.position);
       const selected = this.selectedSquadId === squad.id;
-      const kind = this.unitKindFor(squad.from);
+      const kind = this.squadUnitKind(squad);
       const skin = this.skinFor(kind, squad.owner);
       const enterFar = !view.instanced && distance2 > 10000;
       const stayFar = view.instanced && distance2 > 8100;
@@ -1501,7 +1501,7 @@ export class BattleScene {
 
   private createSquadView(squad: SquadState): SquadView {
     const group = new THREE.Group();
-    const kind = this.unitKindFor(squad.from);
+    const kind = this.squadUnitKind(squad);
     const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const unitAssetId = this.skinFor(kind, squad.owner);
     const baseMax = unitAssetId && assetRegistry.has(unitAssetId) ? MAX_GLB_SQUAD_UNITS : MAX_SQUAD_UNITS;
@@ -1562,6 +1562,11 @@ export class BattleScene {
   /** 兵团外观由皮肤设置全局决定，敌我共用同一套模型，只靠队伍色区分阵营。 */
   private skinFor(kind: UnitKind, _owner: Owner): string | null {
     return this.unitSkins[kind] ?? null;
+  }
+
+  /** 兵团自带兵种；没有时退回出发建筑对应的默认兵种。 */
+  private squadUnitKind(squad: SquadState): UnitKind {
+    return squad.unitKind ?? this.unitKindFor(squad.from);
   }
 
   /** 兵团外观由出发建筑类型固定决定；弓箭塔与粮仓不产兵。 */
@@ -1646,7 +1651,7 @@ export class BattleScene {
   /** 兵团人数减少时同步撤掉模型，编队按当前人数重新收拢。 */
   private syncSquadUnits(view: SquadView, squad: SquadState): void {
     if (view.loading) return;
-    const kind = this.unitKindFor(squad.from);
+    const kind = this.squadUnitKind(squad);
     const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
     const spacingZ = kind === "ranger" ? 0.82 : SQUAD_SPACING_Z;
     const skin = this.skinFor(kind, squad.owner);

@@ -38,6 +38,8 @@ export type {
 export { PRODUCTION_SITE_KINDS, isProductionSiteKind, normalizeSiteKind, siteUnitKind } from "./types";
 
 export { createGame, step } from "./game";
+export { dispatchParts, garrisonEntries, garrisonTotal, initialGarrison, reconcileGarrison } from "./garrison";
+export type { DispatchPart, Garrison } from "./garrison";
 export { UNIT_PROFILES, UNIT_TRAITS, unitProfile, unitTraits } from "./units";
 export type { UnitProfile, UnitTraits } from "./units";
 export { canonicalState, hash, hashText, mapHashOf } from "./hash";
@@ -47,7 +49,6 @@ export {
   DEFAULT_RULESET,
   arrivalTicks,
   canDispatchFrom,
-  dispatchCount,
   granarySpeedMilli,
   granaryStrengthMilli,
   levelRule,

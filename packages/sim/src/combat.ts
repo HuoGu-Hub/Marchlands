@@ -1,5 +1,6 @@
+import { defaultUnitKind, resizeGarrison, setGarrisonKind } from "./garrison";
 import { levelRule } from "./rules";
-import type { CityState, PlayerId, Ruleset } from "./types";
+import type { CityState, PlayerId, Ruleset, UnitKind } from "./types";
 
 export interface CombatOutcome {
   captured: boolean;
@@ -10,6 +11,8 @@ export interface CombatOutcome {
 export interface CombatModifiers {
   attackerStrengthMilli?: number;
   defenderStrengthMilli?: number;
+  /** 城破后新驻军按进攻兵种记账；缺省按目标建筑默认兵种。 */
+  attackerUnitKind?: UnitKind;
 }
 
 export interface FieldOutcome {
@@ -54,11 +57,13 @@ export function resolveAttack(
     const survivors = troops - attackerLoss;
     city.owner = attacker;
     city.pop = Math.min(survivors, city.maxPop);
+    setGarrisonKind(city, modifiers.attackerUnitKind ?? defaultUnitKind(city.kind), city.pop);
     return { captured: true, attackerLoss, defenderLoss: popBefore };
   }
 
   const remaining = Math.min(popBefore, Math.max(0, defense - attack));
   city.pop = remaining;
+  resizeGarrison(city, remaining);
   return { captured: false, attackerLoss: troops, defenderLoss: popBefore - remaining };
 }
 
@@ -78,6 +83,7 @@ export function resolveFieldCombat(
     const squadLoss = Math.min(squadCount, Math.floor((defense * 1000) / attackerStrength));
     const survivors = squadCount - squadLoss;
     outpost.pop = 0;
+    resizeGarrison(outpost, 0);
     return {
       squadCount: survivors,
       outpostPop: 0,
@@ -91,6 +97,7 @@ export function resolveFieldCombat(
   const remaining = Math.min(outpost.pop, Math.max(0, defense - attack));
   const outpostLoss = outpost.pop - remaining;
   outpost.pop = remaining;
+  resizeGarrison(outpost, remaining);
   return {
     squadCount: 0,
     outpostPop: remaining,

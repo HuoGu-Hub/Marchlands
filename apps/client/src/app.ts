@@ -2,7 +2,7 @@ import { validateContent } from "@marchlands/content";
 import { BASE_RULES, mapEntry } from "./game/map-catalog";
 import { compileDocument, defaultVisualForMap, parseDocument } from "@marchlands/map-authoring";
 import type { MapDocument, MapVisual } from "@marchlands/map-authoring";
-import { defenseMilliFor, isProductionSiteKind } from "@marchlands/sim";
+import { UNIT_PROFILES, defenseMilliFor, garrisonEntries, isProductionSiteKind } from "@marchlands/sim";
 import type { MapDef, SimState, SquadStance } from "@marchlands/sim";
 import { CAMPAIGN, defaultLevelId, findLevel, previewUrl } from "./campaign";
 import type { LevelDef, SeriesDef } from "./campaign";
@@ -134,6 +134,7 @@ const TEMPLATE = `
         </div>
         <div class="city-line">守军 <b id="city-pop">30</b> / <span id="city-max">65</span> · 防御 <b id="city-defense">1.20</b></div>
         <div class="pop-bar"><i id="city-pop-fill"></i></div>
+        <div class="city-garrison" id="city-garrison"></div>
       </div>
       <div class="city-actions">
         <button class="btn" id="city-transit">通行 · 拦截</button>
@@ -1377,6 +1378,10 @@ export class App {
     this.el("city-level").textContent = `LV.${city.level}`;
     this.el("city-pop").textContent = String(city.pop);
     this.el("city-max").textContent = String(city.maxPop);
+    const garrison = garrisonEntries(city)
+      .map((entry) => `${UNIT_PROFILES[entry.kind].label} ${entry.count}`)
+      .join(" · ");
+    this.el("city-garrison").textContent = garrison || "无驻军";
     const accent = this.el("city-accent");
     accent.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#8d8778";
     const fill = this.el("city-pop-fill");

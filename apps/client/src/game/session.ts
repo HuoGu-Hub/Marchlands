@@ -16,12 +16,13 @@ import type {
 import {
   canDispatchFrom,
   createUnitNavGrid,
+  dispatchParts,
+  garrisonEntries,
   isProductionSiteKind,
   planGridRoute,
   reachableGridCells,
   reachableGridCities,
   sendReachableTargets,
-  siteUnitKind,
 } from "@marchlands/sim";
 import { audio } from "../audio";
 import { assetRegistry } from "./asset-registry";
@@ -464,7 +465,9 @@ export class GameSession {
     const signature = `${this.selected.join(",")}|${this.state.cities
       .map(
         (city) =>
-          `${city.id}:${city.owner}:${city.transit ?? ""}:${canDispatchFrom(city) ? 1 : 0}`,
+          `${city.id}:${city.owner}:${city.transit ?? ""}:${canDispatchFrom(city) ? 1 : 0}:${garrisonEntries(city)
+            .map((entry) => `${entry.kind}${entry.count}`)
+            .join(".")}`,
       )
       .join(",")}`;
     if (!force && signature === this.reachKey) return;
@@ -1061,6 +1064,7 @@ export class GameSession {
           id: squad.id,
           owner: squad.owner,
           count: squad.count,
+          unitKind: squad.unitKind ?? null,
           stance: squad.stance,
           engaged: squad.engagedWith ?? null,
           xCm: squad.xCm,
@@ -1590,22 +1594,43 @@ export class GameSession {
       this.scene.setPreviewPath(null);
       return;
     }
-    const unitKind = siteUnitKind(city.kind) ?? "barbarian";
-    // 和 sim 派兵时用的是同一张兵种导航图：非己方据点会挡路，兵种地形限制也一致。
-    const unitNav = createUnitNavGrid(this.state.map, this.state.cities, city.owner, unitKind, destination);
-    if (!unitNav) return;
+    const parts = dispatchParts(city, this.state.rules);
+    if (parts.length === 0) {
+      this.scene.setPreviewPath(null);
+      return;
+    }
     const origin: [number, number] = [city.pos[0] * 10, city.pos[1] * 10];
-    const route = planGridRoute(this.state.map, unitNav, origin, [xCm, zCm], 40, unitKind);
-    if (!route) {
+    const offsetX = this.state.map.size[0] * 5;
+    const offsetZ = this.state.map.size[1] * 5;
+    // 不同兵种通行规则不同，按实际会派出的兵种各画一条，取并集。
+    const cells = new Map<string, readonly [number, number]>();
+    for (const part of parts) {
+      const unitNav = createUnitNavGrid(
+        this.state.map,
+        this.state.cities,
+        city.owner,
+        part.kind,
+        destination,
+      );
+      if (!unitNav) continue;
+      const route = planGridRoute(this.state.map, unitNav, origin, [xCm, zCm], 40, part.kind);
+      if (!route) continue;
+      for (const cell of this.rasterizeRoute(
+        [origin, ...route.points],
+        0,
+        unitNav,
+        offsetX,
+        offsetZ,
+      )) {
+        cells.set(`${cell[0]}:${cell[1]}`, cell);
+      }
+    }
+    if (cells.size === 0) {
       this.scene.setPreviewPath(null);
       this.options.onToast("这里走不过去");
       return;
     }
-    const offsetX = this.state.map.size[0] * 5;
-    const offsetZ = this.state.map.size[1] * 5;
-    // 和 sim 里兵团实际携带的网格路径一致：出发点 + A* 折线。
-    const cells = this.rasterizeRoute([origin, ...route.points], 0, unitNav, offsetX, offsetZ);
-    this.scene.setPreviewPath(cells, unitNav.cellSizeCm);
+    this.scene.setPreviewPath([...cells.values()], this.state.map.grid?.cellSizeCm ?? 100);
   }
 
   private clickCity(cityId: CityId): void {

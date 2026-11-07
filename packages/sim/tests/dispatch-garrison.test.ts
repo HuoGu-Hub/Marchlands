@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGame, dispatchCount, sendReachableTargets, step } from "../src";
+import { createGame, dispatchParts, reconcileGarrison, sendReachableTargets, step } from "../src";
 import { GRANARY_MAP, TIMED_RULES } from "./fixtures";
 
 describe("驻军派兵", () => {
@@ -50,8 +50,10 @@ describe("驻军派兵", () => {
     if (!city) throw new Error("missing city");
     for (const pop of [1, 2, 3, 5, 9, 50]) {
       city.pop = pop;
-      expect(dispatchCount(city, state.rules)).toBeLessThanOrEqual(pop);
-      expect(dispatchCount(city, state.rules)).toBeGreaterThanOrEqual(1);
+      reconcileGarrison(city);
+      const sent = dispatchParts(city, state.rules).reduce((sum, part) => sum + part.count, 0);
+      expect(sent).toBeLessThanOrEqual(pop);
+      expect(sent).toBeGreaterThanOrEqual(1);
     }
   });
 });

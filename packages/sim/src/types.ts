@@ -200,6 +200,8 @@ export interface CityState {
   owner: Owner;
   level: Level;
   pop: number;
+  /** 驻军按兵种分别记账，各兵种人数之和等于 pop。 */
+  garrison: Record<UnitKind, number>;
   maxPop: number;
   growthCarry: number;
   /** 被攻击后的禁增长截止 tick。 */

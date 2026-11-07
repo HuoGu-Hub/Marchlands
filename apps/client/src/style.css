@@ -1007,6 +1007,16 @@ body.preview-mode #preview-canvas {
   letter-spacing: 0.05em;
 }
 
+.city-garrison {
+  margin-top: 5px;
+  color: rgba(236, 230, 214, 0.58);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .city-line b {
   color: var(--ink);
   font-weight: 500;

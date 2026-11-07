@@ -46,6 +46,7 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   if (!start) throw new Error("c1 has no screen position");
   await page.mouse.click(start.x, start.y);
   await expect(page.locator("#city-panel")).toHaveClass(/on/);
+  await expect(page.locator("#city-garrison")).toContainText("野蛮人");
 
   await page.waitForTimeout(400);
   const target = await page.evaluate(() => {

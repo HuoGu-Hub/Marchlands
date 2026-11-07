@@ -13,12 +13,19 @@ import {
   polylineLength,
 } from "./grid";
 import { blockedTransit, buildRetargetPath } from "./routes";
-import { isProductionSiteKind, siteUnitKind } from "./types";
+import {
+  addGarrison,
+  defaultUnitKind,
+  dispatchParts,
+  initialGarrison,
+  reconcileGarrison,
+  resizeGarrison,
+} from "./garrison";
+import { isProductionSiteKind } from "./types";
 import { unitProfile } from "./units";
 import {
   DEFAULT_RULESET,
   canDispatchFrom,
-  dispatchCount,
   granarySpeedMilli,
   granaryStrengthMilli,
   levelRule,
@@ -68,6 +75,7 @@ function cloneState(state: SimState): SimState {
     cities: state.cities.map((city) => ({
       ...city,
       pos: [city.pos[0], city.pos[1]],
+      garrison: { ...city.garrison },
       watch: city.watch ? [city.watch[0], city.watch[1]] : null,
     })),
     squads: state.squads.map((squad) => ({
@@ -215,6 +223,7 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
         owner: city.owner,
         level,
         pop: city.pop,
+        garrison: initialGarrison(kind, city.pop),
         maxPop,
         growthCarry: 0,
         growthLockUntil: 0,
@@ -272,6 +281,8 @@ export function step(state: SimState, commands: Command[]): StepResult {
   const next = cloneState(state);
   const events: SimEvent[] = [];
   const rejected: CommandRejection[] = [];
+  // 旧存档或测试可能只改了 pop，先把兵种账本对齐再执行指令。
+  for (const city of next.cities) reconcileGarrison(city);
 
   for (const command of commands) applyCommand(next, command, events, rejected);
   growEconomy(next);
@@ -311,8 +322,8 @@ function applyCommand(
     const route = state.graph.route(from.id, to.id, blockedTransit(state, from.owner, to.id));
     if (!route) return reject(rejected, command, "no_route");
 
-    const count = dispatchCount(from, state.rules);
-    from.pop -= count;
+    const parts = dispatchParts(from, state.rules);
+    if (parts.length === 0) return reject(rejected, command, "too_few_troops");
 
     const hasGranary = playerHasGranary(state, from.owner);
     const speedMilli = granarySpeedMilli(state.rules, hasGranary);
@@ -326,36 +337,42 @@ function applyCommand(
         : firstLength === null
           ? 1
           : travelTicks(firstLength, state.rules, speedMilli);
-    const squad: SquadState = {
-      id: `s${String(state.nextSquad).padStart(6, "0")}`,
-      owner: from.owner,
-      stance: command.stance ?? "guard",
-      unitKind: siteUnitKind(from.kind) ?? "barbarian",
-      from: from.id,
-      to: to.id,
-      count,
-      path,
-      pathIndex: 0,
-      legStartTick: state.tick,
-      legEndTick: state.tick + firstTicks,
-      departTick: state.tick,
-      arrivalTick,
-      speedMilli,
-      strengthMilli,
-      supplyLeft: state.rules.supply.carryTicks,
-      nextStarveTick: state.tick + state.rules.supply.carryTicks,
-      intercepted: [],
-    };
-    state.nextSquad += 1;
-    state.squads.push(squad);
-    events.push({
-      type: "squadSpawned",
-      squadId: squad.id,
-      from: squad.from,
-      to: squad.to,
-      count: squad.count,
-      arrivalTick: squad.arrivalTick,
-    });
+
+    // 一个据点可能混住多个兵种：每种兵各出一支队伍，按各自人数分别记账。
+    for (const part of parts) {
+      from.garrison[part.kind] -= part.count;
+      from.pop -= part.count;
+      const squad: SquadState = {
+        id: `s${String(state.nextSquad).padStart(6, "0")}`,
+        owner: from.owner,
+        stance: command.stance ?? "guard",
+        unitKind: part.kind,
+        from: from.id,
+        to: to.id,
+        count: part.count,
+        path: path.slice(),
+        pathIndex: 0,
+        legStartTick: state.tick,
+        legEndTick: state.tick + firstTicks,
+        departTick: state.tick,
+        arrivalTick,
+        speedMilli,
+        strengthMilli,
+        supplyLeft: state.rules.supply.carryTicks,
+        nextStarveTick: state.tick + state.rules.supply.carryTicks,
+        intercepted: [],
+      };
+      state.nextSquad += 1;
+      state.squads.push(squad);
+      events.push({
+        type: "squadSpawned",
+        squadId: squad.id,
+        from: squad.from,
+        to: squad.to,
+        count: squad.count,
+        arrivalTick: squad.arrivalTick,
+      });
+    }
     return;
   }
 
@@ -579,8 +596,8 @@ function resolveSquad(state: SimState, squad: SquadState, events: SimEvent[]): v
   if (!city) return;
 
   if (city.owner === squad.owner) {
-    // 增援兵力直接并入，允许短暂超过容量，之后按超编衰减。
-    city.pop += squad.count;
+    // 增援兵力按兵种分别并入，允许短暂超过容量，之后按超编衰减。
+    addGarrison(city, squad.unitKind ?? defaultUnitKind(city.kind), squad.count);
     if (city.kind === "outpost") {
       city.decayAtTick = state.tick + state.rules.outpost.graceTicks;
     }
@@ -592,6 +609,7 @@ function resolveSquad(state: SimState, squad: SquadState, events: SimEvent[]): v
   const outcome = resolveAttack(city, squad.owner, squad.count, state.rules, {
     attackerStrengthMilli: squad.strengthMilli,
     defenderStrengthMilli: strengthFor(state, fromOwner),
+    attackerUnitKind: squad.unitKind ?? defaultUnitKind(city.kind),
   });
   addLoss(state, squad.owner, outcome.attackerLoss);
   addLoss(state, fromOwner, outcome.defenderLoss);
@@ -624,7 +642,7 @@ function decayOutposts(state: SimState, events: SimEvent[]): void {
     if (city.kind !== "outpost" || city.owner === 0 || city.pop <= 0) continue;
     if (state.tick < city.decayAtTick) continue;
     const loss = Math.min(city.pop, state.rules.outpost.decayPerInterval);
-    city.pop -= loss;
+    resizeGarrison(city, city.pop - loss);
     addLoss(state, city.owner, loss);
     events.push({ type: "outpostDecayed", cityId: city.id, loss, pop: city.pop });
     if (city.pop === 0) {
@@ -686,28 +704,33 @@ function sendGridSquad(
   events: SimEvent[],
   rejected: CommandRejection[],
 ): void {
-  const nav = state.nav;
-  if (!nav) return;
-  const unitKind = siteUnitKind(from.kind) ?? "barbarian";
-  const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind, to.id);
-  if (!unitNav) return;
+  if (!state.nav) return reject(rejected, command, "no_route");
+  const parts = dispatchParts(from, state.rules);
+  if (parts.length === 0) return reject(rejected, command, "too_few_troops");
+  const stance = command.type === "send" ? (command.stance ?? "guard") : "guard";
   const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
   const goal: [number, number] = [to.pos[0] * 10, to.pos[1] * 10];
-  const route = planGridRoute(state.map, unitNav, start, goal, 40, unitKind);
-  if (!route) {
-    reject(rejected, command, "no_route");
-    return;
+  let sent = 0;
+
+  for (const part of parts) {
+    const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, part.kind, to.id);
+    if (!unitNav) continue;
+    const route = planGridRoute(state.map, unitNav, start, goal, 40, part.kind);
+    if (!route) continue;
+    spawnGridSquad(
+      state,
+      from,
+      to.id,
+      null,
+      stance,
+      part.kind,
+      part.count,
+      [[start[0], start[1]], ...route.points],
+      events,
+    );
+    sent += part.count;
   }
-  spawnGridSquad(
-    state,
-    from,
-    to.id,
-    null,
-    command.type === "send" ? (command.stance ?? "guard") : "guard",
-    unitKind,
-    [[start[0], start[1]], ...route.points],
-    events,
-  );
+  if (sent === 0) reject(rejected, command, "no_route");
 }
 
 /** 网格模式下把兵团派往任意格子；抵达后原地驻留，可再次改道。 */
@@ -721,22 +744,31 @@ function sendGridSquadToCell(
   rejected: CommandRejection[],
 ): void {
   if (!state.nav) return reject(rejected, command, "no_route");
-  const unitKind = siteUnitKind(from.kind) ?? "barbarian";
-  const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, unitKind);
-  if (!unitNav) return reject(rejected, command, "no_route");
+  const parts = dispatchParts(from, state.rules);
+  if (parts.length === 0) return reject(rejected, command, "too_few_troops");
+  const stance = command.type === "sendCell" ? (command.stance ?? "guard") : "guard";
   const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
-  const route = planGridRoute(state.map, unitNav, start, [xCm, zCm], 40, unitKind);
-  if (!route) return reject(rejected, command, "no_route");
-  spawnGridSquad(
-    state,
-    from,
-    "",
-    [xCm, zCm],
-    command.type === "sendCell" ? (command.stance ?? "guard") : "guard",
-    unitKind,
-    [[start[0], start[1]], ...route.points],
-    events,
-  );
+  let sent = 0;
+
+  for (const part of parts) {
+    const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, part.kind);
+    if (!unitNav) continue;
+    const route = planGridRoute(state.map, unitNav, start, [xCm, zCm], 40, part.kind);
+    if (!route) continue;
+    spawnGridSquad(
+      state,
+      from,
+      "",
+      [xCm, zCm],
+      stance,
+      part.kind,
+      part.count,
+      [[start[0], start[1]], ...route.points],
+      events,
+    );
+    sent += part.count;
+  }
+  if (sent === 0) reject(rejected, command, "no_route");
 }
 
 function spawnGridSquad(
@@ -746,10 +778,11 @@ function spawnGridSquad(
   toCell: [number, number] | null,
   stance: SquadStance,
   unitKind: UnitKind,
+  count: number,
   points: Array<[number, number]>,
   events: SimEvent[],
 ): void {
-  const count = dispatchCount(from, state.rules);
+  from.garrison[unitKind] = Math.max(0, (from.garrison[unitKind] ?? 0) - count);
   from.pop -= count;
 
   const hasGranary = playerHasGranary(state, from.owner);
@@ -939,6 +972,7 @@ function advanceGridTransit(
   const outcome = resolveAttack(city, squad.owner, remaining, state.rules, {
     attackerStrengthMilli: squad.strengthMilli,
     defenderStrengthMilli: strengthFor(state, beforeOwner),
+    attackerUnitKind: squad.unitKind ?? defaultUnitKind(city.kind),
   });
   addLoss(state, squad.owner, outcome.attackerLoss);
   addLoss(state, beforeOwner, outcome.defenderLoss);
