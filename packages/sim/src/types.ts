@@ -344,8 +344,15 @@ export type SimEvent =
   | { type: "gameOver"; winner: Owner; reason: FinishReason };
 
 export type Command =
-  | { type: "send"; from: CityId; to: CityId; stance?: SquadStance }
-  | { type: "sendCell"; from: CityId; xCm: number; zCm: number; stance?: SquadStance }
+  | { type: "send"; from: CityId; to: CityId; stance?: SquadStance; count?: number }
+  | {
+      type: "sendCell";
+      from: CityId;
+      xCm: number;
+      zCm: number;
+      stance?: SquadStance;
+      count?: number;
+    }
   | { type: "upgrade"; city: CityId }
   | { type: "setStance"; city: CityId; stance: Stance }
   | { type: "setSquadStance"; squad: string; stance: SquadStance }

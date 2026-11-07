@@ -310,6 +310,12 @@ function applyCommand(
     if (from.id === to.id) return reject(rejected, command, "same_city");
     if (from.owner === 0) return reject(rejected, command, "not_owned");
     if (!canDispatchFrom(from)) return reject(rejected, command, "too_few_troops");
+    if (command.count !== undefined) {
+      if (!Number.isFinite(command.count) || command.count < 1) {
+        return reject(rejected, command, "too_few_troops");
+      }
+      if (command.count > from.pop) return reject(rejected, command, "too_many_troops");
+    }
     if (command.stance !== undefined && command.stance !== "forced" && command.stance !== "guard") {
       return reject(rejected, command, "invalid_stance");
     }
@@ -322,7 +328,7 @@ function applyCommand(
     const route = state.graph.route(from.id, to.id, blockedTransit(state, from.owner, to.id));
     if (!route) return reject(rejected, command, "no_route");
 
-    const parts = dispatchParts(from, state.rules);
+    const parts = dispatchParts(from, state.rules, command.count);
     if (parts.length === 0) return reject(rejected, command, "too_few_troops");
 
     const hasGranary = playerHasGranary(state, from.owner);
@@ -381,6 +387,12 @@ function applyCommand(
     if (!from) return reject(rejected, command, "unknown_city");
     if (from.owner === 0) return reject(rejected, command, "not_owned");
     if (!canDispatchFrom(from)) return reject(rejected, command, "too_few_troops");
+    if (command.count !== undefined) {
+      if (!Number.isFinite(command.count) || command.count < 1) {
+        return reject(rejected, command, "too_few_troops");
+      }
+      if (command.count > from.pop) return reject(rejected, command, "too_many_troops");
+    }
     if (!Number.isFinite(command.xCm) || !Number.isFinite(command.zCm)) {
       return reject(rejected, command, "no_route");
     }
@@ -705,7 +717,11 @@ function sendGridSquad(
   rejected: CommandRejection[],
 ): void {
   if (!state.nav) return reject(rejected, command, "no_route");
-  const parts = dispatchParts(from, state.rules);
+  const parts = dispatchParts(
+    from,
+    state.rules,
+    command.type === "send" ? command.count : undefined,
+  );
   if (parts.length === 0) return reject(rejected, command, "too_few_troops");
   const stance = command.type === "send" ? (command.stance ?? "guard") : "guard";
   const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];
@@ -744,7 +760,11 @@ function sendGridSquadToCell(
   rejected: CommandRejection[],
 ): void {
   if (!state.nav) return reject(rejected, command, "no_route");
-  const parts = dispatchParts(from, state.rules);
+  const parts = dispatchParts(
+    from,
+    state.rules,
+    command.type === "sendCell" ? command.count : undefined,
+  );
   if (parts.length === 0) return reject(rejected, command, "too_few_troops");
   const stance = command.type === "sendCell" ? (command.stance ?? "guard") : "guard";
   const start: [number, number] = [from.pos[0] * 10, from.pos[1] * 10];

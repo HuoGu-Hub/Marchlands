@@ -1017,6 +1017,46 @@ body.preview-mode #preview-canvas {
   text-overflow: ellipsis;
 }
 
+.city-dispatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.city-dispatch span {
+  flex: 0 0 auto;
+}
+
+.city-dispatch input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.city-dispatch input[type="range"]:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.city-dispatch b {
+  min-width: 2ch;
+  color: var(--ink);
+  font-weight: 500;
+  text-align: right;
+}
+
+.city-dispatch span:last-child {
+  min-width: 4ch;
+  color: rgba(236, 230, 214, 0.48);
+}
+
 .city-line b {
   color: var(--ink);
   font-weight: 500;

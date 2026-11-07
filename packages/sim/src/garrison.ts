@@ -137,15 +137,70 @@ export function reconcileGarrison(city: CityState): void {
   city.garrison[kind] = (city.garrison[kind] ?? 0) + (city.pop - total);
 }
 
-/** 每种兵各派 50%，各自最少 1，且不超过该兵种当前驻军。 */
-export function dispatchParts(city: CityState, rules: Ruleset): DispatchPart[] {
+function allocateParts(garrison: Garrison, total: number, target: number): DispatchPart[] {
+  if (target <= 0 || total <= 0) return [];
+  const wanted = Math.min(total, Math.floor(target));
+  if (wanted >= total) {
+    return garrisonEntriesFrom(garrison);
+  }
+  const counts = new Map<UnitKind, number>();
+  const remainders: Array<{ kind: UnitKind; remainder: number; order: number; available: number }> = [];
+  let assigned = 0;
+  PRODUCTION_SITE_KINDS.forEach((kind, order) => {
+    const available = garrison[kind] ?? 0;
+    const base = Math.floor((available * wanted) / total);
+    counts.set(kind, base);
+    assigned += base;
+    remainders.push({
+      kind,
+      remainder: available * wanted - base * total,
+      order,
+      available,
+    });
+  });
+  remainders.sort((a, b) => b.remainder - a.remainder || a.order - b.order);
+  let left = wanted - assigned;
+  for (const entry of remainders) {
+    if (left <= 0) break;
+    if ((counts.get(entry.kind) ?? 0) < entry.available) {
+      counts.set(entry.kind, (counts.get(entry.kind) ?? 0) + 1);
+      left -= 1;
+    }
+  }
+  const parts: DispatchPart[] = [];
+  for (const kind of PRODUCTION_SITE_KINDS) {
+    const count = counts.get(kind) ?? 0;
+    if (count > 0) parts.push({ kind, count });
+  }
+  return parts;
+}
+
+function garrisonEntriesFrom(garrison: Garrison): DispatchPart[] {
+  const parts: DispatchPart[] = [];
+  for (const kind of PRODUCTION_SITE_KINDS) {
+    const count = garrison[kind] ?? 0;
+    if (count > 0) parts.push({ kind, count });
+  }
+  return parts;
+}
+
+/**
+ * 不出兵数量时沿用旧规则：每种兵各派 50%，各自最少 1。
+ * 指定 count 时按总兵数比例分摊，保证各兵种之和正好等于该数量。
+ */
+export function dispatchParts(city: CityState, rules: Ruleset, count?: number): DispatchPart[] {
+  if (count !== undefined) {
+    const total = garrisonTotal(city.garrison);
+    if (!Number.isFinite(count) || count <= 0) return [];
+    return allocateParts(city.garrison, total, Math.floor(count));
+  }
   const percent = sendPercent(rules);
   const parts: DispatchPart[] = [];
   for (const kind of PRODUCTION_SITE_KINDS) {
     const available = city.garrison?.[kind] ?? 0;
     if (available <= 0) continue;
-    const count = Math.min(available, Math.max(1, Math.floor((available * percent) / 100)));
-    if (count > 0) parts.push({ kind, count });
+    const amount = Math.min(available, Math.max(1, Math.floor((available * percent) / 100)));
+    if (amount > 0) parts.push({ kind, count: amount });
   }
   return parts;
 }

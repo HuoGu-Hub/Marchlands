@@ -125,6 +125,47 @@ test("sets forced march before dispatching a squad", async ({ page }) => {
     .toBe("guard");
 });
 
+
+test("dispatches the count chosen on the city slider", async ({ page }) => {
+  await openGame(page);
+  const start = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c1") : null;
+  });
+  if (!start) throw new Error("c1 has no screen position");
+  await page.mouse.click(start.x, start.y);
+  await expect(page.locator("#city-dispatch-range")).toBeVisible();
+  await page.evaluate(() => {
+    const range = document.querySelector("#city-dispatch-range") as HTMLInputElement;
+    range.value = "5";
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#city-dispatch-count")).toHaveText("5");
+
+  const target = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c2") : null;
+  });
+  if (!target) throw new Error("c2 has no screen position");
+  await page.mouse.dblclick(target.x, target.y);
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const hook = (window as unknown as {
+            __mlSquads?: { squads: Array<{ owner: number; count: number }> };
+          }).__mlSquads;
+          return (hook?.squads ?? [])
+            .filter((squad) => squad.owner === 1)
+            .reduce((sum, squad) => sum + squad.count, 0);
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(5);
+});
+
 test("creates a map in the editor and returns from playtest", async ({ page }) => {
   await openClassicEditor(page);
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");

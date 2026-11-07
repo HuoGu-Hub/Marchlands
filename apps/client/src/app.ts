@@ -135,6 +135,12 @@ const TEMPLATE = `
         <div class="city-line">守军 <b id="city-pop">30</b> / <span id="city-max">65</span> · 防御 <b id="city-defense">1.20</b></div>
         <div class="pop-bar"><i id="city-pop-fill"></i></div>
         <div class="city-garrison" id="city-garrison"></div>
+        <div class="city-dispatch">
+          <span id="city-dispatch-label">派兵</span>
+          <input id="city-dispatch-range" type="range" min="1" max="30" value="15" />
+          <b id="city-dispatch-count">15</b>
+          <span id="city-dispatch-max">/30</span>
+        </div>
       </div>
       <div class="city-actions">
         <button class="btn" id="city-transit">通行 · 拦截</button>
@@ -475,6 +481,11 @@ export class App {
     this.on("btn-menu", "click", () => this.backToMenu());
     this.on("btn-deselect", "click", () => this.session?.clearSelection());
     this.on("btn-squad-deselect", "click", () => this.session?.clearSelection());
+    this.el("city-dispatch-range").addEventListener("input", () => {
+      const input = this.el("city-dispatch-range") as HTMLInputElement;
+      this.session?.setDispatchAmount(Number(input.value));
+      this.el("city-dispatch-count").textContent = input.value;
+    });
     this.bindStance("#city-stance", (stance) => this.session?.setDispatchStance(stance));
     this.bindStance("#squad-stance", (stance) => this.session?.setSelectedSquadStance(stance));
     this.on("btn-dispatch", "click", () => this.session?.dispatchSelectedPlan());
@@ -1382,6 +1393,16 @@ export class App {
       .map((entry) => `${UNIT_PROFILES[entry.kind].label} ${entry.count}`)
       .join(" · ");
     this.el("city-garrison").textContent = garrison || "无驻军";
+    const range = this.el("city-dispatch-range") as HTMLInputElement;
+    const max = Math.max(1, city.pop);
+    const amount =
+      this.session?.getDispatchAmount(city) ?? Math.min(max, Math.max(1, Math.floor(city.pop / 2)));
+    range.max = String(max);
+    range.value = String(amount);
+    range.disabled = city.pop <= 0;
+    this.el("city-dispatch-count").textContent = String(amount);
+    this.el("city-dispatch-max").textContent = `/${max}`;
+    this.el("city-dispatch-label").textContent = count > 1 ? "每座派兵" : "派兵";
     const accent = this.el("city-accent");
     accent.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#8d8778";
     const fill = this.el("city-pop-fill");

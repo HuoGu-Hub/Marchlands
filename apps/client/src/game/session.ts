@@ -41,7 +41,8 @@ const REASONS: Record<string, string> = {
   same_city: "不能派往本城",
   not_owned: "不是你的据点",
   not_producer: "该据点不产兵",
-  too_few_troops: "守军不足两人",
+  too_few_troops: "驻军不足",
+  too_many_troops: "派出人数超过驻军",
   no_route: "没有可行路线：中立或敌方据点阻断了道路",
   max_level: "已达最高等级",
   insufficient_pop: "人口不足",
@@ -82,6 +83,9 @@ export class GameSession {
   private selected: CityId[] = [];
   private selectedSquad: string | null = null;
   private dispatchStance: SquadStance = "guard";
+  /** 滑块选择的派兵数量；null 表示默认 50%。 */
+  private dispatchAmount: number | null = null;
+  private dispatchCity: CityId | null = null;
   private gridReach = new Map<CityId, GridReach>();
   private gridFocus: GridReach | null = null;
   private multiSelect = false;
@@ -339,6 +343,23 @@ export class GameSession {
     this.setSquadPanelVisible(false);
   }
 
+  /** 滑块选择的数量；超过当前驻军时按驻军封顶。 */
+  setDispatchAmount(value: number): void {
+    if (!Number.isFinite(value)) return;
+    this.dispatchAmount = Math.max(1, Math.floor(value));
+  }
+
+  /** 当前滑块应显示的派兵数量。 */
+  getDispatchAmount(city: CityState): number {
+    const max = Math.max(1, city.pop);
+    const wanted = this.dispatchAmount ?? Math.max(1, Math.floor(city.pop / 2));
+    return Math.min(max, wanted);
+  }
+
+  private dispatchCountFor(city: CityState): number {
+    return this.getDispatchAmount(city);
+  }
+
   /** 出兵姿态：之后所有据点派兵都按这个姿态生成兵团。 */
   setDispatchStance(stance: SquadStance): void {
     if (this.dispatchStance === stance) return;
@@ -441,6 +462,11 @@ export class GameSession {
 
   private setSelection(ids: CityId[]): void {
     this.selected = ids;
+    const primary = this.primary;
+    if (primary !== this.dispatchCity) {
+      this.dispatchAmount = null;
+      this.dispatchCity = primary;
+    }
     // 选择一变，上一条路线预览就不再对应当前编组。
     this.scene.setPreviewPath(null);
     if (ids.length > 0) this.setSquadPanelVisible(false);
@@ -539,7 +565,13 @@ export class GameSession {
         if (!problem) problem = `${id} 路线被阻断`;
         continue;
       }
-      this.commands.push({ type: "send", from: id, to, stance: this.dispatchStance });
+      this.commands.push({
+        type: "send",
+        from: id,
+        to,
+        stance: this.dispatchStance,
+        count: this.dispatchCountFor(from),
+      });
       sent += 1;
     }
     if (sent === 0) {
@@ -710,6 +742,7 @@ export class GameSession {
             xCm: group.cell[0],
             zCm: group.cell[1],
             stance: this.dispatchStance,
+            count: this.dispatchCountFor(from),
           });
           sent += 1;
           continue;
@@ -719,7 +752,13 @@ export class GameSession {
           if (!problem) problem = `${id} 路线被阻断`;
           continue;
         }
-        this.commands.push({ type: "send", from: id, to: group.to, stance: this.dispatchStance });
+        this.commands.push({
+          type: "send",
+          from: id,
+          to: group.to,
+          stance: this.dispatchStance,
+          count: this.dispatchCountFor(from),
+        });
         sent += 1;
       }
     }
@@ -1572,6 +1611,7 @@ export class GameSession {
         xCm: cell.xCm,
         zCm: cell.zCm,
         stance: this.dispatchStance,
+        count: this.dispatchCountFor(from),
       });
       sent += 1;
     }
@@ -1594,7 +1634,7 @@ export class GameSession {
       this.scene.setPreviewPath(null);
       return;
     }
-    const parts = dispatchParts(city, this.state.rules);
+    const parts = dispatchParts(city, this.state.rules, this.dispatchCountFor(city));
     if (parts.length === 0) {
       this.scene.setPreviewPath(null);
       return;
