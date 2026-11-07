@@ -28,6 +28,7 @@ export type {
   SiteKind,
   SiteState,
   SquadState,
+  SquadStance,
   Stance,
   StepResult,
   SupplyRule,

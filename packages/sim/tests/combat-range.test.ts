@@ -71,3 +71,96 @@ describe("交战距离", () => {
     expect(UNIT_PROFILES.warrior.attackRangeCm).toBeGreaterThan(UNIT_PROFILES.barbarian.attackRangeCm);
   });
 });
+
+describe("兵团行军姿态", () => {
+  it("强行军不停止，警戒方停下并造成伤害", () => {
+    const start = createGame(TWO_CITY_MAP, 1, TIMED_RULES);
+    let state = step(start, [
+      { type: "send", from: "a", to: "b", stance: "forced" },
+      { type: "send", from: "b", to: "a", stance: "guard" },
+    ]).state;
+    const forced = state.squads.find((squad) => squad.stance === "forced");
+    const guard = state.squads.find((squad) => squad.stance === "guard");
+    if (!forced || !guard) throw new Error("missing squads");
+    forced.unitKind = "barbarian";
+    guard.unitKind = "barbarian";
+    const forcedInitial = forced.count;
+    const guardInitial = guard.count;
+
+    let clashState = state;
+    for (let i = 0; i < 200; i += 1) {
+      clashState = step(clashState, []).state;
+      if (clashState.events.some((event) => event.type === "squadClashed")) break;
+    }
+    const forcedBefore = clashState.squads.find((squad) => squad.id === forced.id);
+    const guardBefore = clashState.squads.find((squad) => squad.id === guard.id);
+    if (!forcedBefore || !guardBefore) throw new Error("clash did not start");
+
+    for (let i = 0; i < 20; i += 1) clashState = step(clashState, []).state;
+    const forcedAfter = clashState.squads.find((squad) => squad.id === forced.id);
+    const guardAfter = clashState.squads.find((squad) => squad.id === guard.id);
+    if (!forcedAfter || !guardAfter) throw new Error("squads disappeared too early");
+
+    expect(forcedAfter.arrivalTick).toBe(forcedBefore.arrivalTick);
+    expect(guardAfter.arrivalTick).toBeGreaterThan(guardBefore.arrivalTick);
+    expect(guardAfter.count).toBe(guardInitial);
+    expect(forcedAfter.count).toBeLessThan(forcedInitial);
+  });
+
+  it("两支强行军互相穿过，不进入交战", () => {
+    let state = step(createGame(TWO_CITY_MAP, 1, TIMED_RULES), [
+      { type: "send", from: "a", to: "b", stance: "forced" },
+      { type: "send", from: "b", to: "a", stance: "forced" },
+    ]).state;
+    let clashes = 0;
+    for (let i = 0; i < 40; i += 1) {
+      state = step(state, []).state;
+      clashes += state.events.filter((event) => event.type === "squadClashed").length;
+    }
+    expect(clashes).toBe(0);
+  });
+
+  it("交战至少锁定 3 秒才能脱战", () => {
+    let state = step(createGame(TWO_CITY_MAP, 1, TIMED_RULES), [
+      { type: "send", from: "a", to: "b", stance: "forced" },
+      { type: "send", from: "b", to: "a", stance: "guard" },
+    ]).state;
+    const guard = state.squads.find((squad) => squad.stance === "guard");
+    const forced = state.squads.find((squad) => squad.stance === "forced");
+    if (!guard || !forced) throw new Error("missing squads");
+    // 直接摆到射程外，只验证脱战锁；把路径时间推远，避免自动走到终点。
+    guard.xCm = -1000;
+    guard.zCm = 0;
+    forced.xCm = 1000;
+    forced.zCm = 0;
+    guard.engagedWith = forced.id;
+    forced.engagedWith = guard.id;
+    const until = state.tick + state.rules.tickHz * 3;
+    guard.engagedUntilTick = until;
+    for (const squad of [guard, forced]) {
+      squad.legStartTick = state.tick;
+      squad.legEndTick = state.tick + 100000;
+      squad.arrivalTick = state.tick + 100000;
+    }
+
+    while (state.tick < until - 1) state = step(state, []).state;
+    expect(state.squads.find((squad) => squad.id === guard.id)?.engagedWith).toBe(forced.id);
+    state = step(state, []).state;
+    expect(state.squads.find((squad) => squad.id === guard.id)?.engagedWith).toBe(forced.id);
+    state = step(state, []).state;
+    expect(state.squads.find((squad) => squad.id === guard.id)?.engagedWith).toBeUndefined();
+    expect(state.squads.find((squad) => squad.id === forced.id)?.engagedWith).toBeUndefined();
+  });
+
+  it("可以中途切换兵团姿态", () => {
+    let state = step(createGame(TWO_CITY_MAP, 1, TIMED_RULES), [
+      { type: "send", from: "a", to: "b" },
+    ]).state;
+    const squad = state.squads[0];
+    expect(squad.stance).toBe("guard");
+    state = step(state, [{ type: "setSquadStance", squad: squad.id, stance: "forced" }]).state;
+    expect(state.squads[0].stance).toBe("forced");
+    state = step(state, [{ type: "setSquadStance", squad: squad.id, stance: "guard" }]).state;
+    expect(state.squads[0].stance).toBe("guard");
+  });
+});

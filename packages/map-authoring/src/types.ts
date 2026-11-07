@@ -184,7 +184,7 @@ export interface MapDocument {
   /** 对局起始金币；缺省 0。 */
   startGold?: number;
   transit: "open" | "friendly";
-  /** 敌对兵团进入攻击范围后是否停下交战；缺省关闭。 */
+  /** 敌对兵团进入攻击范围后是否停下交战；缺省开启。 */
   squadCombat?: boolean;
   /** 每米格可通行的最大高低差，厘米；缺省使用兵种档案。 */
   climbCm?: number;

@@ -43,6 +43,9 @@ export function normalizeSiteKind(kind: string): SiteKind {
   return (LEGACY_SITE_KINDS[kind] ?? kind) as SiteKind;
 }
 export type Stance = "evade" | "engage";
+
+/** 兵团行军姿态：强行军不理会交战；警戒时敌方进入射程就停下打。 */
+export type SquadStance = "forced" | "guard";
 export type MatchStatus = "playing" | "finished";
 export type FinishReason = "capture_all" | "eliminated" | "time_limit" | "draw";
 
@@ -221,6 +224,8 @@ export type SiteState = CityState;
 export interface SquadState {
   id: string;
   owner: PlayerId;
+  /** 出兵时选择的姿态；缺省按警戒处理。 */
+  stance: SquadStance;
   unitKind?: UnitKind;
   from: CityId;
   /** 目标据点；以网格为目标时为空字符串。 */
@@ -254,6 +259,8 @@ export interface SquadState {
   gridSpeedCmPerTick?: number;
   /** 正在交战的敌对兵团；设置关闭时为空。 */
   engagedWith?: string;
+  /** 交战至少持续到这个 tick 才能脱战。 */
+  engagedUntilTick?: number;
   /** 正在通过的建筑；passed 是已经无损通过的士兵数。 */
   transit?: {
     cityId: CityId;
@@ -331,13 +338,15 @@ export type SimEvent =
       defenderLoss: number;
       defenderDestroyed: boolean;
     }
+  | { type: "squadStanceChanged"; squadId: string; stance: SquadStance }
   | { type: "gameOver"; winner: Owner; reason: FinishReason };
 
 export type Command =
-  | { type: "send"; from: CityId; to: CityId }
-  | { type: "sendCell"; from: CityId; xCm: number; zCm: number }
+  | { type: "send"; from: CityId; to: CityId; stance?: SquadStance }
+  | { type: "sendCell"; from: CityId; xCm: number; zCm: number; stance?: SquadStance }
   | { type: "upgrade"; city: CityId }
   | { type: "setStance"; city: CityId; stance: Stance }
+  | { type: "setSquadStance"; squad: string; stance: SquadStance }
   | { type: "setTransit"; city: CityId; mode: "release" | "intercept" }
   | { type: "retarget"; squad: string; to: CityId; via?: CityId }
   | { type: "retargetCell"; squad: string; xCm: number; zCm: number };

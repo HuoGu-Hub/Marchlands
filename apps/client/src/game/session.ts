@@ -10,6 +10,7 @@ import type {
   MapDef,
   Ruleset,
   SimState,
+  SquadStance,
   SquadState,
 } from "@marchlands/sim";
 import {
@@ -78,6 +79,7 @@ export class GameSession {
   private simMap: MapDef;
   private selected: CityId[] = [];
   private selectedSquad: string | null = null;
+  private dispatchStance: SquadStance = "guard";
   private gridReach = new Map<CityId, GridReach>();
   private gridFocus: GridReach | null = null;
   private multiSelect = false;
@@ -104,6 +106,7 @@ export class GameSession {
   private dragPreviewPoint: { x: number; y: number } | null = null;
   private pathUpdateAt = 0;
   private pathSelection = "";
+  private clashTextAt = 0;
   private suppressClick = false;
   private dragX = 0;
   private dragY = 0;
@@ -136,6 +139,7 @@ export class GameSession {
     });
     this.bindInput();
     this.updateHud();
+    this.syncDispatchStance();
     this.introRoot = options.hud.querySelector<HTMLElement>("#match-intro");
     this.introShade = options.hud.querySelector<HTMLElement>("#match-intro-shade");
     this.introCount = options.hud.querySelector<HTMLElement>("#match-intro-count");
@@ -323,12 +327,67 @@ export class GameSession {
     this.selectedSquad = squad.id;
     this.scene.setSelectedSquad(squad.id);
     this.setSelection([]);
+    this.syncSquadPanel();
   }
 
   clearSelection(): void {
     this.selectedSquad = null;
     this.scene.setSelectedSquad(null);
     this.setSelection([]);
+    this.setSquadPanelVisible(false);
+  }
+
+  /** 出兵姿态：之后所有据点派兵都按这个姿态生成兵团。 */
+  setDispatchStance(stance: SquadStance): void {
+    if (this.dispatchStance === stance) return;
+    this.dispatchStance = stance;
+    this.syncDispatchStance();
+  }
+
+  /** 改选中兵团的姿态；已经出发的兵团立即生效。 */
+  setSelectedSquadStance(stance: SquadStance): void {
+    const squad = this.selectedSquad;
+    if (!squad) return;
+    const current = this.getSquad(squad);
+    if (!current || current.stance === stance) return;
+    this.commands.push({ type: "setSquadStance", squad, stance });
+  }
+
+  private syncDispatchStance(): void {
+    this.syncStanceButtons("#city-stance", this.dispatchStance);
+  }
+
+  private syncStanceButtons(selector: string, active: SquadStance): void {
+    this.options.hud
+      .querySelectorAll<HTMLButtonElement>(`${selector} [data-stance]`)
+      .forEach((button) => {
+        button.classList.toggle("on", button.dataset.stance === active);
+      });
+  }
+
+  private setSquadPanelVisible(visible: boolean): void {
+    this.options.hud.querySelector<HTMLElement>("#squad-panel")?.classList.toggle("on", visible);
+  }
+
+  private syncSquadPanel(): void {
+    const id = this.selectedSquad;
+    const squad = id ? this.getSquad(id) : null;
+    if (!squad) {
+      this.setSquadPanelVisible(false);
+      return;
+    }
+    this.setSquadPanelVisible(true);
+    this.setText(
+      "squad-state",
+      squad.engagedWith
+        ? squad.stance === "forced"
+          ? "交战中 · 继续行军"
+          : "交战中 · 停止"
+        : squad.stance === "forced"
+          ? "强行军向目的地"
+          : "警戒行军",
+    );
+    this.syncStanceButtons("#squad-stance", squad.stance);
   }
 
   upgradeSelected(): void {
@@ -382,6 +441,7 @@ export class GameSession {
     this.selected = ids;
     // 选择一变，上一条路线预览就不再对应当前编组。
     this.scene.setPreviewPath(null);
+    if (ids.length > 0) this.setSquadPanelVisible(false);
     this.scene.setSelected(ids);
     this.refreshReach(true);
     this.options.onSelect(this.primary, ids.length);
@@ -476,7 +536,7 @@ export class GameSession {
         if (!problem) problem = `${id} 路线被阻断`;
         continue;
       }
-      this.commands.push({ type: "send", from: id, to });
+      this.commands.push({ type: "send", from: id, to, stance: this.dispatchStance });
       sent += 1;
     }
     if (sent === 0) {
@@ -645,7 +705,13 @@ export class GameSession {
             if (!problem) problem = `${id} 无法抵达该网格`;
             continue;
           }
-          this.commands.push({ type: "sendCell", from: id, xCm: group.cell[0], zCm: group.cell[1] });
+          this.commands.push({
+            type: "sendCell",
+            from: id,
+            xCm: group.cell[0],
+            zCm: group.cell[1],
+            stance: this.dispatchStance,
+          });
           sent += 1;
           continue;
         }
@@ -654,7 +720,7 @@ export class GameSession {
           if (!problem) problem = `${id} 路线被阻断`;
           continue;
         }
-        this.commands.push({ type: "send", from: id, to: group.to });
+        this.commands.push({ type: "send", from: id, to: group.to, stance: this.dispatchStance });
         sent += 1;
       }
     }
@@ -926,6 +992,7 @@ export class GameSession {
     }
     this.handleEvents();
     this.updateHud();
+    if (this.selectedSquad) this.syncSquadPanel();
     if (this.selected.length > 0) this.options.onSelect(this.primary, this.selected.length);
     else if (lostSelection) this.options.onSelect(null, 0);
     if (lostSelection && this.multiSelect) this.updatePlanUi();
@@ -972,6 +1039,10 @@ export class GameSession {
             ? `${event.squadId} 断粮溃散`
             : `${event.squadId} 断粮 - ${event.loss} 兵`,
         );
+      } else if (event.type === "squadStanceChanged") {
+        if (this.selectedSquad === event.squadId) this.syncSquadPanel();
+      } else if (event.type === "squadClashed") {
+        this.showClashLosses(event);
       }
     }
   }
@@ -994,11 +1065,54 @@ export class GameSession {
           id: squad.id,
           owner: squad.owner,
           count: squad.count,
+          stance: squad.stance,
+          engaged: squad.engagedWith ?? null,
           xCm: squad.xCm,
           zCm: squad.zCm,
         })),
       };
     }
+  }
+
+  private showClashLosses(event: {
+    attacker: string;
+    defender: string;
+    attackerLoss: number;
+    defenderLoss: number;
+    attackerOwner: number;
+    defenderOwner: number;
+  }): void {
+    const now = performance.now();
+    if (now - this.clashTextAt < 320) return;
+    this.clashTextAt = now;
+    if (event.attackerLoss > 0) {
+      this.floatSquadText(
+        event.attacker,
+        `-${event.attackerLoss}`,
+        event.attackerOwner === 1 ? "loss" : "gain",
+      );
+    }
+    if (event.defenderLoss > 0) {
+      this.floatSquadText(
+        event.defender,
+        `-${event.defenderLoss}`,
+        event.defenderOwner === 1 ? "loss" : "gain",
+      );
+    }
+  }
+
+  private floatSquadText(squadId: string, text: string, tone: "gain" | "loss" | "gold"): void {
+    const squad = this.getSquad(squadId);
+    if (!squad || squad.xCm === undefined || squad.zCm === undefined) return;
+    const point = this.scene.projectGround(squad.xCm / 10, squad.zCm / 10, 1.1);
+    if (!point) return;
+    const node = document.createElement("div");
+    node.className = `float-text ${tone}`;
+    node.textContent = text;
+    node.style.left = `${Math.round(point.x)}px`;
+    node.style.top = `${Math.round(point.y)}px`;
+    this.options.hud.appendChild(node);
+    window.setTimeout(() => node.remove(), 1100);
   }
 
   private floatText(cityId: CityId, text: string, tone: "gain" | "loss" | "gold"): void {
@@ -1456,7 +1570,13 @@ export class GameSession {
         if (!problem) problem = `${id} 无法抵达该网格`;
         continue;
       }
-      this.commands.push({ type: "sendCell", from: id, xCm: cell.xCm, zCm: cell.zCm });
+      this.commands.push({
+        type: "sendCell",
+        from: id,
+        xCm: cell.xCm,
+        zCm: cell.zCm,
+        stance: this.dispatchStance,
+      });
       sent += 1;
     }
     if (sent === 0) {

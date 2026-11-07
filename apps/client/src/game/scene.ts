@@ -1240,9 +1240,10 @@ export class BattleScene {
           }
         }
       }
-      const moving = squad.gridPath
+      const pathing = squad.gridPath
         ? (squad.gridIndex ?? 0) < squad.gridPath.length
         : squad.pathIndex < squad.path.length - 1;
+      const marching = pathing && (!squad.engagedWith || squad.stance === "forced");
       this.syncSquadUnits(view, squad);
       this.squadSphere.center.set(point.x, view.group.position.y + 1, point.z);
       this.squadSphere.radius = 4.5;
@@ -1296,7 +1297,7 @@ export class BattleScene {
         const step = Math.min(120, view.animAccum);
         view.animAccum = 0;
         for (const unit of view.units) {
-          unit.setMoving(moving);
+          unit.setMoving(marching);
           unit.update(step);
         }
       }

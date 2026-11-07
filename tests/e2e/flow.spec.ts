@@ -59,6 +59,71 @@ test("starts a match and captures an adjacent town", async ({ page }) => {
   await expect(page.locator("#toast")).toContainText("c2 已占领", { timeout: 30_000 });
 });
 
+
+test("sets forced march before dispatching a squad", async ({ page }) => {
+  await openGame(page);
+  const start = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c1") : null;
+  });
+  if (!start) throw new Error("c1 has no screen position");
+  await page.mouse.click(start.x, start.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
+  await expect(page.locator('#city-stance [data-stance="guard"]')).toHaveClass(/on/);
+  await page.click('#city-stance [data-stance="forced"]');
+  await expect(page.locator('#city-stance [data-stance="forced"]')).toHaveClass(/on/);
+
+  const target = await page.evaluate(() => {
+    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
+      .__mlDebug;
+    return hook ? hook.projectCity("c2") : null;
+  });
+  if (!target) throw new Error("c2 has no screen position");
+  await page.mouse.dblclick(target.x, target.y);
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const hook = (window as unknown as {
+            __mlSquads?: { squads: Array<{ owner: number; stance: string }> };
+          }).__mlSquads;
+          return hook?.squads.find((squad) => squad.owner === 1)?.stance ?? null;
+        }),
+      { timeout: 20_000 },
+    )
+    .toBe("forced");
+
+  await page.waitForTimeout(2600);
+  const squadPoint = await page.evaluate(() => {
+    const squad = (window as unknown as {
+      __mlSquads?: { squads: Array<{ owner: number; xCm?: number; zCm?: number }> };
+    }).__mlSquads?.squads.find((entry) => entry.owner === 1);
+    if (!squad || squad.xCm === undefined || squad.zCm === undefined) return null;
+    const hook = (window as unknown as {
+      __mlDebug?: { projectGround(x: number, z: number): { x: number; y: number } | null };
+    }).__mlDebug;
+    return hook ? hook.projectGround(squad.xCm / 10, squad.zCm / 10) : null;
+  });
+  if (!squadPoint) throw new Error("squad has no screen position");
+  await page.mouse.click(squadPoint.x, squadPoint.y);
+  await expect(page.locator("#squad-panel")).toHaveClass(/on/, { timeout: 5000 });
+  await expect(page.locator('#squad-stance [data-stance="forced"]')).toHaveClass(/on/);
+  await page.click('#squad-stance [data-stance="guard"]');
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const hook = (window as unknown as {
+            __mlSquads?: { squads: Array<{ owner: number; stance: string }> };
+          }).__mlSquads;
+          return hook?.squads.find((squad) => squad.owner === 1)?.stance ?? null;
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe("guard");
+});
+
 test("creates a map in the editor and returns from playtest", async ({ page }) => {
   await openClassicEditor(page);
   await expect(page.locator("#ml-ed-status")).toContainText("地图有效");

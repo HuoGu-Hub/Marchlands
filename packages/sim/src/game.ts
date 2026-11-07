@@ -40,6 +40,7 @@ import type {
   SimState,
   SiteKind,
   SquadState,
+  SquadStance,
   Stance,
   StepResult,
   UnitKind,
@@ -298,6 +299,9 @@ function applyCommand(
     if (from.owner === 0) return reject(rejected, command, "not_owned");
     if (!isProductionSiteKind(from.kind)) return reject(rejected, command, "not_producer");
     if (from.pop < 2) return reject(rejected, command, "too_few_troops");
+    if (command.stance !== undefined && command.stance !== "forced" && command.stance !== "guard") {
+      return reject(rejected, command, "invalid_stance");
+    }
 
     if (state.nav) {
       sendGridSquad(state, from, to, command, events, rejected);
@@ -325,6 +329,7 @@ function applyCommand(
     const squad: SquadState = {
       id: `s${String(state.nextSquad).padStart(6, "0")}`,
       owner: from.owner,
+      stance: command.stance ?? "guard",
       unitKind: siteUnitKind(from.kind) ?? "barbarian",
       from: from.id,
       to: to.id,
@@ -362,6 +367,9 @@ function applyCommand(
     if (from.pop < 2) return reject(rejected, command, "too_few_troops");
     if (!Number.isFinite(command.xCm) || !Number.isFinite(command.zCm)) {
       return reject(rejected, command, "no_route");
+    }
+    if (command.stance !== undefined && command.stance !== "forced" && command.stance !== "guard") {
+      return reject(rejected, command, "invalid_stance");
     }
     if (!state.nav) return reject(rejected, command, "no_route");
     sendGridSquadToCell(state, from, command.xCm, command.zCm, command, events, rejected);
@@ -425,6 +433,26 @@ function applyCommand(
     return;
   }
 
+  if (command.type === "setSquadStance") {
+    const squad = findSquad(state, command.squad);
+    if (!squad) return reject(rejected, command, "unknown_squad");
+    if (squad.owner !== 1 && squad.owner !== 2) return reject(rejected, command, "not_owned");
+    if (command.stance !== "forced" && command.stance !== "guard") {
+      return reject(rejected, command, "invalid_stance");
+    }
+    if (squad.stance === command.stance) return;
+    squad.stance = command.stance;
+    // 切回警戒且正在被缠住时，也要至少再打满 3 秒才能脱战。
+    if (command.stance === "guard" && squad.engagedWith) {
+      squad.engagedUntilTick = Math.max(
+        squad.engagedUntilTick ?? 0,
+        state.tick + state.rules.tickHz * 3,
+      );
+    }
+    events.push({ type: "squadStanceChanged", squadId: squad.id, stance: squad.stance });
+    return;
+  }
+
   if (command.type === "setTransit") {
     const target = findCity(state, command.city);
     if (!target) return reject(rejected, command, "unknown_city");
@@ -474,9 +502,10 @@ function advanceSquads(state: SimState, events: SimEvent[]): void {
 
   const removed = new Set<string>();
   resolveGraphClashes(state, events, removed);
-  // 交战中的兵团原地停下：整条时间轴往后推一 tick，路径进度不变。
+  // 交战中警戒兵团原地停下：整条时间轴往后推一 tick，路径进度不变。
+  // 强行军不理会交战，时间轴照常推进。
   for (const squad of state.squads) {
-    if (!squad.engagedWith) continue;
+    if (!squad.engagedWith || squadStanceOf(squad) === "forced") continue;
     squad.legStartTick += 1;
     squad.legEndTick += 1;
     squad.arrivalTick += 1;
@@ -675,6 +704,7 @@ function sendGridSquad(
     from,
     to.id,
     null,
+    command.type === "send" ? (command.stance ?? "guard") : "guard",
     unitKind,
     [[start[0], start[1]], ...route.points],
     events,
@@ -703,6 +733,7 @@ function sendGridSquadToCell(
     from,
     "",
     [xCm, zCm],
+    command.type === "sendCell" ? (command.stance ?? "guard") : "guard",
     unitKind,
     [[start[0], start[1]], ...route.points],
     events,
@@ -714,6 +745,7 @@ function spawnGridSquad(
   from: CityState,
   to: CityId,
   toCell: [number, number] | null,
+  stance: SquadStance,
   unitKind: UnitKind,
   points: Array<[number, number]>,
   events: SimEvent[],
@@ -729,6 +761,7 @@ function spawnGridSquad(
   const squad: SquadState = {
     id: `s${String(state.nextSquad).padStart(6, "0")}`,
     owner: from.owner as PlayerId,
+    stance,
     unitKind,
     from: from.id,
     to,
@@ -932,8 +965,11 @@ function advanceGridSquads(state: SimState, events: SimEvent[]): void {
   const removed = new Set<string>();
   for (const squad of state.squads.slice().sort(byId)) {
     if (removed.has(squad.id)) continue;
-    // 交战中原地停下，由 resolveGridClashes 每 tick 结算。
-    if (squad.engagedWith) continue;
+    // 交战中警戒兵团原地停下，由 resolveGridClashes 每 tick 结算；强行军继续走。
+    if (squad.engagedWith && squadStanceOf(squad) === "guard") {
+      squad.arrivalTick += 1;
+      continue;
+    }
     if (squad.transit) {
       advanceGridTransit(state, squad, events, removed);
       continue;
@@ -1038,6 +1074,35 @@ const SQUAD_COMBAT_COLUMNS = 3;
 const SQUAD_COMBAT_ROW_CM = 68;
 /** 脱离交战的余量：双方射程之外再留一段，避免边界上来回抖。 */
 const SQUAD_DISENGAGE_MARGIN_CM = 160;
+/** 一进入交战至少锁 3 秒，期间谁也不能继续行军。 */
+const SQUAD_MIN_COMBAT_SECONDS = 3;
+
+function squadStanceOf(squad: SquadState): SquadStance {
+  return squad.stance === "forced" ? "forced" : "guard";
+}
+
+/** 只有警戒方会主动开火；强行军只挨打不还手。 */
+function squadGuardRange(a: SquadState, b: SquadState): number {
+  return Math.max(
+    squadStanceOf(a) === "guard" ? squadRangeCm(a) : 0,
+    squadStanceOf(b) === "guard" ? squadRangeCm(b) : 0,
+  );
+}
+
+function markEngaged(state: SimState, a: SquadState, b: SquadState): void {
+  a.engagedWith = b.id;
+  b.engagedWith = a.id;
+  const until = state.tick + state.rules.tickHz * SQUAD_MIN_COMBAT_SECONDS;
+  if (squadStanceOf(a) === "guard") a.engagedUntilTick = Math.max(a.engagedUntilTick ?? 0, until);
+  if (squadStanceOf(b) === "guard") b.engagedUntilTick = Math.max(b.engagedUntilTick ?? 0, until);
+}
+
+function releaseEngagement(a: SquadState, b: SquadState): void {
+  delete a.engagedWith;
+  delete a.engagedUntilTick;
+  delete b.engagedWith;
+  delete b.engagedUntilTick;
+}
 
 /** 编队纵深：行数越多，后排越晚进入攻击距离。 */
 function squadDepthCm(count: number): number {
@@ -1076,90 +1141,107 @@ function squadPosition(state: SimState, squad: SquadState): [number, number] | n
     from.pos[1] * 10 + (to.pos[1] - from.pos[1]) * 10 * t,
   ];
 }
-
 /**
- * 地图设置开启时，敌对兵团进入攻击范围后原地交战；
- * 只有靠前、攻击距离覆盖到对方的士兵参与输出，后排随前排倒下逐排压上。
+ * 网格模式下敌对兵团进入交战距离后开打：警戒方停下，强行军继续走；
+ * 进入交战至少锁 3 秒，脱离射程后才能恢复行军。
  */
 function resolveGridClashes(state: SimState, events: SimEvent[], removed: Set<string>): void {
   if (!state.map.squadCombat) return;
   const squads = state.squads.filter((squad) => !removed.has(squad.id)).sort(byId);
+
+  // 先解除已经脱战的配对；至少 3 秒的锁在这里生效。
   for (const squad of squads) {
     if (!squad.engagedWith) continue;
     const other = squads.find((entry) => entry.id === squad.engagedWith);
     if (
       !other ||
+      other.owner === squad.owner ||
       squad.xCm === undefined ||
       squad.zCm === undefined ||
       other.xCm === undefined ||
-      other.zCm === undefined ||
-      gridDistance([squad.xCm, squad.zCm], [other.xCm, other.zCm]) >
-        Math.max(squadRangeCm(squad), squadRangeCm(other)) + SQUAD_DISENGAGE_MARGIN_CM
+      other.zCm === undefined
     ) {
-      delete squad.engagedWith;
+      if (other) releaseEngagement(squad, other);
+      else {
+        delete squad.engagedWith;
+        delete squad.engagedUntilTick;
+      }
+      continue;
+    }
+    const distance = gridDistance([squad.xCm, squad.zCm], [other.xCm, other.zCm]);
+    const lockedUntil = Math.max(
+      squadStanceOf(squad) === "guard" ? (squad.engagedUntilTick ?? 0) : 0,
+      squadStanceOf(other) === "guard" ? (other.engagedUntilTick ?? 0) : 0,
+    );
+    if (state.tick >= lockedUntil && distance > squadGuardRange(squad, other) + SQUAD_DISENGAGE_MARGIN_CM) {
+      releaseEngagement(squad, other);
     }
   }
+
   for (let a = 0; a < squads.length; a += 1) {
-    const attacker = squads[a];
-    if (removed.has(attacker.id) || attacker.engagedWith) continue;
+    const first = squads[a];
+    if (removed.has(first.id) || first.engagedWith) continue;
     for (let b = a + 1; b < squads.length; b += 1) {
-      const defender = squads[b];
-      if (removed.has(defender.id) || defender.engagedWith || attacker.owner === defender.owner) continue;
-      if (attacker.xCm === undefined || attacker.zCm === undefined) continue;
-      if (defender.xCm === undefined || defender.zCm === undefined) continue;
-      const distance = gridDistance([attacker.xCm, attacker.zCm], [defender.xCm, defender.zCm]);
-      const rangeAttack = squadRangeCm(attacker);
-      const rangeDefense = squadRangeCm(defender);
-      if (distance > Math.max(rangeAttack, rangeDefense) + SQUAD_DISENGAGE_MARGIN_CM) continue;
+      const second = squads[b];
+      if (removed.has(second.id) || second.engagedWith || first.owner === second.owner) continue;
+      if (first.xCm === undefined || first.zCm === undefined) continue;
+      if (second.xCm === undefined || second.zCm === undefined) continue;
+      const firstGuard = squadStanceOf(first) === "guard";
+      const secondGuard = squadStanceOf(second) === "guard";
+      // 两支强行军互不理会，各走各的。
+      if (!firstGuard && !secondGuard) continue;
 
-      const halfDepth = (squadDepthCm(attacker.count) + squadDepthCm(defender.count)) / 2;
+      const distance = gridDistance([first.xCm, first.zCm], [second.xCm, second.zCm]);
+      const rangeFirst = squadRangeCm(first);
+      const rangeSecond = squadRangeCm(second);
+      if (distance > squadGuardRange(first, second) + SQUAD_DISENGAGE_MARGIN_CM) continue;
+
+      const halfDepth = (squadDepthCm(first.count) + squadDepthCm(second.count)) / 2;
       const gap = Math.max(0, distance - halfDepth);
-      const engagedAttack = engagedSoldiers(attacker.count, gap, rangeAttack);
-      const engagedDefense = engagedSoldiers(defender.count, gap, rangeDefense);
-      if (engagedAttack === 0 && engagedDefense === 0) continue;
+      const engagedFirst = firstGuard ? engagedSoldiers(first.count, gap, rangeFirst) : 0;
+      const engagedSecond = secondGuard ? engagedSoldiers(second.count, gap, rangeSecond) : 0;
+      if (engagedFirst === 0 && engagedSecond === 0) continue;
 
-      attacker.engagedWith = defender.id;
-      defender.engagedWith = attacker.id;
-      const damageAttack = attackValue(engagedAttack, attacker.strengthMilli);
-      const damageDefense = attackValue(engagedDefense, defender.strengthMilli);
-      const attackerLoss = Math.min(
-        attacker.count,
-        damageDefense > 0 ? Math.max(1, Math.floor(damageDefense / 30)) : 0,
+      markEngaged(state, first, second);
+      const damageFirst = firstGuard ? attackValue(engagedFirst, first.strengthMilli) : 0;
+      const damageSecond = secondGuard ? attackValue(engagedSecond, second.strengthMilli) : 0;
+      const lossFirst = Math.min(
+        first.count,
+        secondGuard && damageSecond > 0 ? Math.max(1, Math.floor(damageSecond / 30)) : 0,
       );
-      const defenderLoss = Math.min(
-        defender.count,
-        damageAttack > 0 ? Math.max(1, Math.floor(damageAttack / 30)) : 0,
+      const lossSecond = Math.min(
+        second.count,
+        firstGuard && damageFirst > 0 ? Math.max(1, Math.floor(damageFirst / 30)) : 0,
       );
-      attacker.count -= attackerLoss;
-      defender.count -= defenderLoss;
-      addLoss(state, attacker.owner, attackerLoss);
-      addLoss(state, defender.owner, defenderLoss);
-      if (attacker.count <= 0) {
-        removed.add(attacker.id);
-        delete defender.engagedWith;
-      }
-      if (defender.count <= 0) {
-        removed.add(defender.id);
-        delete attacker.engagedWith;
-      }
+      first.count -= lossFirst;
+      second.count -= lossSecond;
+      addLoss(state, first.owner, lossFirst);
+      addLoss(state, second.owner, lossSecond);
+
+      if (first.count <= 0) removed.add(first.id);
+      if (second.count <= 0) removed.add(second.id);
+      if (first.count <= 0 || second.count <= 0) releaseEngagement(first, second);
+
+      const attacker = firstGuard ? first : second;
+      const defender = firstGuard ? second : first;
       events.push({
         type: "squadClashed",
         attacker: attacker.id,
         defender: defender.id,
         attackerOwner: attacker.owner,
         defenderOwner: defender.owner,
-        attackerLoss,
-        defenderLoss,
-        defenderDestroyed: defender.count <= 0,
+        attackerLoss: firstGuard ? lossFirst : lossSecond,
+        defenderLoss: firstGuard ? lossSecond : lossFirst,
+        defenderDestroyed: (firstGuard ? second : first).count <= 0,
       });
-      if (removed.has(attacker.id)) break;
+      if (removed.has(first.id)) break;
     }
   }
 }
 
 /**
- * 路网模式下敌对兵团在射程内自动交战：双方原地停下，
- * 只有够得着对方的士兵输出，射程长的兵种可以先手打到对方。
+ * 路网模式下敌对兵团在射程内自动交战：警戒方原地停下，
+ * 只有够得着对方的士兵输出，射程长的兵种可以先手打到对方；强行军继续行进。
  */
 function resolveGraphClashes(state: SimState, events: SimEvent[], removed: Set<string>): void {
   if (state.squads.length < 2) return;
@@ -1169,85 +1251,88 @@ function resolveGraphClashes(state: SimState, events: SimEvent[], removed: Set<s
     if (!squad.engagedWith) continue;
     const other = squads.find((entry) => entry.id === squad.engagedWith);
     if (!other || other.owner === squad.owner) {
-      delete squad.engagedWith;
+      if (other) releaseEngagement(squad, other);
+      else {
+        delete squad.engagedWith;
+        delete squad.engagedUntilTick;
+      }
       continue;
     }
     const from = squadPosition(state, squad);
     const to = squadPosition(state, other);
     if (!from || !to) {
-      delete squad.engagedWith;
+      releaseEngagement(squad, other);
       continue;
     }
     const distance = Math.hypot(from[0] - to[0], from[1] - to[1]);
-    if (distance > Math.max(squadRangeCm(squad), squadRangeCm(other)) + SQUAD_DISENGAGE_MARGIN_CM) {
-      delete squad.engagedWith;
-      delete other.engagedWith;
+    const lockedUntil = Math.max(
+      squadStanceOf(squad) === "guard" ? (squad.engagedUntilTick ?? 0) : 0,
+      squadStanceOf(other) === "guard" ? (other.engagedUntilTick ?? 0) : 0,
+    );
+    if (state.tick >= lockedUntil && distance > squadGuardRange(squad, other) + SQUAD_DISENGAGE_MARGIN_CM) {
+      releaseEngagement(squad, other);
     }
   }
 
   for (let a = 0; a < squads.length; a += 1) {
-    const attacker = squads[a];
-    if (removed.has(attacker.id) || attacker.engagedWith) continue;
-    const attackerPoint = squadPosition(state, attacker);
-    if (!attackerPoint) continue;
+    const first = squads[a];
+    if (removed.has(first.id) || first.engagedWith) continue;
+    const firstPoint = squadPosition(state, first);
+    if (!firstPoint) continue;
     for (let b = a + 1; b < squads.length; b += 1) {
-      const defender = squads[b];
-      if (removed.has(defender.id) || defender.engagedWith) continue;
-      if (attacker.owner === defender.owner) continue;
-      const defenderPoint = squadPosition(state, defender);
-      if (!defenderPoint) continue;
+      const second = squads[b];
+      if (removed.has(second.id) || second.engagedWith) continue;
+      if (first.owner === second.owner) continue;
+      const secondPoint = squadPosition(state, second);
+      if (!secondPoint) continue;
+      const firstGuard = squadStanceOf(first) === "guard";
+      const secondGuard = squadStanceOf(second) === "guard";
+      if (!firstGuard && !secondGuard) continue;
 
-      const distance = Math.hypot(
-        attackerPoint[0] - defenderPoint[0],
-        attackerPoint[1] - defenderPoint[1],
-      );
-      const rangeAttack = squadRangeCm(attacker);
-      const rangeDefense = squadRangeCm(defender);
-      if (distance > Math.max(rangeAttack, rangeDefense) + SQUAD_DISENGAGE_MARGIN_CM) continue;
+      const distance = Math.hypot(firstPoint[0] - secondPoint[0], firstPoint[1] - secondPoint[1]);
+      const rangeFirst = squadRangeCm(first);
+      const rangeSecond = squadRangeCm(second);
+      if (distance > squadGuardRange(first, second) + SQUAD_DISENGAGE_MARGIN_CM) continue;
 
-      const halfDepth = (squadDepthCm(attacker.count) + squadDepthCm(defender.count)) / 2;
+      const halfDepth = (squadDepthCm(first.count) + squadDepthCm(second.count)) / 2;
       const gap = Math.max(0, distance - halfDepth);
-      const engagedAttack = engagedSoldiers(attacker.count, gap, rangeAttack);
-      const engagedDefense = engagedSoldiers(defender.count, gap, rangeDefense);
-      if (engagedAttack === 0 && engagedDefense === 0) continue;
+      const engagedFirst = firstGuard ? engagedSoldiers(first.count, gap, rangeFirst) : 0;
+      const engagedSecond = secondGuard ? engagedSoldiers(second.count, gap, rangeSecond) : 0;
+      if (engagedFirst === 0 && engagedSecond === 0) continue;
 
-      attacker.engagedWith = defender.id;
-      defender.engagedWith = attacker.id;
-      const damageAttack = attackValue(engagedAttack, attacker.strengthMilli);
-      const damageDefense = attackValue(engagedDefense, defender.strengthMilli);
-      const attackerLoss = Math.min(
-        attacker.count,
-        damageDefense > 0 ? Math.max(1, Math.floor(damageDefense / 30)) : 0,
+      markEngaged(state, first, second);
+      const damageFirst = firstGuard ? attackValue(engagedFirst, first.strengthMilli) : 0;
+      const damageSecond = secondGuard ? attackValue(engagedSecond, second.strengthMilli) : 0;
+      const lossFirst = Math.min(
+        first.count,
+        secondGuard && damageSecond > 0 ? Math.max(1, Math.floor(damageSecond / 30)) : 0,
       );
-      const defenderLoss = Math.min(
-        defender.count,
-        damageAttack > 0 ? Math.max(1, Math.floor(damageAttack / 30)) : 0,
+      const lossSecond = Math.min(
+        second.count,
+        firstGuard && damageFirst > 0 ? Math.max(1, Math.floor(damageFirst / 30)) : 0,
       );
-      attacker.count -= attackerLoss;
-      defender.count -= defenderLoss;
-      addLoss(state, attacker.owner, attackerLoss);
-      addLoss(state, defender.owner, defenderLoss);
+      first.count -= lossFirst;
+      second.count -= lossSecond;
+      addLoss(state, first.owner, lossFirst);
+      addLoss(state, second.owner, lossSecond);
 
-      if (attacker.count <= 0) {
-        removed.add(attacker.id);
-        delete defender.engagedWith;
-      }
-      if (defender.count <= 0) {
-        removed.add(defender.id);
-        delete attacker.engagedWith;
-      }
+      if (first.count <= 0) removed.add(first.id);
+      if (second.count <= 0) removed.add(second.id);
+      if (first.count <= 0 || second.count <= 0) releaseEngagement(first, second);
+
+      const attacker = firstGuard ? first : second;
+      const defender = firstGuard ? second : first;
       events.push({
         type: "squadClashed",
         attacker: attacker.id,
         defender: defender.id,
         attackerOwner: attacker.owner,
         defenderOwner: defender.owner,
-        attackerLoss,
-        defenderLoss,
-        defenderDestroyed: defender.count <= 0,
+        attackerLoss: firstGuard ? lossFirst : lossSecond,
+        defenderLoss: firstGuard ? lossSecond : lossFirst,
+        defenderDestroyed: (firstGuard ? second : first).count <= 0,
       });
-      if (removed.has(attacker.id)) break;
+      if (removed.has(first.id)) break;
     }
   }
 }
-

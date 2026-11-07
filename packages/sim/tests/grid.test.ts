@@ -142,4 +142,42 @@ describe("grid simulation", () => {
     const next = step(state, commands).state;
     expect(next.squads.some((squad) => squad.owner === 2)).toBe(true);
   });
+
+  it("grid 强行军继续走，警戒方停下交战", () => {
+    const map = { ...gridMap(), squadCombat: true };
+    let state = step(createGame(map, 1, TIMED_RULES), [
+      { type: "send", from: "a", to: "b", stance: "forced" },
+      { type: "send", from: "b", to: "a", stance: "guard" },
+    ]).state;
+    const forced = state.squads.find((squad) => squad.stance === "forced");
+    const guard = state.squads.find((squad) => squad.stance === "guard");
+    if (!forced || !guard) throw new Error("missing squads");
+    const forcedInitial = forced.count;
+    const guardInitial = guard.count;
+
+    let clashState = state;
+    let clashed = false;
+    for (let i = 0; i < 200; i += 1) {
+      clashState = step(clashState, []).state;
+      if (clashState.events.some((event) => event.type === "squadClashed")) {
+        clashed = true;
+        break;
+      }
+    }
+    expect(clashed).toBe(true);
+    const forcedBefore = clashState.squads.find((squad) => squad.id === forced.id);
+    const guardBefore = clashState.squads.find((squad) => squad.id === guard.id);
+    if (!forcedBefore || !guardBefore) throw new Error("clash did not start");
+    const forcedX = forcedBefore.xCm;
+    const guardX = guardBefore.xCm;
+
+    for (let i = 0; i < 10; i += 1) clashState = step(clashState, []).state;
+    const forcedAfter = clashState.squads.find((squad) => squad.id === forced.id);
+    const guardAfter = clashState.squads.find((squad) => squad.id === guard.id);
+    if (!forcedAfter || !guardAfter) throw new Error("squads disappeared too early");
+    expect(forcedAfter.xCm).not.toBe(forcedX);
+    expect(guardAfter.xCm).toBe(guardX);
+    expect(guardAfter.count).toBe(guardInitial);
+    expect(forcedAfter.count).toBeLessThan(forcedInitial);
+  });
 });

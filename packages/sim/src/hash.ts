@@ -86,7 +86,7 @@ export function canonicalState(state: SimState): string {
         ? `|${squad.xCm},${squad.zCm ?? 0},${squad.gridIndex ?? 0},${squad.gridSpeedCmPerTick ?? 0},${(squad.gridPath ?? []).map((point) => `${point[0]}:${point[1]}`).join(">")}`
         : "";
     parts.push(
-      `S${squad.id},${squad.owner},${squad.unitKind ?? "-"},${squad.from},${squad.to},${squad.toCell ? `${squad.toCell[0]}:${squad.toCell[1]}` : "-"},${squad.count},${squad.transit ? `T${squad.transit.cityId}:${squad.transit.ticksLeft}/${squad.transit.passed}` : "-"},${squad.pathIndex},${squad.legStartTick},${squad.legEndTick},${squad.departTick},${squad.arrivalTick},${squad.speedMilli},${squad.strengthMilli},${squad.supplyLeft},${squad.nextStarveTick},${squad.path.join(">")},${squad.intercepted.join(">") || "-"}${grid}`,
+      `S${squad.id},${squad.owner},${squad.stance},${squad.unitKind ?? "-"},${squad.from},${squad.to},${squad.toCell ? `${squad.toCell[0]}:${squad.toCell[1]}` : "-"},${squad.count},${squad.transit ? `T${squad.transit.cityId}:${squad.transit.ticksLeft}/${squad.transit.passed}` : "-"},${squad.pathIndex},${squad.legStartTick},${squad.legEndTick},${squad.departTick},${squad.arrivalTick},${squad.speedMilli},${squad.strengthMilli},${squad.supplyLeft},${squad.nextStarveTick},${squad.path.join(">")},${squad.intercepted.join(">") || "-"},${squad.engagedWith ?? "-"},${squad.engagedUntilTick ?? 0}${grid}`,
     );
   }
   return parts.join("|");

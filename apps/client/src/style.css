@@ -1024,6 +1024,103 @@ body.preview-mode #preview-canvas {
   letter-spacing: 0.1em;
 }
 
+.city-stance,
+.squad-stance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.city-stance {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid rgba(214, 178, 106, 0.14);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.stance-pill {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(214, 178, 106, 0.28);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(236, 230, 214, 0.62);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.stance-pill:hover {
+  border-color: var(--gold-dim);
+  color: var(--ink);
+}
+
+.stance-pill.on {
+  border-color: rgba(214, 178, 106, 0.72);
+  background: rgba(214, 178, 106, 0.16);
+  color: var(--gold);
+}
+
+.squad-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(470px, 82vw);
+  padding: 11px 15px 11px 19px;
+  display: none;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px 14px;
+  align-items: center;
+  background: linear-gradient(180deg, rgba(22, 30, 23, 0.96), rgba(12, 17, 13, 0.96));
+  border: 1px solid rgba(214, 178, 106, 0.24);
+  box-shadow: var(--shadow);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+.squad-panel.on {
+  display: grid;
+}
+
+.squad-panel.on ~ .hint {
+  opacity: 0;
+}
+
+.squad-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.squad-main span {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.squad-main b {
+  color: var(--gold);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.squad-main i {
+  color: rgba(236, 230, 214, 0.58);
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.squad-panel .btn {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
 .hint {
   position: absolute;
   left: 50%;

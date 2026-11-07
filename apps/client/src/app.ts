@@ -3,7 +3,7 @@ import { BASE_RULES, mapEntry } from "./game/map-catalog";
 import { compileDocument, defaultVisualForMap, parseDocument } from "@marchlands/map-authoring";
 import type { MapDocument, MapVisual } from "@marchlands/map-authoring";
 import { defenseMilliFor, isProductionSiteKind } from "@marchlands/sim";
-import type { MapDef, SimState } from "@marchlands/sim";
+import type { MapDef, SimState, SquadStance } from "@marchlands/sim";
 import { CAMPAIGN, defaultLevelId, findLevel, previewUrl } from "./campaign";
 import type { LevelDef, SeriesDef } from "./campaign";
 import { DIFFICULTIES, difficultyDef, isDifficultyId } from "./difficulty";
@@ -140,6 +140,22 @@ const TEMPLATE = `
         <button class="btn" id="city-upgrade">升级</button>
         <button class="btn ghost" id="btn-deselect">取消</button>
       </div>
+      <div class="city-stance" id="city-stance">
+        <span>出兵姿态</span>
+        <button class="stance-pill on" data-stance="guard" title="敌方兵团进入攻击范围时停下交战">警戒</button>
+        <button class="stance-pill" data-stance="forced" title="不理会敌方兵团，持续向目的地行进">强行军</button>
+      </div>
+    </div>
+    <div class="squad-panel" id="squad-panel">
+      <div class="squad-main">
+        <span>兵团姿态</span>
+        <i id="squad-state">警戒行军</i>
+      </div>
+      <div class="squad-stance" id="squad-stance">
+        <button class="stance-pill on" data-stance="guard">警戒</button>
+        <button class="stance-pill" data-stance="forced">强行军</button>
+      </div>
+      <button class="btn ghost" id="btn-squad-deselect">取消</button>
     </div>
     <button class="btn primary dispatch-btn" id="btn-dispatch" disabled>派遣</button>
     <div class="toast" id="toast"></div>
@@ -457,6 +473,9 @@ export class App {
     this.on("btn-confirm-yes", "click", () => this.restartGame());
     this.on("btn-menu", "click", () => this.backToMenu());
     this.on("btn-deselect", "click", () => this.session?.clearSelection());
+    this.on("btn-squad-deselect", "click", () => this.session?.clearSelection());
+    this.bindStance("#city-stance", (stance) => this.session?.setDispatchStance(stance));
+    this.bindStance("#squad-stance", (stance) => this.session?.setSelectedSquadStance(stance));
     this.on("btn-dispatch", "click", () => this.session?.dispatchSelectedPlan());
     this.on("city-upgrade", "click", () => this.session?.upgradeSelected());
     this.on("city-transit", "click", () => this.session?.toggleTransit());
@@ -1414,6 +1433,14 @@ export class App {
     node.classList.add("on");
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => node.classList.remove("on"), 1800);
+  }
+
+  private bindStance(selector: string, apply: (stance: SquadStance) => void): void {
+    this.root.querySelector(`${selector}`)?.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-stance]");
+      const stance = button?.dataset.stance;
+      if (stance === "guard" || stance === "forced") apply(stance);
+    });
   }
 
   private on(id: string, type: string, handler: () => void): void {

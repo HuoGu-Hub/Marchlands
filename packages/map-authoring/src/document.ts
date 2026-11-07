@@ -93,7 +93,7 @@ export function createStarterDocument(): MapDocument {
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
     startGold: 0,
     transit: "friendly",
-    squadCombat: false,
+    squadCombat: true,
     climbCm: 60,
     visual: createDefaultVisual(),
   };
@@ -125,7 +125,7 @@ export function createGridDocument(
     objectives: [{ type: "capture_all" }, { type: "time_limit", ticks: 18000 }],
     startGold: 0,
     transit: "open",
-    squadCombat: false,
+    squadCombat: true,
     climbCm: 60,
     visual: createDefaultVisual(),
   };
@@ -609,7 +609,7 @@ export function fromMapDef(map: MapDef): MapDocument {
     objectives: map.objectives.map((objective) => ({ ...objective })),
     startGold: map.startGold ?? 0,
     transit: map.transit ?? "open",
-    squadCombat: map.squadCombat ?? false,
+    squadCombat: map.squadCombat !== false,
     ...(map.climbCm !== undefined ? { climbCm: map.climbCm } : {}),
     visual,
   };
@@ -704,7 +704,7 @@ export function parseDocument(input: unknown): ParsedDocument {
           ? Math.max(0, Math.round(input.startGold))
           : 0,
       transit: input.transit === "open" ? "open" : "friendly",
-      squadCombat: input.squadCombat === true,
+      squadCombat: input.squadCombat !== false,
       climbCm:
         typeof input.climbCm === "number" && Number.isFinite(input.climbCm)
           ? Math.max(10, Math.min(200, Math.round(input.climbCm)))
@@ -1046,7 +1046,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
     objectives: document.objectives.map((objective) => ({ ...objective })),
     startGold: document.startGold ?? 0,
     transit: document.transit,
-    ...(document.squadCombat ? { squadCombat: true } : {}),
+    squadCombat: document.squadCombat !== false,
     ...(document.climbCm !== undefined ? { climbCm: document.climbCm } : {}),
   };
   map.mapHash = mapHashOf(map);
