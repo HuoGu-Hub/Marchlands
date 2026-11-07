@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
 import { paintGroundTexture } from "./ground-paint";
 import { createTerrainGroundMaterial } from "./terrain-detail";
-import { buildGridTerrainMesh } from "./terrain-grid";
+import { buildGridTerrainMesh, updateGridTerrainRegion } from "./terrain-grid";
 import type { CityId, MapDef } from "@marchlands/sim";
 import {
   buildGridSurface,
@@ -10,7 +10,7 @@ import {
   foundationDepth,
   foundationRect,
 } from "@marchlands/map-authoring";
-import type { FoundationShape, MapVisual, TerrainStyle } from "@marchlands/map-authoring";
+import type { FoundationShape, GridCellRect, MapVisual, TerrainStyle } from "@marchlands/map-authoring";
 import {
   DEFAULT_NAV_RULES,
   NavGrid,
@@ -227,6 +227,18 @@ export interface Terrain {
   /** 该点最高地基是否允许自动补景。 */
   hasScatterGround(x: number, z: number): boolean;
   setNavPreview(visible: boolean): void;
+  /** 内部缓存：整张地表的烘焙贴图。高度变化时复用，只有道路/地表/据点变了才重画。 */
+  readonly groundPaint: {
+    readonly key: string;
+    readonly texture: THREE.Texture | null;
+    readonly material: THREE.MeshStandardMaterial | null;
+  };
+  /**
+   * 只刷新网格地形的高度：不重建贴图、岛屿、道路和装饰。
+   * 地形笔刷拖动时每次只走这里；松开后再走完整的 buildTerrain。
+   * 返回 false 表示当前不是网格地图。
+   */
+  refreshHeights(map: MapDef, region?: GridCellRect): boolean;
   bounds: TerrainBounds;
   island: IslandMetrics;
   islandGroup: THREE.Group;
@@ -679,20 +691,50 @@ export function buildTerrain(
   const builtPlatforms: TerrainPlatform[] = [];
   // 网格地图整张地表画成一张贴图，路面直接画在上面。
   // 这张图只有二三十像素一米，近景交给细节层：法线 + 三平面投影。
-  const paintedTexture = navGrid
-    ? paintGroundTexture({
-        navGrid,
-        size: map.size,
-        palette,
-        yards: map.cities.map((city) => ({
-          x: city.pos[0] / 10,
-          z: city.pos[1] / 10,
-          radius: city.kind === "granary" || city.kind === "outpost" ? 2 : 2.9,
-        })),
-      })
-    : null;
-  const paintedGround = paintedTexture ? createTerrainGroundMaterial(paintedTexture, style) : null;
-  if (paintedGround && paintedTexture) {
+  // 它只取决于地表、道路和据点院落，刷新高度时完全不用重画；一次重画约占重建的一半时间。
+  const groundKey = navGrid && map.grid
+    ? [
+        map.size[0],
+        map.size[1],
+        navGrid.cellSizeCm,
+        style,
+        map.grid.surface,
+        map.cities.map((city) => city.pos[0] + "," + city.pos[1] + "," + city.kind).join(";"),
+      ].join("|")
+    : "";
+  const previousPaint = options.previous?.groundPaint;
+  const reusePaint = previousPaint !== undefined && previousPaint.key === groundKey && previousPaint.texture !== null;
+  const paintedTexture = reusePaint
+    ? previousPaint.texture
+    : navGrid
+      ? paintGroundTexture({
+          navGrid,
+          size: map.size,
+          palette,
+          yards: map.cities.map((city) => ({
+            x: city.pos[0] / 10,
+            z: city.pos[1] / 10,
+            radius: city.kind === "granary" || city.kind === "outpost" ? 2 : 2.9,
+          })),
+        })
+      : null;
+  let reusedMaterial: THREE.MeshStandardMaterial | null = null;
+  if (reusePaint && previousPaint?.material && options.previous) {
+    // 材质连同着色器程序一起复用。旧网格先从旧组里摘掉，
+    // 否则旧地形销毁时会把还在用的材质和贴图一起释放。
+    const oldMesh = options.previous.meshes.find((mesh) => mesh.name === "grid-surface");
+    if (oldMesh) {
+      options.previous.group.remove(oldMesh);
+      oldMesh.geometry.dispose();
+      reusedMaterial = previousPaint.material;
+    }
+  }
+  if (reusePaint && previousPaint?.material && reusedMaterial === null) {
+    // 只复用贴图时，旧材质不能再声明这张贴图的所有权。
+    previousPaint.material.userData.ownedTextures = undefined;
+  }
+  const paintedGround = reusedMaterial ?? (paintedTexture ? createTerrainGroundMaterial(paintedTexture, style) : null);
+  if (paintedGround && paintedTexture && reusedMaterial === null) {
     paintedGround.userData.ownedTextures = [paintedTexture];
   }
   const gridMesh =
@@ -705,6 +747,16 @@ export function buildTerrain(
           uvSizeZ: gridPlatform.maxZ - gridPlatform.minZ,
         })
       : null;
+  const refreshHeights = (nextMap: MapDef, region?: GridCellRect): boolean => {
+    if (!gridSurface || !gridMesh || !nextMap.grid) return false;
+    const grid = nextMap.grid;
+    if (grid.width !== gridSurface.width || grid.height !== gridSurface.height) return false;
+    const count = grid.width * grid.height;
+    const heights = decodeInt16Base64(grid.heightCm, count);
+    const vertexRect = gridSurface.refresh((x, z) => heights[z * grid.width + x], region);
+    updateGridTerrainRegion(gridMesh, gridSurface, vertexRect);
+    return true;
+  };
 
   for (let index = 0; index < platforms.length; index += 1) {
     const platform = platforms[index];
@@ -798,6 +850,8 @@ export function buildTerrain(
     hasGround,
     hasScatterGround,
     setNavPreview,
+    groundPaint: { key: groundKey, texture: paintedTexture, material: paintedGround },
+    refreshHeights,
     bounds,
     island,
     islandGroup,

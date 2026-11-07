@@ -92,6 +92,7 @@ uniform float uTerrainRockTint;
 
 varying vec3 vTerrainWorld;
 varying vec3 vTerrainNormalW;
+varying float vTerrainDither;
 
 // 三平面权重：陡面削弱顶投影，否则竖直面会吃到被拉长的俯视图，拉出一条条竖纹。
 vec3 terrainWeights( vec3 n ) {
@@ -119,28 +120,10 @@ vec3 terrainTriplanarNormal( sampler2D map, vec3 p, vec3 n, float scale ) {
   return px * weights.x + py * weights.y + pz * weights.z;
 }
 
-float terrainHash( vec3 p ) {
-  p = fract( p * 0.3183099 + vec3( 0.1, 0.2, 0.3 ) );
-  p *= 17.0;
-  return fract( p.x * p.y * p.z * ( p.x + p.y + p.z ) );
-}
-
-float terrainNoise( vec3 x ) {
-  vec3 i = floor( x );
-  vec3 f = fract( x );
-  f = f * f * ( 3.0 - 2.0 * f );
-  return mix(
-    mix( mix( terrainHash( i ), terrainHash( i + vec3( 1.0, 0.0, 0.0 ) ), f.x ),
-         mix( terrainHash( i + vec3( 0.0, 1.0, 0.0 ) ), terrainHash( i + vec3( 1.0, 1.0, 0.0 ) ), f.x ), f.y ),
-    mix( mix( terrainHash( i + vec3( 0.0, 0.0, 1.0 ) ), terrainHash( i + vec3( 1.0, 0.0, 1.0 ) ), f.x ),
-         mix( terrainHash( i + vec3( 0.0, 1.0, 1.0 ) ), terrainHash( i + vec3( 1.0, 1.0, 1.0 ) ), f.x ), f.y ), f.z );
-}
-
-// 草和岩石的交界不能是一条按坡度画出来的等高线：加两层世界噪声把线打碎。
+// 草和岩石的交界不能是一条按坡度画出来的等高线。逐顶点噪声在顶点着色器里算好，
+// 这里直接插值，省掉每像素两层哈希噪声。
 float terrainRockMix( vec3 n ) {
-  float dither =
-    ( terrainNoise( vTerrainWorld * 0.42 ) - 0.5 ) * 0.16 +
-    ( terrainNoise( vTerrainWorld * 1.45 ) - 0.5 ) * 0.05;
+  float dither = ( vTerrainDither - 0.5 ) * 0.22;
   return 1.0 - smoothstep( uTerrainRockLow, uTerrainRockHigh, n.y + dither );
 }
 `;
@@ -170,7 +153,7 @@ diffuseColor.rgb = mix( diffuseColor.rgb, terrainRockColor, terrainRock );
 
 const FRAGMENT_NORMAL = `
 vec3 terrainBaseNormal2 = normalize( vTerrainNormalW );
-float terrainRock2 = terrainRockMix( terrainBaseNormal2 );
+float terrainRock2 = terrainRock;
 vec3 terrainBump = mix(
   terrainTriplanarNormal( uTerrainGroundNormal, vTerrainWorld, terrainBaseNormal2, uTerrainGroundScale ),
   terrainTriplanarNormal( uTerrainRockNormal, vTerrainWorld, terrainBaseNormal2, uTerrainRockScale ),
@@ -181,8 +164,10 @@ normal = normalize( ( viewMatrix * vec4( terrainBent, 0.0 ) ).xyz );
 `;
 
 const VERTEX_PARS = `
+attribute float aRockDither;
 varying vec3 vTerrainWorld;
 varying vec3 vTerrainNormalW;
+varying float vTerrainDither;
 `;
 
 interface DetailMaterialOptions {
@@ -240,7 +225,7 @@ function createDetailMaterial(options: DetailMaterialOptions): THREE.MeshStandar
       )
       .replace(
         "#include <begin_vertex>",
-        "#include <begin_vertex>\nvTerrainWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;",
+        "#include <begin_vertex>\nvTerrainWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\nvTerrainDither = aRockDither;",
       );
 
     shader.fragmentShader = shader.fragmentShader

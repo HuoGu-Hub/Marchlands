@@ -3110,8 +3110,27 @@ export class EditorNext {
     stroke.changed = true;
     this.doc = next;
     this.compiled = compileDocument(next, { validateNavigation: false });
-    this.scene?.updateTerrain(this.compiled.map, this.compiled.visual);
-    this.syncProxies();
+    const heightBrush =
+      this.terrainBrush === "raise" ||
+      this.terrainBrush === "lower" ||
+      this.terrainBrush === "smooth" ||
+      this.terrainBrush === "cliff" ||
+      this.terrainBrush === "ramp";
+    if (this.scene && heightBrush) {
+      // 拖动时只刷新高度，不重建贴图、岛屿、道路和装饰；松手后再完整重建一次。
+      // 地表/水面笔刷改的是烘焙贴图，拖动中不重建，松手时一次画好。
+      const radius = Math.max(1, Math.min(12, Math.round(this.brushRadius)));
+      const start = this.terrainBrush === "ramp" ? stroke.startCell : cell;
+      const region = {
+        x0: Math.min(start[0], cell[0]) - radius,
+        z0: Math.min(start[1], cell[1]) - radius,
+        x1: Math.max(start[0], cell[0]) + radius,
+        z1: Math.max(start[1], cell[1]) + radius,
+      };
+      if (!this.scene.updateTerrainHeights(this.compiled.map, region)) {
+        this.scene.updateTerrain(this.compiled.map, this.compiled.visual);
+      }
+    }
     if (this.terrainBrush === "ramp") this.updateRampPreview(cell);
   }
 

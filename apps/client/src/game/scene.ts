@@ -1985,6 +1985,26 @@ export class BattleScene {
     this.updateRings();
   }
 
+  /**
+   * 地形笔刷拖动时的快速路径：只刷新网格地形的高度。
+   *
+   * 不重建烘焙贴图、岛屿、道路和装饰，这些在松开笔刷后由 updateTerrain 一次补齐。
+   * 返回 false 时调用方应退回完整重建。
+   */
+  updateTerrainHeights(
+    map: MapDef,
+    region?: { x0: number; z0: number; x1: number; z1: number },
+  ): boolean {
+    this.map = map;
+    if (!this.terrain.refreshHeights(map, region)) return false;
+    for (const [id, position] of this.positions) {
+      position.y = this.terrain.heightAt(position.x, position.z);
+      const view = this.cityViews.get(id);
+      if (view) view.group.position.set(position.x, position.y, position.z);
+    }
+    return true;
+  }
+
   updateRoads(map: MapDef, visual: MapVisual | null): void {
     this.map = map;
     this.visual = visual;
