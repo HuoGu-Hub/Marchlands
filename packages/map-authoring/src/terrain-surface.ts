@@ -1,22 +1,20 @@
+import { createNoise2D } from "simplex-noise";
+
 /**
  * 网格地形的显示面。
  *
- * 寻路用的是格心高度。直接拿它插值会把一格的高差摊成 45°~70° 的斜坡，
- * 从远处看是一道陡坡而不是墙。这里把同一份格高整理成"台阶 + 竖直墙面"：
+ * 寻路用的是格心高度，显示面不能再拿它铺"一格一台阶 + 竖直墙"：
+ * 那样每个格子边都是一道折线，远看就是菱形网格和方柱悬崖。
  *
- * - 缓坡：格角取四周"非崖顶"格的均值，相邻格共享顶点，表面连续。
- * - 崖顶：处在陡壁高侧的格子单独铺平顶，矮的一侧不参与均值，
- *   崖脚不会被拉起来，墙从底到顶是一整面。
+ * 这里把格高当成高度场采样点，做三件事：
  *
- * 补墙逐个边比较两端顶面的实际高差，顶面怎么拆都不会留下裂缝。
- * 输出顶点坐标为世界米制，调用方只负责贴图和材质。
+ * 1. Catmull-Rom 双三次插值：面是连续的，格与格之间不再有折角。
+ * 2. 崖面水平扰动：坡度大的地方沿噪声横向拧一下，崖线不再贴着格子边。
+ * 3. 岩面起伏与层理：陡坡上叠分形噪声和横向岩层，平地只留很轻的呼吸感。
+ *
+ * 输出顶点为世界米制，调用方只负责法线、贴图和材质。
+ * 显示高度统一走 heightAt，兵团、道路、装饰贴地不会和视觉面错位。
  */
-
-/** 相邻格高差达到这个值就算陡壁，和寻路阈值、编辑器悬崖笔刷保持一致。 */
-export const CLIFF_THRESHOLD_CM = 120;
-
-/** 缺口小于这个值不补墙，避免缓坡共享顶点时产生发丝墙。 */
-const WALL_EPSILON_M = 0.01;
 
 export interface GridSurfaceInput {
   readonly width: number;
@@ -27,51 +25,104 @@ export interface GridSurfaceInput {
 }
 
 export interface GridSurfaceOptions {
-  /** 陡壁阈值，厘米，默认 120。 */
-  readonly cliffThresholdCm?: number;
   /** 网格左下角的世界坐标，米。 */
   readonly originX?: number;
   readonly originZ?: number;
-}
-
-/** 一段陡壁：两端各记录顶面和底面的高度，相邻墙段在格角处共用同一对值。 */
-export interface GridSurfaceWall {
-  /** 边界起点，世界米。 */
-  readonly ax: number;
-  readonly az: number;
-  /** 边界终点，世界米。 */
-  readonly bx: number;
-  readonly bz: number;
-  /** 起点处的顶面、底面高度，米。 */
-  readonly top0: number;
-  readonly bottom0: number;
-  /** 终点处的顶面、底面高度，米。 */
-  readonly top1: number;
-  readonly bottom1: number;
-  /** 从高侧指向低侧的单位水平法线。 */
-  readonly nx: number;
-  readonly nz: number;
+  /** 每格细分采样数，2 表示每 0.5 米一个顶点。 */
+  readonly samplesPerCell?: number;
+  /** 噪声种子。 */
+  readonly seed?: number;
+  /** 岩面起伏振幅，米，默认 0.55。 */
+  readonly relief?: number;
+  /** 崖面水平扰动，米，默认 0.8。 */
+  readonly warp?: number;
+  /** 显示高度场的高斯平滑次数，默认 2；每多一次，崖口轮廓就圆一档。 */
+  readonly smoothing?: number;
 }
 
 export interface GridSurface {
   readonly width: number;
   readonly height: number;
   readonly cellSizeM: number;
-  /** 每格四角高度，米，顺序为 (x,z)、(x+1,z)、(x,z+1)、(x+1,z+1)。 */
-  readonly cellCornerHeights: Float32Array;
+  /** 顶点列数、行数。 */
+  readonly cols: number;
+  readonly rows: number;
   /** 显示面顶点，世界米。 */
   readonly positions: Float32Array;
   /** 显示面三角索引。 */
   readonly indices: Uint32Array;
-  readonly walls: readonly GridSurfaceWall[];
-  /** 墙面段数，等于 walls.length。 */
-  readonly cliffEdges: number;
-  /** 显示面上的高度，世界米；和网格的三角面一致。 */
+  readonly minY: number;
+  readonly maxY: number;
+  /** 显示面上的高度，世界米；与三角面一致。 */
   heightAt(x: number, z: number): number;
 }
 
+/** 崖面扰动的坡度区间，弧度正切值：0.25 约 14°，0.9 约 42°。 */
+const STEEP_LOW = 0.25;
+const STEEP_HIGH = 0.9;
+/** 平地起伏占 relief 的比例：只够让法线有一点碎，不影响贴地和寻路。 */
+const BASE_RELIEF_FRACTION = 0.08;
+/** 平地的基础横向扰动，米。 */
+const BASE_WARP_M = 0.02;
+
 function assertInteger(value: number, label: string): void {
   if (!Number.isInteger(value) || value <= 0) throw new Error(label + " must be a positive integer");
+}
+
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/** 可复现的随机源，simplex-noise 只要求 random()。 */
+function seeded(seed: number): () => number {
+  let state = (seed >>> 0) || 1;
+  return () => {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state / 4294967296;
+  };
+}
+
+function clampIndex(value: number, limit: number): number {
+  return value < 0 ? 0 : value >= limit ? limit - 1 : value;
+}
+
+function catmullRom(t: number): [number, number, number, number] {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return [
+    0.5 * (-t3 + 2 * t2 - t),
+    0.5 * (3 * t3 - 5 * t2 + 2),
+    0.5 * (-3 * t3 + 4 * t2 + t),
+    0.5 * (t3 - t2),
+  ];
+}
+
+/** 可分离的 1-2-1 平滑，边界复制；只用于显示高度场。 */
+function blurHeights(source: Float32Array, width: number, height: number): Float32Array {
+  const horizontal = new Float32Array(source.length);
+  for (let z = 0; z < height; z += 1) {
+    const row = z * width;
+    for (let x = 0; x < width; x += 1) {
+      const left = source[row + (x > 0 ? x - 1 : 0)];
+      const right = source[row + (x + 1 < width ? x + 1 : width - 1)];
+      horizontal[row + x] = left * 0.25 + source[row + x] * 0.5 + right * 0.25;
+    }
+  }
+  const output = new Float32Array(source.length);
+  for (let z = 0; z < height; z += 1) {
+    const above = (z > 0 ? z - 1 : 0) * width;
+    const below = (z + 1 < height ? z + 1 : height - 1) * width;
+    const row = z * width;
+    for (let x = 0; x < width; x += 1) {
+      output[row + x] = horizontal[above + x] * 0.25 + horizontal[row + x] * 0.5 + horizontal[below + x] * 0.25;
+    }
+  }
+  return output;
 }
 
 export function buildGridSurface(
@@ -85,228 +136,162 @@ export function buildGridSurface(
     throw new Error("grid cellSizeCm must be positive");
   }
   const cellSizeM = input.cellSizeCm / 100;
-  const thresholdCm = options.cliffThresholdCm ?? CLIFF_THRESHOLD_CM;
   const originX = options.originX ?? 0;
   const originZ = options.originZ ?? 0;
-  const cells = width * height;
+  const samples = Math.max(1, Math.min(6, Math.round(options.samplesPerCell ?? 2)));
+  const relief = Math.max(0, options.relief ?? 0.55);
+  const warp = Math.max(0, options.warp ?? 0.8);
+  const seed = Math.round(options.seed ?? 20261123);
 
-  // 高度统一按厘米存，阈值比较不受浮点误差影响。
-  const heights = new Float32Array(cells);
+  const cells = width * height;
+  let heights = new Float32Array(cells);
   for (let z = 0; z < height; z += 1) {
     for (let x = 0; x < width; x += 1) {
-      heights[z * width + x] = input.heightCmAt(x, z);
+      heights[z * width + x] = input.heightCmAt(x, z) / 100;
+    }
+  }
+  // 格子高度的边界是一圈 1 米锯齿：崖顶轮廓直接照着格子边画，就成了台阶。
+  // 显示高度场先做高斯平滑，把轮廓摊圆；寻路仍然用原始格高，互不影响。
+  const smoothing = Math.max(0, Math.min(6, Math.round(options.smoothing ?? 2)));
+  for (let pass = 0; pass < smoothing; pass += 1) heights = blurHeights(heights, width, height);
+
+  // 每格的坡度（最大单步高差 / 格宽）。只当权重用：崖面附近扰动大，平地几乎不动。
+  const slopeGrid = new Float32Array(cells);
+  for (let z = 0; z < height; z += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = z * width + x;
+      const here = heights[index];
+      let steepest = 0;
+      if (x + 1 < width) steepest = Math.max(steepest, Math.abs(heights[index + 1] - here));
+      if (x > 0) steepest = Math.max(steepest, Math.abs(heights[index - 1] - here));
+      if (z + 1 < height) steepest = Math.max(steepest, Math.abs(heights[index + width] - here));
+      if (z > 0) steepest = Math.max(steepest, Math.abs(heights[index - width] - here));
+      slopeGrid[index] = steepest / cellSizeM;
     }
   }
 
-  // 陡壁高侧的格子：只判定"比邻格高出阈值"的那一格，矮的一侧不动。
-  const cliffTop = new Uint8Array(cells);
-  for (let cz = 0; cz < height; cz += 1) {
-    for (let cx = 0; cx < width; cx += 1) {
-      const cell = cz * width + cx;
-      const here = heights[cell];
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const nx = cx + dx;
-        const nz = cz + dz;
-        if (nx < 0 || nz < 0 || nx >= width || nz >= height) continue;
-        if (here - heights[nz * width + nx] >= thresholdCm) {
-          cliffTop[cell] = 1;
-          break;
-        }
+  const noise = createNoise2D(seeded(seed ^ 0x9e3779b9));
+  const warpNoise = createNoise2D(seeded(seed * 3 + 17));
+  const ridgeNoise = createNoise2D(seeded(seed * 7 + 53));
+
+  /** 格心高度的双三次采样，t 为格内偏移；越界按边缘格复制。 */
+  const sampleBase = (x: number, z: number): number => {
+    const u = (x - originX) / cellSizeM - 0.5;
+    const v = (z - originZ) / cellSizeM - 0.5;
+    const i0 = Math.floor(u);
+    const j0 = Math.floor(v);
+    const wx = catmullRom(u - i0);
+    const wz = catmullRom(v - j0);
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    const rows: number[] = [];
+    for (let row = 0; row < 4; row += 1) {
+      const j = clampIndex(j0 - 1 + row, height);
+      const base = j * width;
+      let value = 0;
+      let low = Number.POSITIVE_INFINITY;
+      let high = Number.NEGATIVE_INFINITY;
+      for (let col = 0; col < 4; col += 1) {
+        const i = clampIndex(i0 - 1 + col, width);
+        const sample = heights[base + i];
+        value += sample * wx[col];
+        if (sample < low) low = sample;
+        if (sample > high) high = sample;
       }
+      // 双三次插值会过冲：平台边缘会鼓出一个包、崖脚会凹下去。
+      // 每一轴都夹回参与插值的样本范围，得到单调的连续坡。
+      value = Math.max(low, Math.min(high, value));
+      rows.push(value);
+      if (value < min) min = value;
+      if (value > max) max = value;
     }
-  }
-
-  const cellCornerHeights = new Float32Array(cells * 4);
-  const cellVertices = new Int32Array(cells * 4);
-  cellVertices.fill(-1);
-  const positions: number[] = [];
-  const indices: number[] = [];
-  const smoothVertices = new Map<number, number>();
-  const topVertices = new Map<number, number>();
-
-  for (let j = 0; j <= height; j += 1) {
-    for (let i = 0; i <= width; i += 1) {
-      const cornerIndex = j * (width + 1) + i;
-      // 格角四周的四格：(i-1,j-1)、(i,j-1)、(i-1,j)、(i,j)。
-      const nodeCell = [-1, -1, -1, -1];
-      const nodeSlot = [-1, -1, -1, -1];
-      const addNode = (node: number, cx: number, cz: number, slot: number): void => {
-        if (cx < 0 || cz < 0 || cx >= width || cz >= height) return;
-        nodeCell[node] = cz * width + cx;
-        nodeSlot[node] = slot;
-      };
-      addNode(0, i - 1, j - 1, 3);
-      addNode(1, i, j - 1, 2);
-      addNode(2, i - 1, j, 1);
-      addNode(3, i, j, 0);
-
-      // 缓坡均值只算非崖顶格；崖顶格不参与，崖脚就不会被拉高。
-      let sum = 0;
-      let count = 0;
-      let mask = 0;
-      for (let node = 0; node < 4; node += 1) {
-        const cell = nodeCell[node];
-        if (cell < 0 || cliffTop[cell]) continue;
-        sum += heights[cell];
-        count += 1;
-        mask |= 1 << node;
-      }
-      const averageCm = count > 0 ? sum / count : 0;
-      const smoothKey = cornerIndex * 16 + mask;
-      let smoothVertex = -1;
-      if (count > 0) {
-        smoothVertex = smoothVertices.get(smoothKey) ?? -1;
-        if (smoothVertex < 0) {
-          smoothVertex = positions.length / 3;
-          positions.push(originX + i * cellSizeM, averageCm / 100, originZ + j * cellSizeM);
-          smoothVertices.set(smoothKey, smoothVertex);
-        }
-      }
-
-      for (let node = 0; node < 4; node += 1) {
-        const cell = nodeCell[node];
-        if (cell < 0) continue;
-        const index = cell * 4 + nodeSlot[node];
-        if (cliffTop[cell]) {
-          // 崖顶整格平铺，四个角只和自己有关，墙才能从底到顶封住。
-          const key = cell * 4 + nodeSlot[node];
-          let vertex = topVertices.get(key);
-          if (vertex === undefined) {
-            vertex = positions.length / 3;
-            positions.push(originX + i * cellSizeM, heights[cell] / 100, originZ + j * cellSizeM);
-            topVertices.set(key, vertex);
-          }
-          cellVertices[index] = vertex;
-          cellCornerHeights[index] = heights[cell] / 100;
-        } else {
-          cellVertices[index] = smoothVertex;
-          cellCornerHeights[index] = averageCm / 100;
-        }
-      }
-    }
-  }
-
-  for (let cz = 0; cz < height; cz += 1) {
-    for (let cx = 0; cx < width; cx += 1) {
-      const base = (cz * width + cx) * 4;
-      const v0 = cellVertices[base];
-      const v1 = cellVertices[base + 1];
-      const v2 = cellVertices[base + 2];
-      const v3 = cellVertices[base + 3];
-      if (v0 < 0 || v1 < 0 || v2 < 0 || v3 < 0) {
-        throw new Error("grid surface corner missing at cell " + cx + "," + cz);
-      }
-      // 逆时针朝上：(v0,v2,v1) 与 (v1,v2,v3)。
-      indices.push(v0, v2, v1, v1, v2, v3);
-    }
-  }
-
-  // 每个格角取四格顶面的包络：同一角上的墙段共用端高，接缝不会裂。
-  const cornerTop = new Float32Array((width + 1) * (height + 1));
-  const cornerBottom = new Float32Array((width + 1) * (height + 1));
-  for (let j = 0; j <= height; j += 1) {
-    for (let i = 0; i <= width; i += 1) {
-      let top = Number.NEGATIVE_INFINITY;
-      let bottom = Number.POSITIVE_INFINITY;
-      const corners: Array<[number, number, number]> = [
-        [i - 1, j - 1, 3],
-        [i, j - 1, 2],
-        [i - 1, j, 1],
-        [i, j, 0],
-      ];
-      for (const [cx, cz, slot] of corners) {
-        if (cx < 0 || cz < 0 || cx >= width || cz >= height) continue;
-        const value = cellCornerHeights[(cz * width + cx) * 4 + slot];
-        top = Math.max(top, value);
-        bottom = Math.min(bottom, value);
-      }
-      const index = j * (width + 1) + i;
-      cornerTop[index] = top;
-      cornerBottom[index] = bottom;
-    }
-  }
-
-  const walls: GridSurfaceWall[] = [];
-  const pushWall = (
-    ax: number,
-    az: number,
-    bx: number,
-    bz: number,
-    cornerA: number,
-    cornerB: number,
-    nx: number,
-    nz: number,
-  ): void => {
-    const top0 = cornerTop[cornerA];
-    const bottom0 = cornerBottom[cornerA];
-    const top1 = cornerTop[cornerB];
-    const bottom1 = cornerBottom[cornerB];
-    if (Math.max(top0 - bottom0, top1 - bottom1) < WALL_EPSILON_M) return;
-    walls.push({ ax, az, bx, bz, top0, bottom0, top1, bottom1, nx, nz });
+    let output = 0;
+    for (let row = 0; row < 4; row += 1) output += rows[row] * wz[row];
+    return Math.max(min, Math.min(max, output));
   };
 
-  for (let cz = 0; cz < height; cz += 1) {
-    for (let cx = 0; cx < width; cx += 1) {
-      const cell = cz * width + cx;
-      if (cx + 1 < width) {
-        const neighbour = cell + 1;
-        // 只有崖顶一侧才补墙：两侧都是缓坡时，斜对角的崖顶会把包络抬起来，
-        // 沿低地铺出一排薄薄的"纸片"，这是之前崖脚鳞片的来源。
-        if (cliffTop[cell] || cliffTop[neighbour]) {
-          const sign = heights[cell] >= heights[neighbour] ? 1 : -1;
-          pushWall(
-            originX + (cx + 1) * cellSizeM,
-            originZ + cz * cellSizeM,
-            originX + (cx + 1) * cellSizeM,
-            originZ + (cz + 1) * cellSizeM,
-            cz * (width + 1) + (cx + 1),
-            (cz + 1) * (width + 1) + (cx + 1),
-            sign,
-            0,
-          );
-        }
-      }
-      if (cz + 1 < height) {
-        const neighbour = cell + width;
-        if (cliffTop[cell] || cliffTop[neighbour]) {
-          const sign = heights[cell] >= heights[neighbour] ? 1 : -1;
-          pushWall(
-            originX + cx * cellSizeM,
-            originZ + (cz + 1) * cellSizeM,
-            originX + (cx + 1) * cellSizeM,
-            originZ + (cz + 1) * cellSizeM,
-            (cz + 1) * (width + 1) + cx,
-            (cz + 1) * (width + 1) + (cx + 1),
-            0,
-            sign,
-          );
-        }
-      }
-    }
-  }
+  /** 坡度场的双线性采样。 */
+  const sampleSlope = (x: number, z: number): number => {
+    const u = (x - originX) / cellSizeM - 0.5;
+    const v = (z - originZ) / cellSizeM - 0.5;
+    const x0 = clampIndex(Math.floor(u), width);
+    const z0 = clampIndex(Math.floor(v), height);
+    const x1 = Math.min(width - 1, x0 + 1);
+    const z1 = Math.min(height - 1, z0 + 1);
+    const tx = Math.max(0, Math.min(1, u - Math.floor(u)));
+    const tz = Math.max(0, Math.min(1, v - Math.floor(v)));
+    const top = slopeGrid[z0 * width + x0] * (1 - tx) + slopeGrid[z0 * width + x1] * tx;
+    const bottom = slopeGrid[z1 * width + x0] * (1 - tx) + slopeGrid[z1 * width + x1] * tx;
+    return top * (1 - tz) + bottom * tz;
+  };
 
   const heightAt = (x: number, z: number): number => {
-    const localX = (x - originX) / cellSizeM;
-    const localZ = (z - originZ) / cellSizeM;
-    const cx = Math.min(width - 1, Math.max(0, Math.floor(localX)));
-    const cz = Math.min(height - 1, Math.max(0, Math.floor(localZ)));
-    const tx = Math.min(1, Math.max(0, localX - cx));
-    const tz = Math.min(1, Math.max(0, localZ - cz));
-    const base = (cz * width + cx) * 4;
-    const near = cellCornerHeights[base] * (1 - tx) + cellCornerHeights[base + 1] * tx;
-    const far = cellCornerHeights[base + 2] * (1 - tx) + cellCornerHeights[base + 3] * tx;
-    return near * (1 - tz) + far * tz;
+    const steep = smoothstep(STEEP_LOW, STEEP_HIGH, sampleSlope(x, z));
+    // 崖面沿横向拧一下：采样点偏开格子边，崖线因此不是直的。
+    const warpAmount = warp * (BASE_WARP_M + steep);
+    const wx = warpNoise(x * 0.145, z * 0.145) * warpAmount;
+    const wz = warpNoise(x * 0.145 + 31.7, z * 0.145 - 12.3) * warpAmount;
+    const base = sampleBase(x + wx, z + wz);
+    // 分形起伏：平地上只有默认振幅的十分之一，崖面才铺满。
+    const fine =
+      noise(x * 0.095, z * 0.095) * 0.58 +
+      noise(x * 0.31, z * 0.31) * 0.28 +
+      noise(x * 0.93, z * 0.93) * 0.14;
+    const amplitude = relief * (BASE_RELIEF_FRACTION + steep);
+    // 横向层理：只有陡坡才看得出，像岩层被风化出一条条棱。
+    const strata = relief * 0.2 * steep * Math.sin(base * 2.35 + ridgeNoise(x * 0.19, z * 0.19) * 2.6);
+    return base + fine * amplitude + strata;
   };
+
+  const cols = width * samples + 1;
+  const rows = height * samples + 1;
+  const positions = new Float32Array(cols * rows * 3);
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  const step = cellSizeM / samples;
+  for (let row = 0; row < rows; row += 1) {
+    const z = originZ + row * step;
+    for (let col = 0; col < cols; col += 1) {
+      const x = originX + col * step;
+      const y = heightAt(x, z);
+      const offset = (row * cols + col) * 3;
+      positions[offset] = x;
+      positions[offset + 1] = y;
+      positions[offset + 2] = z;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  const indices = new Uint32Array(width * samples * height * samples * 6);
+  let cursor = 0;
+  for (let row = 0; row < rows - 1; row += 1) {
+    for (let col = 0; col < cols - 1; col += 1) {
+      const a = row * cols + col;
+      const b = a + cols;
+      const c = a + 1;
+      const d = b + 1;
+      // 朝上：(a, b, c) 与 (c, b, d)。
+      indices[cursor] = a;
+      indices[cursor + 1] = b;
+      indices[cursor + 2] = c;
+      indices[cursor + 3] = c;
+      indices[cursor + 4] = b;
+      indices[cursor + 5] = d;
+      cursor += 6;
+    }
+  }
 
   return {
     width,
     height,
     cellSizeM,
-    cellCornerHeights,
-    positions: new Float32Array(positions),
-    indices: new Uint32Array(indices),
-    walls,
-    cliffEdges: walls.length,
+    cols,
+    rows,
+    positions,
+    indices,
+    minY: Number.isFinite(minY) ? minY : 0,
+    maxY: Number.isFinite(maxY) ? maxY : 0,
     heightAt,
   };
 }

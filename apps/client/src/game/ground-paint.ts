@@ -79,11 +79,9 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
   const grass = rgb(palette.grass);
   const grassLight = rgb(palette.grassLight);
   const dirt = rgb(palette.dirt);
-  const rock = rgb(palette.rock);
-  const rockDark = rgb(palette.rockDark);
   const yards = options.yards ?? [];
 
-  // 按格算底色：草地明暗、土斑、陡坡岩石、院落泥地。
+  // 按格算底色：草地明暗、土斑、院落泥地。岩石交给材质的法线混合，避免和显示面错位。
   const cellColor = new Float32Array(cellW * cellH * 3);
   const cellYard = new Float32Array(cellW * cellH);
   for (let cz = 0; cz < cellH; cz += 1) {
@@ -91,11 +89,6 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
     for (let cx = 0; cx < cellW; cx += 1) {
       const x = (cx + 0.5) * cellMeters - widthMeters / 2;
       const index = cz * cellW + cx;
-      const here = navGrid.heightCm(Math.min(navGrid.height - 1, cz) * navGrid.width + Math.min(navGrid.width - 1, cx));
-      const right = navGrid.heightCm(Math.min(navGrid.height - 1, cz) * navGrid.width + Math.min(navGrid.width - 1, cx + 1));
-      const down = navGrid.heightCm(Math.min(navGrid.height - 1, cz + 1) * navGrid.width + Math.min(navGrid.width - 1, cx));
-      const grade = Math.max(Math.abs(right - here), Math.abs(down - here)) / cellSize;
-
       const broad = valueNoise(x / 7.5, z / 7.5);
       const fine = valueNoise(x / 1.6, z / 1.6);
       const shade = broad * 0.55 + fine * 0.25;
@@ -113,15 +106,6 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
         r = mix(r, dirt[0], t);
         g = mix(g, dirt[1], t);
         b = mix(b, dirt[2], t);
-      }
-
-      if (grade > 0.3) {
-        const t = Math.min(1, (grade - 0.3) / 0.45);
-        const tone = valueNoise(x / 2.2, z / 2.2);
-        const rockColor = tone > 0.5 ? rock : rockDark;
-        r = mix(r, rockColor[0], t);
-        g = mix(g, rockColor[1], t);
-        b = mix(b, rockColor[2], t);
       }
 
       for (const entry of yards) {
@@ -234,19 +218,15 @@ export function paintGroundTexture(options: GroundPaintOptions): THREE.CanvasTex
         weight = Math.max(0, Math.min(1, (mask - 0.22) / 0.5));
       }
       if (weight > 0.01) {
-        const stone = 0.62;
-        const sx = Math.floor(x / stone);
-        const sz = Math.floor(z / stone);
-        const fx = x / stone - sx;
-        const fz = z / stone - sz;
-        const edge = Math.min(fx, fz, 1 - fx, 1 - fz);
-        const mortar = edge < 0.05 ? 0.42 : edge < 0.11 ? 0.74 : 1;
-        const shade = 0.78 + hash2(sx, sz) * 0.38;
-        const grit = hash2(px, py) * 0.18;
-        const tone = shade * mortar * (0.84 + grit);
-        r = r + (188 * tone - r) * weight;
-        g = g + (176 * tone - g) * weight;
-        b = b + (154 * tone - b) * weight;
+        // 碎石路面：只用低频斑驳和细颗粒。之前画 0.6 米石砖网格，
+        // 贴图只有十几像素一米，灰缝细到半像素，放大后就是一整片菱形摩尔纹。
+        const mottle = valueNoise(x / 1.9 + 4.1, z / 1.9 - 2.3);
+        const ruts = valueNoise(x / 0.7 - 1.7, z / 0.7 + 5.3);
+        const grit = hash2(px * 7 + 3, py * 11 + 9);
+        const tone = 0.86 + mottle * 0.18 + (grit - 0.5) * 0.1 - ruts * 0.06;
+        r = r + (182 * tone - r) * weight;
+        g = g + (170 * tone - g) * weight;
+        b = b + (148 * tone - b) * weight;
       }
 
       // 院落压在路面之上：据点那一圈泥地不会被石路盖住。

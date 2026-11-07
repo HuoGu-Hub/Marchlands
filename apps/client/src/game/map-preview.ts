@@ -30,6 +30,10 @@ export async function runMapPreview(host: HTMLElement, mapId: string): Promise<v
   requestAnimationFrame(() => {
     scene.update(state, 16);
     requestAnimationFrame(() => {
+      if (import.meta.env.DEV) {
+        // 预览页只画两帧就停；截图脚本调 focus() 换机位后需要手动再画一帧。
+        (window as unknown as Record<string, unknown>).__mlPreviewFrame = () => scene.update(state, 16);
+      }
       window.__mlPreviewReady = true;
     });
   });

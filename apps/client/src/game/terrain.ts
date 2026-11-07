@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { groundMaterial } from "./ground-material";
 import { paintGroundTexture } from "./ground-paint";
-import { createTerrainCliffMaterial, createTerrainGroundMaterial } from "./terrain-detail";
-import { buildGridTerrainMeshes } from "./terrain-grid";
+import { createTerrainGroundMaterial } from "./terrain-detail";
+import { buildGridTerrainMesh } from "./terrain-grid";
 import type { CityId, MapDef } from "@marchlands/sim";
 import {
   buildGridSurface,
@@ -12,6 +12,7 @@ import {
 } from "@marchlands/map-authoring";
 import type { FoundationShape, MapVisual, TerrainStyle } from "@marchlands/map-authoring";
 import {
+  DEFAULT_NAV_RULES,
   NavGrid,
   Surface,
   decodeBitmapBase64,
@@ -236,33 +237,21 @@ export interface Terrain {
   primaryCenter: { x: number; z: number };
 }
 
+/** 这一格最陡的一步超过了当前通行坡度。 */
 function isSteepCell(grid: NavGrid, x: number, z: number): boolean {
-  const index = grid.index(x, z);
-  const height = grid.heightCm(index);
-  const limit = grid.rules.maxStepCm;
-  const probes: ReadonlyArray<readonly [number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
-  for (const probe of probes) {
-    const nx = x + probe[0];
-    const nz = z + probe[1];
-    if (!grid.inBounds(nx, nz)) continue;
-    if (Math.abs(grid.heightCm(grid.index(nx, nz)) - height) > limit) return true;
-  }
-  return false;
+  return grid.isSteep(grid.index(x, z));
 }
 
-/** 相邻格高差达到陡壁阈值，说明这里爬不上去。 */
+/** 45 度以上的一步：画成红色，表示这里过不去。 */
+const CLIFF_EDGE_PERMILLE = 1000;
+
 function isCliffEdge(grid: NavGrid, x: number, z: number): boolean {
-  const here = grid.heightCm(grid.index(x, z));
+  const index = grid.index(x, z);
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
     const nx = x + dx;
     const nz = z + dz;
-    if (nx < 0 || nz < 0 || nx >= grid.width || nz >= grid.height) continue;
-    if (Math.abs(grid.heightCm(grid.index(nx, nz)) - here) >= 120) return true;
+    if (!grid.inBounds(nx, nz)) continue;
+    if (grid.stepSlopePermille(index, grid.index(nx, nz)) >= CLIFF_EDGE_PERMILLE) return true;
   }
   return false;
 }
@@ -331,7 +320,6 @@ function navGridOf(map: MapDef): NavGrid | null {
   if (map.navigation !== "grid" || !map.grid) return null;
   const grid = map.grid;
   const cells = grid.width * grid.height;
-  const climbCm = map.climbCm ?? 60;
   return new NavGrid({
     cellSizeCm: grid.cellSizeCm,
     width: grid.width,
@@ -341,8 +329,9 @@ function navGridOf(map: MapDef): NavGrid | null {
     blocked: decodeBitmapBase64(grid.blocked, cells),
     walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
     rules: {
-      maxStepCm: climbCm,
-      maxSlopePermille: Math.max(1000, Math.round((climbCm / grid.cellSizeCm) * 1000)),
+      maxSlopePermille: map.climbCm
+        ? Math.round((map.climbCm / grid.cellSizeCm) * 1000)
+        : DEFAULT_NAV_RULES.maxSlopePermille,
     },
   });
 }
@@ -576,7 +565,14 @@ export function buildTerrain(
             cellSizeCm: navGrid.cellSizeCm,
             heightCmAt: (x, z) => navGrid.heightCm(z * navGrid.width + x),
           },
-          { originX: gridPlatform.minX, originZ: gridPlatform.minZ },
+          {
+            originX: gridPlatform.minX,
+            originZ: gridPlatform.minZ,
+            // 大图 0.5 米一个顶点，小图最细到 0.25 米；崖口的圆角靠它托住。
+            samplesPerCell: Math.max(2, Math.min(4, Math.round(340 / Math.max(navGrid.width, navGrid.height)))),
+            smoothing: 1,
+            seed: map.terrain?.seed ?? seed,
+          },
         )
       : null;
   const heightField = createHeightField({
@@ -699,14 +695,10 @@ export function buildTerrain(
   if (paintedGround && paintedTexture) {
     paintedGround.userData.ownedTextures = [paintedTexture];
   }
-  const gridMeshes =
+  const gridMesh =
     gridSurface && gridPlatform && paintedGround
-      ? buildGridTerrainMeshes(gridSurface, {
-          topMaterial: paintedGround,
-          cliffMaterial: createTerrainCliffMaterial(
-            gridPlatform.terrainStyle ?? style,
-            (TERRAIN_PALETTES[gridPlatform.terrainStyle ?? style] ?? palette).ridge,
-          ),
+      ? buildGridTerrainMesh(gridSurface, {
+          material: paintedGround,
           uvOriginX: gridPlatform.minX,
           uvOriginZ: gridPlatform.minZ,
           uvSizeX: gridPlatform.maxX - gridPlatform.minX,
@@ -720,9 +712,9 @@ export function buildTerrain(
     const platformPalette = TERRAIN_PALETTES[platform.terrainStyle ?? style] ?? palette;
     const platformHeight = (x: number, z: number): number => platformHeightAt(platform, x, z);
     const platformSeed = platform.terrainSeed ?? seed;
-    const useGrid = gridMeshes !== null && platform === gridPlatform;
+    const useGrid = gridMesh !== null && platform === gridPlatform;
     const mesh = useGrid
-      ? gridMeshes.top
+      ? gridMesh
       : buildPlatformSurface(platform, platformHeight, platformPalette, navGrid, map, ground, platformSeed, noiseShift);
     group.add(mesh);
     meshes.push(mesh);
@@ -747,11 +739,6 @@ export function buildTerrain(
     built.group.name = `island-${platform.id}`;
     islandGroup.add(built.group);
     builtPlatforms.push({ platform, mesh, shell: built.group, metrics: built.metrics });
-  }
-  // 陡壁墙面单独一张网格：顶面在崖口直接断开，墙把两截接起来。
-  if (gridMeshes?.cliffs) {
-    group.add(gridMeshes.cliffs);
-    meshes.push(gridMeshes.cliffs);
   }
   if (!reused) {
     islandGroup.traverse((object) => {

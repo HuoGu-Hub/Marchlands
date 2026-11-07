@@ -88,13 +88,20 @@ uniform float uTerrainNormalStrength;
 uniform float uTerrainAlbedoStrength;
 uniform float uTerrainRockLow;
 uniform float uTerrainRockHigh;
+uniform float uTerrainRockTint;
 
 varying vec3 vTerrainWorld;
 varying vec3 vTerrainNormalW;
 
-vec3 terrainTriplanar( sampler2D map, vec3 p, vec3 n, float scale ) {
+// 三平面权重：陡面削弱顶投影，否则竖直面会吃到被拉长的俯视图，拉出一条条竖纹。
+vec3 terrainWeights( vec3 n ) {
   vec3 weights = pow( abs( n ), vec3( 4.0 ) );
-  weights /= max( weights.x + weights.y + weights.z, 1e-4 );
+  weights.y *= smoothstep( 0.35, 0.9, abs( n.y ) );
+  return weights / max( weights.x + weights.y + weights.z, 1e-4 );
+}
+
+vec3 terrainTriplanar( sampler2D map, vec3 p, vec3 n, float scale ) {
+  vec3 weights = terrainWeights( n );
   vec3 px = texture2D( map, p.zy * scale ).rgb;
   vec3 py = texture2D( map, p.xz * scale ).rgb;
   vec3 pz = texture2D( map, p.xy * scale ).rgb;
@@ -102,8 +109,7 @@ vec3 terrainTriplanar( sampler2D map, vec3 p, vec3 n, float scale ) {
 }
 
 vec3 terrainTriplanarNormal( sampler2D map, vec3 p, vec3 n, float scale ) {
-  vec3 weights = pow( abs( n ), vec3( 4.0 ) );
-  weights /= max( weights.x + weights.y + weights.z, 1e-4 );
+  vec3 weights = terrainWeights( n );
   vec3 nx = texture2D( map, p.zy * scale ).xyz * 2.0 - 1.0;
   vec3 ny = texture2D( map, p.xz * scale ).xyz * 2.0 - 1.0;
   vec3 nz = texture2D( map, p.xy * scale ).xyz * 2.0 - 1.0;
@@ -113,8 +119,29 @@ vec3 terrainTriplanarNormal( sampler2D map, vec3 p, vec3 n, float scale ) {
   return px * weights.x + py * weights.y + pz * weights.z;
 }
 
+float terrainHash( vec3 p ) {
+  p = fract( p * 0.3183099 + vec3( 0.1, 0.2, 0.3 ) );
+  p *= 17.0;
+  return fract( p.x * p.y * p.z * ( p.x + p.y + p.z ) );
+}
+
+float terrainNoise( vec3 x ) {
+  vec3 i = floor( x );
+  vec3 f = fract( x );
+  f = f * f * ( 3.0 - 2.0 * f );
+  return mix(
+    mix( mix( terrainHash( i ), terrainHash( i + vec3( 1.0, 0.0, 0.0 ) ), f.x ),
+         mix( terrainHash( i + vec3( 0.0, 1.0, 0.0 ) ), terrainHash( i + vec3( 1.0, 1.0, 0.0 ) ), f.x ), f.y ),
+    mix( mix( terrainHash( i + vec3( 0.0, 0.0, 1.0 ) ), terrainHash( i + vec3( 1.0, 0.0, 1.0 ) ), f.x ),
+         mix( terrainHash( i + vec3( 0.0, 1.0, 1.0 ) ), terrainHash( i + vec3( 1.0, 1.0, 1.0 ) ), f.x ), f.y ), f.z );
+}
+
+// 草和岩石的交界不能是一条按坡度画出来的等高线：加两层世界噪声把线打碎。
 float terrainRockMix( vec3 n ) {
-  return 1.0 - smoothstep( uTerrainRockLow, uTerrainRockHigh, n.y );
+  float dither =
+    ( terrainNoise( vTerrainWorld * 0.42 ) - 0.5 ) * 0.16 +
+    ( terrainNoise( vTerrainWorld * 1.45 ) - 0.5 ) * 0.05;
+  return 1.0 - smoothstep( uTerrainRockLow, uTerrainRockHigh, n.y + dither );
 }
 `;
 
@@ -130,6 +157,15 @@ float terrainDetailLuma = dot( terrainDetailColor, vec3( 0.2126, 0.7152, 0.0722 
 float terrainMeanLuma = mix( uTerrainGroundLuma, uTerrainRockLuma, terrainRock );
 float terrainGain = clamp( terrainDetailLuma / max( terrainMeanLuma, 0.01 ), 0.45, 1.7 );
 diffuseColor.rgb *= mix( 1.0, terrainGain, uTerrainAlbedoStrength );
+// 崖面不能直接吃平面烘焙图的颜色：竖直面上那张图会被拉成一条条草色。
+// 陡的地方改用三平面岩石色，石头的颜色和颗粒这才立得住。
+// 岩石贴图本身很暗，裂缝会黑成一片；混一层平均岩色，背光面才不会像塌了个洞。
+vec3 terrainRockColor = mix(
+  vec3( 0.21, 0.195, 0.17 ),
+  terrainDetailColor * uTerrainRockTint,
+  0.6
+);
+diffuseColor.rgb = mix( diffuseColor.rgb, terrainRockColor, terrainRock );
 `;
 
 const FRAGMENT_NORMAL = `
@@ -149,11 +185,6 @@ varying vec3 vTerrainWorld;
 varying vec3 vTerrainNormalW;
 `;
 
-export interface TerrainStyleMaterials {
-  readonly ground: THREE.MeshStandardMaterial;
-  readonly cliff: THREE.MeshStandardMaterial;
-}
-
 interface DetailMaterialOptions {
   readonly macro: THREE.Texture | null;
   readonly color: THREE.ColorRepresentation;
@@ -165,6 +196,8 @@ interface DetailMaterialOptions {
   readonly rockScale: number;
   readonly normalStrength: number;
   readonly albedoStrength: number;
+  /** 陡坡上岩石色替换烘焙色的力度，1 = 完全用岩石色。 */
+  readonly rockTint: number;
 }
 
 function createDetailMaterial(options: DetailMaterialOptions): THREE.MeshStandardMaterial {
@@ -195,8 +228,9 @@ function createDetailMaterial(options: DetailMaterialOptions): THREE.MeshStandar
     shader.uniforms.uTerrainRockLuma = { value: rock.meanLuma };
     shader.uniforms.uTerrainNormalStrength = { value: options.normalStrength };
     shader.uniforms.uTerrainAlbedoStrength = { value: options.albedoStrength };
-    shader.uniforms.uTerrainRockLow = { value: 0.62 };
-    shader.uniforms.uTerrainRockHigh = { value: 0.9 };
+    shader.uniforms.uTerrainRockLow = { value: 0.55 };
+    shader.uniforms.uTerrainRockHigh = { value: 0.88 };
+    shader.uniforms.uTerrainRockTint = { value: options.rockTint };
 
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>\n${VERTEX_PARS}`)
@@ -234,25 +268,6 @@ export function createTerrainGroundMaterial(
     rockScale: 1 / 3.2,
     normalStrength: 0.7,
     albedoStrength: 0.38,
-  });
-}
-
-/** 陡壁墙面：只用岩石细节，顶点色负责底部压暗。 */
-export function createTerrainCliffMaterial(
-  style: string,
-  color: THREE.ColorRepresentation,
-): THREE.MeshStandardMaterial {
-  const detail = STYLE_DETAIL[style] ?? STYLE_DETAIL.frontier;
-  return createDetailMaterial({
-    macro: null,
-    color,
-    groundLayer: detail.rock,
-    rockLayer: detail.rock,
-    vertexColors: true,
-    side: THREE.DoubleSide,
-    groundScale: 1 / 3.4,
-    rockScale: 1 / 3.4,
-    normalStrength: 0.7,
-    albedoStrength: 0.4,
+    rockTint: 2.0,
   });
 }

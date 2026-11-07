@@ -15,7 +15,8 @@
   "dependencies": {
     "@marchlands/content": "workspace:*",
     "@marchlands/nav": "workspace:*",
-    "@marchlands/sim": "workspace:*"
+    "@marchlands/sim": "workspace:*",
+    "simplex-noise": "^4.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
