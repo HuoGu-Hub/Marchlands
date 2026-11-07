@@ -25,8 +25,6 @@ export interface UnitProfile {
   readonly label: string;
   /** 可通行地表，由属性推导。 */
   readonly surfaces: ReadonlySet<number>;
-  /** 相邻格最大高度差，厘米；只用于台阶这类垂直面。 */
-  readonly maxStepCm: number;
   /** 能爬的最大坡度，千分比；1000 就是 45 度。 */
   readonly maxSlopePermille: number;
   /** 交战距离：这个兵种能把伤害打到多远的敌人身上，厘米。 */
@@ -62,7 +60,6 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     kind: "barbarian",
     label: "野蛮人",
     surfaces: surfacesFor(UNIT_TRAITS.barbarian),
-    maxStepCm: 60,
     maxSlopePermille: 380,
     attackRangeCm: 110,
     footprint: "1x1",
@@ -72,7 +69,6 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     kind: "warrior",
     label: "精锐战士",
     surfaces: surfacesFor(UNIT_TRAITS.warrior),
-    maxStepCm: 50,
     maxSlopePermille: 260,
     attackRangeCm: 130,
     footprint: "2x1",
@@ -82,7 +78,6 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     kind: "ranger",
     label: "游侠",
     surfaces: surfacesFor(UNIT_TRAITS.ranger),
-    maxStepCm: 60,
     maxSlopePermille: 420,
     attackRangeCm: 140,
     footprint: "1x1",
@@ -92,7 +87,6 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     kind: "archer",
     label: "弓箭手",
     surfaces: surfacesFor(UNIT_TRAITS.archer),
-    maxStepCm: 60,
     maxSlopePermille: 330,
     attackRangeCm: 380,
     footprint: "1x1",
@@ -102,7 +96,6 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     kind: "mage",
     label: "法师",
     surfaces: surfacesFor(UNIT_TRAITS.mage),
-    maxStepCm: 80,
     maxSlopePermille: 700,
     attackRangeCm: 460,
     footprint: "1x1",
@@ -112,7 +105,6 @@ export const UNIT_PROFILES: Record<UnitKind, UnitProfile> = {
     kind: "cavalry",
     label: "骑兵",
     surfaces: surfacesFor(UNIT_TRAITS.cavalry),
-    maxStepCm: 70,
     maxSlopePermille: 300,
     attackRangeCm: 150,
     footprint: "1x1",

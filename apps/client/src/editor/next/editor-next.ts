@@ -1638,17 +1638,17 @@ export class EditorNext {
     });
     const climb = this.doc.climbCm ?? 60;
     this.addNumber(
-      "通行高低差（厘米/格）",
+      "坡度上限（厘米/格）",
       climb,
       (value) => {
         const next = Math.max(10, Math.min(200, Math.round(value)));
-        this.commit(updateDocument(this.doc, { climbCm: next }), "已修改通行高低差", { rebuild: true });
+        this.commit(updateDocument(this.doc, { climbCm: next }), "已修改坡度上限", { rebuild: true });
       },
       { min: 10, max: 200, step: 5, precision: 0 },
     );
     const climbNote = document.createElement("div");
     climbNote.className = "mlnx-sub";
-    climbNote.textContent = `1 米格高差 ${climb} 厘米，约 ${(Math.atan(climb / 100) * 180 / Math.PI).toFixed(1)}°；黄色格超过该高差`;
+    climbNote.textContent = `每米最多爬 ${climb} 厘米，约 ${(Math.atan(climb / 100) * 180 / Math.PI).toFixed(1)}°；黄色格超过该坡度`;
     this.inspectorEl.appendChild(climbNote);
     this.addButton(`地形通行显示：${this.terrainPassability ? "开" : "关"}`, () => {
       this.terrainPassability = !this.terrainPassability;

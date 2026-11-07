@@ -38,8 +38,8 @@ export function surfaceProfile(id: number): SurfaceProfile {
 }
 
 export interface NavRules {
+  /** 可通行的最大坡度，千分比；1000 就是 45 度。 */
   readonly maxSlopePermille: number;
-  readonly maxStepCm: number;
   readonly straightCost: number;
   readonly diagonalCost: number;
   readonly uphillScale: number;
@@ -49,7 +49,6 @@ export interface NavRules {
 
 export const DEFAULT_NAV_RULES: NavRules = {
   maxSlopePermille: 700,
-  maxStepCm: 30,
   straightCost: 1000,
   diagonalCost: 1414,
   uphillScale: 4000,

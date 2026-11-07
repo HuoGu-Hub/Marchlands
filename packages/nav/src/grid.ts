@@ -51,6 +51,11 @@ export class NavGrid {
   readonly minDiagonalCost: number;
 
   private readonly heights: Int16Array;
+  /**
+   * 每格最陡的一步，千分比。只用于展示与判断"这块地陡不陡"；
+   * 能不能走过去只看相邻两格之间的真实坡度，见 canStep。
+   */
+  private readonly slopes: Float32Array;
   private readonly surfaces: Uint8Array;
   private readonly blockedMask: Uint8Array;
   private readonly overrideMask: Uint8Array;
@@ -88,6 +93,19 @@ export class NavGrid {
     for (let index = 0; index < count; index += 1) {
       this.heights[index] = clampInt(Math.round(data.heightCm[index]), INT16_MIN, INT16_MAX);
       this.surfaces[index] = clampInt(Math.round(data.surface[index]), 0, 255);
+    }
+    this.slopes = new Float32Array(count);
+    for (let z = 0; z < this.height; z += 1) {
+      for (let x = 0; x < this.width; x += 1) {
+        const index = this.index(x, z);
+        const here = this.heights[index];
+        let steepest = 0;
+        if (x + 1 < this.width) steepest = Math.max(steepest, Math.abs(this.heights[index + 1] - here));
+        if (x > 0) steepest = Math.max(steepest, Math.abs(this.heights[index - 1] - here));
+        if (z + 1 < this.height) steepest = Math.max(steepest, Math.abs(this.heights[index + this.width] - here));
+        if (z > 0) steepest = Math.max(steepest, Math.abs(this.heights[index - this.width] - here));
+        this.slopes[index] = (steepest * 1000) / this.cellSizeCm;
+      }
     }
     this.blockedMask = maskFrom(data.blocked, count);
     this.overrideMask = maskFrom(data.walkableOverride, count);
@@ -150,6 +168,16 @@ export class NavGrid {
     return this.heights[cell];
   }
 
+  /** 该格最陡的一步，千分比；1000 就是 45 度。 */
+  slopePermille(cell: number): number {
+    return this.slopes[cell];
+  }
+
+  /** 该格本身是否陡到站不住；通行判定仍以相邻两格的坡度为谁。 */
+  isSteep(cell: number): boolean {
+    return this.slopes[cell] > this.rules.maxSlopePermille;
+  }
+
   surface(cell: number): number {
     return this.surfaces[cell];
   }
@@ -206,12 +234,11 @@ export class NavGrid {
     if (Math.abs(dx) > 1 || Math.abs(dz) > 1) return false;
     if (!this.isWalkable(from, coverage) || !this.isWalkable(to, coverage)) return false;
 
-    const delta = this.heights[to] - this.heights[from];
-    const diagonal = dx !== 0 && dz !== 0;
-    const run = diagonal ? this.diagonalRunCm : this.cellSizeCm;
-    // 坡度决定能不能走；绝对落差只用于台阶/墙这类垂直面。
-    if (Math.abs(delta) * 1000 > this.rules.maxSlopePermille * run) return false;
+    // 只比坡度：这段路的高差 / 水平距离超过兵种上限就走不过去。
+    // 不再有"单格高差"这第二条判据，格子尺寸换了规则也跟着换。
+    if (this.stepSlopePermille(from, to) > this.rules.maxSlopePermille) return false;
 
+    const diagonal = dx !== 0 && dz !== 0;
     if (diagonal) {
       const sideA = this.index(fx + dx, fz);
       const sideB = this.index(fx, fz + dz);

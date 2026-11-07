@@ -68,11 +68,11 @@ describe("nav grid pathfinding", () => {
     expect(plan(denied, [0, 0], [1, 0])).toBeNull();
   });
 
-  it("rejects slopes above the limit even when the step is allowed", () => {
-    const ok = makeGrid({ width: 2, height: 1, heightAt: (x) => x * 60, rules: { maxStepCm: 100 } });
+  it("uses the requested slope limit instead of a fixed step height", () => {
+    const ok = makeGrid({ width: 2, height: 1, heightAt: (x) => x * 60, rules: { maxSlopePermille: 700 } });
     expect(plan(ok, [0, 0], [1, 0])?.cost).toBe(3400);
 
-    const steep = makeGrid({ width: 2, height: 1, heightAt: (x) => x * 80, rules: { maxStepCm: 100 } });
+    const steep = makeGrid({ width: 2, height: 1, heightAt: (x) => x * 80, rules: { maxSlopePermille: 700 } });
     expect(plan(steep, [0, 0], [1, 0])).toBeNull();
   });
 

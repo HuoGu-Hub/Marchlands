@@ -832,8 +832,7 @@ export class EditorController {
       blocked: decodeBitmapBase64(grid.blocked, cells),
       walkableOverride: decodeBitmapBase64(grid.walkableOverride, cells),
       rules: {
-        maxStepCm: climbCm,
-        maxSlopePermille: Math.max(1000, Math.round((climbCm / grid.cellSizeCm) * 1000)),
+        maxSlopePermille: Math.round((climbCm / grid.cellSizeCm) * 1000),
       },
     });
     this.navCache = { hash, grid: nav };
@@ -2253,7 +2252,7 @@ export class EditorController {
           ${option("open", this.doc.transit, "开放通行")}
         </select>
       </label>
-      <label class="ml-ed-field"><span>通行高低差（cm/格）</span><input data-field="climbCm" type="number" min="10" max="200" step="5" value="${climb}"></label>
+      <label class="ml-ed-field"><span>坡度上限（cm/格）</span><input data-field="climbCm" type="number" min="10" max="200" step="5" value="${climb}"></label>
       <div class="ml-ed-meta">1 米格高差 ${climb} 厘米，约 ${climbDeg}°；导航预览中黄色格超过该高差</div>
       <div class="ml-ed-section-label">地貌</div>
       <label class="ml-ed-field"><span>风格</span>
@@ -2488,7 +2487,7 @@ export class EditorController {
     }
     if (field === "climbCm") {
       const climb = Math.max(10, Math.min(200, Math.round(Number(value) || 60)));
-      this.commit(updateDocument(this.doc, { climbCm: climb }), "已修改通行高低差");
+      this.commit(updateDocument(this.doc, { climbCm: climb }), "已修改坡度上限");
       return;
     }
     if (field === "terrainStyle") {

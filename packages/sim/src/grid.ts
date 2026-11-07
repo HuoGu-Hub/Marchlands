@@ -49,7 +49,6 @@ export function createUnitNavGrid(
   const grid = map.grid;
   const count = grid.width * grid.height;
   const profile = unitProfile(kind);
-  const maxStepCm = map.climbCm ?? profile.maxStepCm;
   const blocked = decodeBitmapBase64(grid.blocked, count);
   const override = decodeBitmapBase64(grid.walkableOverride, count);
   const surfaces = decodeUint8Base64(grid.surface, count);
@@ -81,8 +80,7 @@ export function createUnitNavGrid(
     blocked,
     walkableOverride: override,
     rules: {
-      maxStepCm,
-      // 地图上的 climbCm 是整张图的攀爬覆盖，坡度也按它换算。
+      // climbCm 是"一格最多爬多高"，除以格宽就是坡度；不填就用兵种自己的上限。
       maxSlopePermille: map.climbCm
         ? Math.round((map.climbCm / grid.cellSizeCm) * 1000)
         : profile.maxSlopePermille,
