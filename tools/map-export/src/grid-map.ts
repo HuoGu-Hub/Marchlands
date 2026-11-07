@@ -200,6 +200,7 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
 
   const surface = new Uint8Array(cells).fill(SURFACE_GRASS);
   const heights = sampleHeights(map, cols, rows, CELL_CM, options.terrain);
+  const plateauMask = new Uint8Array(cells);
   const blocked = new Uint8Array(cells);
   const walkableOverride = new Uint8Array(cells);
 
@@ -315,6 +316,7 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
           const wobble = 1 + Math.sin(angle * 3 + phase) * 0.12 + Math.sin(angle * 7 - phase * 1.7) * 0.055;
           if (distance > radiusCells * wobble) continue;
           heights[cz * cols + cx] = Math.round(top);
+          plateauMask[cz * cols + cx] = 1;
         }
       }
     }
@@ -362,6 +364,38 @@ export function toGridMap(map: MapDef, options: GridOptions = {}): MapDef {
           }
         }
       }
+    }
+  }
+
+  // 坡道两侧的台面按 70 厘米一级放坡：坡道本身是 1 米一级的窄槽，
+  // 直接接台面会形成 2 米高的侧壁，渲染成一排孤立的崖顶格。
+  // 沿坡道向外放四级，台面在入口处变成一圈缓坡，不再有侧壁。
+  {
+    const lowered = new Uint8Array(cells);
+    let frontier: number[] = [];
+    for (let index = 0; index < cells; index += 1) {
+      if (surface[index] === SURFACE_ROAD) frontier.push(index);
+    }
+    for (let ring = 1; ring <= 4 && frontier.length > 0; ring += 1) {
+      const next: number[] = [];
+      for (const index of frontier) {
+        const cx = index % cols;
+        const cz = Math.floor(index / cols);
+        const base = heights[index];
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const nx = cx + dx;
+          const nz = cz + dz;
+          if (nx < 0 || nz < 0 || nx >= cols || nz >= rows) continue;
+          const other = nz * cols + nx;
+          if (lowered[other]) continue;
+          if (!plateauMask[other]) continue;
+          const target = Math.max(0, base - 70 * ring);
+          if (heights[other] > target) heights[other] = target;
+          lowered[other] = 1;
+          next.push(other);
+        }
+      }
+      frontier = next;
     }
   }
 

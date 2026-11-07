@@ -50,23 +50,24 @@ describe("cliffs", () => {
     }
   });
 
-  it("carves ramps through cliffs", () => {
+  it("blends road shoulders into the plateau", () => {
     const { grid, heights, surfaces } = gridOf(highland);
-    let rampCells = 0;
+    let raisedEdges = 0;
+    let hardEdges = 0;
     for (let z = 1; z < grid.height - 1; z += 1) {
       for (let x = 1; x < grid.width - 1; x += 1) {
         const index = z * grid.width + x;
         if (surfaces[index] !== 3) continue;
         for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
           const neighbor = (z + dz) * grid.width + (x + dx);
-          if (Math.abs(heights[neighbor] - heights[index]) >= 120 && heights[neighbor] > heights[index]) {
-            rampCells += 1;
-            break;
-          }
+          const rise = heights[neighbor] - heights[index];
+          if (rise > 0) raisedEdges += 1;
+          if (rise >= 120) hardEdges += 1;
         }
       }
     }
-    expect(rampCells).toBeGreaterThan(0);
+    expect(raisedEdges).toBeGreaterThan(0);
+    expect(hardEdges).toBe(0);
   });
 
   it("keeps straight-line distances on open ground", () => {
