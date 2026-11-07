@@ -143,6 +143,18 @@ describe("grid simulation", () => {
     expect(next.squads.some((squad) => squad.owner === 2)).toBe(true);
   });
 
+  it("grid 粮仓有驻军时也能派兵", () => {
+    const map = gridMap();
+    map.cities[0].kind = "granary";
+    map.cities[0].pop = 5;
+    let state = createGame(map, 1, TIMED_RULES);
+    const result = step(state, [{ type: "send", from: "a", to: "b" }]);
+    state = result.state;
+    expect(result.rejected).toHaveLength(0);
+    expect(state.squads[0]?.count).toBe(2);
+    expect(state.cities.find((city) => city.id === "a")?.pop).toBe(3);
+  });
+
   it("grid 强行军继续走，警戒方停下交战", () => {
     const map = { ...gridMap(), squadCombat: true };
     let state = step(createGame(map, 1, TIMED_RULES), [

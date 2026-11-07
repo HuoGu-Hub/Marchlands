@@ -1,7 +1,8 @@
 import type { NavGrid } from "@marchlands/nav";
 import { GRID_CAPTURE_RADIUS_CM, GRID_UNIT_RADIUS_CM, createUnitNavGrid } from "./grid";
 import { blockedTransit } from "./routes";
-import { isProductionSiteKind, siteUnitKind } from "./types";
+import { canDispatchFrom } from "./rules";
+import { siteUnitKind } from "./types";
 import type { CityId, CityState, SimState } from "./types";
 
 export interface GridReach {
@@ -22,9 +23,9 @@ const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
   [-1, -1],
 ];
 
-/** 与 send 指令一致：只有己方产兵据点、且守军不少于两人时才能派兵。 */
+/** 与 send 指令一致：己方据点有足够驻军即可派兵，粮仓/驻兵点不要求产兵。 */
 function canSendFrom(city: CityState | undefined): city is CityState {
-  return city !== undefined && city.owner !== 0 && isProductionSiteKind(city.kind) && city.pop >= 2;
+  return city !== undefined && canDispatchFrom(city);
 }
 
 /**

@@ -1,4 +1,5 @@
-import type { LevelRule, Ruleset } from "./types";
+import { isProductionSiteKind } from "./types";
+import type { CityState, LevelRule, Ruleset } from "./types";
 
 export const DEFAULT_RULESET: Ruleset = {
   ruleset: "1",
@@ -40,6 +41,20 @@ export function levelRule(rules: Ruleset, level: number): LevelRule {
 
 export function sendPercent(rules: Ruleset): number {
   return Math.round(rules.sendRatio * 100);
+}
+
+/**
+ * 能否从该据点派兵。产兵据点仍要至少 2 人；
+ * 粮仓与驻兵点靠外部增援获得驻军，有 1 人就能把驻军派出去。
+ */
+export function canDispatchFrom(city: CityState): boolean {
+  if (city.owner === 0) return false;
+  return city.pop >= (isProductionSiteKind(city.kind) ? 2 : 1);
+}
+
+/** 实际派出人数：当前驻军的 50%，至少 1，且绝不超过剩余驻军。 */
+export function dispatchCount(city: CityState, rules: Ruleset): number {
+  return Math.min(city.pop, Math.max(1, Math.floor((city.pop * sendPercent(rules)) / 100)));
 }
 
 export function speedPerTick(rules: Ruleset): number {

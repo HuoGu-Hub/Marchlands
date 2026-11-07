@@ -17,10 +17,11 @@ import { isProductionSiteKind, siteUnitKind } from "./types";
 import { unitProfile } from "./units";
 import {
   DEFAULT_RULESET,
+  canDispatchFrom,
+  dispatchCount,
   granarySpeedMilli,
   granaryStrengthMilli,
   levelRule,
-  sendPercent,
   travelTicks,
 } from "./rules";
 import type {
@@ -297,8 +298,7 @@ function applyCommand(
     if (!to) return reject(rejected, command, "unknown_target");
     if (from.id === to.id) return reject(rejected, command, "same_city");
     if (from.owner === 0) return reject(rejected, command, "not_owned");
-    if (!isProductionSiteKind(from.kind)) return reject(rejected, command, "not_producer");
-    if (from.pop < 2) return reject(rejected, command, "too_few_troops");
+    if (!canDispatchFrom(from)) return reject(rejected, command, "too_few_troops");
     if (command.stance !== undefined && command.stance !== "forced" && command.stance !== "guard") {
       return reject(rejected, command, "invalid_stance");
     }
@@ -311,7 +311,7 @@ function applyCommand(
     const route = state.graph.route(from.id, to.id, blockedTransit(state, from.owner, to.id));
     if (!route) return reject(rejected, command, "no_route");
 
-    const count = Math.max(1, Math.floor((from.pop * sendPercent(state.rules)) / 100));
+    const count = dispatchCount(from, state.rules);
     from.pop -= count;
 
     const hasGranary = playerHasGranary(state, from.owner);
@@ -363,8 +363,7 @@ function applyCommand(
     const from = findCity(state, command.from);
     if (!from) return reject(rejected, command, "unknown_city");
     if (from.owner === 0) return reject(rejected, command, "not_owned");
-    if (!isProductionSiteKind(from.kind)) return reject(rejected, command, "not_producer");
-    if (from.pop < 2) return reject(rejected, command, "too_few_troops");
+    if (!canDispatchFrom(from)) return reject(rejected, command, "too_few_troops");
     if (!Number.isFinite(command.xCm) || !Number.isFinite(command.zCm)) {
       return reject(rejected, command, "no_route");
     }
@@ -750,7 +749,7 @@ function spawnGridSquad(
   points: Array<[number, number]>,
   events: SimEvent[],
 ): void {
-  const count = Math.max(1, Math.floor((from.pop * sendPercent(state.rules)) / 100));
+  const count = dispatchCount(from, state.rules);
   from.pop -= count;
 
   const hasGranary = playerHasGranary(state, from.owner);

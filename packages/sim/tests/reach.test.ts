@@ -43,9 +43,21 @@ describe("sendReachableTargets", () => {
     expect(sendReachableTargets(state, "a")).toEqual([]);
   });
 
-  it("reports no target from a non-producing site", () => {
+  it("lets a non-producing site dispatch when it has a garrison", () => {
     const map = friendly({
-      cities: THREE_CITY_MAP.cities.map((city) => (city.id === "a" ? { ...city, kind: "granary" as const } : city)),
+      cities: THREE_CITY_MAP.cities.map((city) =>
+        city.id === "a" ? { ...city, kind: "granary" as const, pop: 5 } : city,
+      ),
+    });
+    const state = createGame(map, 1);
+    expect(sendReachableTargets(state, "a")).toEqual(["b"]);
+  });
+
+  it("reports no target from an empty non-producing site", () => {
+    const map = friendly({
+      cities: THREE_CITY_MAP.cities.map((city) =>
+        city.id === "a" ? { ...city, kind: "granary" as const, pop: 0 } : city,
+      ),
     });
     const state = createGame(map, 1);
     expect(sendReachableTargets(state, "a")).toEqual([]);

@@ -14,6 +14,7 @@ import type {
   SquadState,
 } from "@marchlands/sim";
 import {
+  canDispatchFrom,
   createUnitNavGrid,
   isProductionSiteKind,
   planGridRoute,
@@ -461,7 +462,10 @@ export class GameSession {
   /** 标注当前选择可以派兵抵达的据点与网格。 */
   private refreshReach(force = false): void {
     const signature = `${this.selected.join(",")}|${this.state.cities
-      .map((city) => `${city.id}:${city.owner}:${city.transit ?? ""}:${city.pop >= 2 ? 1 : 0}`)
+      .map(
+        (city) =>
+          `${city.id}:${city.owner}:${city.transit ?? ""}:${canDispatchFrom(city) ? 1 : 0}`,
+      )
       .join(",")}`;
     if (!force && signature === this.reachKey) return;
     this.reachKey = signature;
@@ -524,12 +528,8 @@ export class GameSession {
     for (const id of sources) {
       const from = this.getCity(id);
       if (!from || from.owner !== 1) continue;
-      if (!isProductionSiteKind(from.kind)) {
-        if (!problem) problem = `${id} 不产兵`;
-        continue;
-      }
-      if (from.pop < 2) {
-        if (!problem) problem = `${id} 守军不足两人`;
+      if (!canDispatchFrom(from)) {
+        if (!problem) problem = `${id} 守军不足`;
         continue;
       }
       if (!this.reachCities(id).includes(to)) {
@@ -690,12 +690,8 @@ export class GameSession {
       for (const id of group.sources) {
         const from = this.getCity(id);
         if (!from || from.owner !== 1) continue;
-        if (!isProductionSiteKind(from.kind)) {
-          if (!problem) problem = `${id} 不产兵`;
-          continue;
-        }
-        if (from.pop < 2) {
-          if (!problem) problem = `${id} 守军不足两人`;
+        if (!canDispatchFrom(from)) {
+          if (!problem) problem = `${id} 守军不足`;
           continue;
         }
         if (group.cell) {
@@ -1557,12 +1553,8 @@ export class GameSession {
     for (const id of sources) {
       const from = this.getCity(id);
       if (!from || from.owner !== 1) continue;
-      if (!isProductionSiteKind(from.kind)) {
-        if (!problem) problem = `${id} 不产兵`;
-        continue;
-      }
-      if (from.pop < 2) {
-        if (!problem) problem = `${id} 守军不足两人`;
+      if (!canDispatchFrom(from)) {
+        if (!problem) problem = `${id} 守军不足`;
         continue;
       }
       const reach = this.gridReach.get(id) ?? reachableGridCells(this.state, id);
@@ -1593,8 +1585,8 @@ export class GameSession {
     const nav = this.state.nav;
     const city = this.getCity(this.selected[0]);
     if (!nav || !city) return;
-    // 不产兵的据点派不出兵团，也就不画实际路线。
-    if (!isProductionSiteKind(city.kind)) {
+    // 没有驻军的据点派不出兵团，也就不画实际路线。
+    if (!canDispatchFrom(city)) {
       this.scene.setPreviewPath(null);
       return;
     }

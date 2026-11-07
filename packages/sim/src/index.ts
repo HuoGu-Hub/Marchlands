@@ -46,6 +46,8 @@ export type { AiController, AiTuning } from "./ai";
 export {
   DEFAULT_RULESET,
   arrivalTicks,
+  canDispatchFrom,
+  dispatchCount,
   granarySpeedMilli,
   granaryStrengthMilli,
   levelRule,
