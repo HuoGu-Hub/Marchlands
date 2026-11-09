@@ -1424,3 +1424,22 @@ test("single click previews the actual grid route", async ({ page }) => {
     .toBeGreaterThan(2);
 });
 
+
+test("inspects a neutral building without operating it", async ({ page }) => {
+  await openGame(page, "frontier01");
+  const target = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } }).__mlDebug
+        ?.projectCity("c2"),
+  );
+  if (!target) throw new Error("c2 has no screen position");
+  await page.mouse.click(target.x, target.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
+  await expect(page.locator("#city-panel")).toHaveClass(/inspect/, { timeout: 5000 });
+  await expect(page.locator("#city-name")).toContainText("c2");
+  await expect(page.locator("#city-multi")).toHaveText("仅查看");
+  await expect(page.locator("#city-upgrade")).toBeDisabled();
+  await expect(page.locator("#city-transit")).toBeDisabled();
+  await expect(page.locator("#city-dispatch-range")).toBeDisabled();
+  await expect(page.locator("#city-stance [data-stance]").first()).toBeDisabled();
+});

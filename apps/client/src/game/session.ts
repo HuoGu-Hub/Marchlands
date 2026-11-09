@@ -104,6 +104,9 @@ export class GameSession {
   private state: SimState;
   private simMap: MapDef;
   private selected: CityId[] = [];
+  private inspected: CityId | null = null;
+  private inspectTimer: number | null = null;
+  private inspectTimerCity: CityId | null = null;
   private selectedSquad: string | null = null;
   private dispatchStance: SquadStance = "guard";
   /** 全局派兵比例；所有己方建筑共用，默认 50%。 */
@@ -324,6 +327,39 @@ export class GameSession {
     this.announceCity(city);
   }
 
+  /** 非己方建筑只用于查看；清空指挥选择，不显示可达范围，也不允许操作。 */
+  private inspect(id: CityId): void {
+    const city = this.getCity(id);
+    if (!city || city.owner === 1) return;
+    this.cancelInspectTimer();
+    this.selectedSquad = null;
+    this.scene.setSelectedSquad(null);
+    this.selected = [];
+    this.inspected = id;
+    this.scene.setSelected([id]);
+    this.refreshReach(true);
+    this.setSquadPanelVisible(false);
+    this.options.onSelect(id, 1);
+  }
+
+  /** 延迟查看，给双击派兵留出时间；双击会取消这次查看。 */
+  private scheduleInspect(id: CityId): void {
+    this.cancelInspectTimer();
+    this.inspectTimerCity = id;
+    this.inspectTimer = window.setTimeout(() => {
+      const target = this.inspectTimerCity;
+      this.inspectTimer = null;
+      this.inspectTimerCity = null;
+      if (target) this.inspect(target);
+    }, 320);
+  }
+
+  private cancelInspectTimer(): void {
+    if (this.inspectTimer !== null) window.clearTimeout(this.inspectTimer);
+    this.inspectTimer = null;
+    this.inspectTimerCity = null;
+  }
+
   /** 批量指定：把据点加入或移出当前编组；已分配到目标的据点会先退回编组。 */
   togglePending(id: CityId): void {
     const city = this.getCity(id);
@@ -358,7 +394,7 @@ export class GameSession {
   /** 把主选建筑上的滑块数量换算成全局比例；后续所有己方建筑共用。 */
   setDispatchAmount(value: number): void {
     const city = this.primary ? this.getCity(this.primary) : null;
-    if (!city || city.pop <= 0 || !Number.isFinite(value)) return;
+    if (!city || city.owner !== 1 || city.pop <= 0 || !Number.isFinite(value)) return;
     const amount = Math.max(1, Math.min(city.pop, Math.floor(value)));
     this.dispatchRatio = amount / city.pop;
     saveDispatchRatio(this.dispatchRatio);
@@ -480,6 +516,8 @@ export class GameSession {
   }
 
   private setSelection(ids: CityId[]): void {
+    this.cancelInspectTimer();
+    this.inspected = null;
     this.selected = ids;
     // 选择一变，上一条路线预览就不再对应当前编组。
     this.scene.setPreviewPath(null);
@@ -838,6 +876,7 @@ export class GameSession {
     cancelAnimationFrame(this.raf);
     this.cancelDragPreview();
     window.clearTimeout(this.introHideTimer);
+    this.cancelInspectTimer();
     if (this.introRoot) {
       this.introRoot.hidden = true;
       this.introRoot.classList.remove("on", "done", "preparing");
@@ -1044,7 +1083,19 @@ export class GameSession {
     this.handleEvents();
     this.updateHud();
     if (this.selectedSquad) this.syncSquadPanel();
-    if (this.selected.length > 0) this.options.onSelect(this.primary, this.selected.length);
+    if (this.inspected) {
+      const city = this.getCity(this.inspected);
+      if (!city) {
+        this.inspected = null;
+        this.scene.setSelected([]);
+        this.options.onSelect(null, 0);
+      } else if (city.owner === 1) {
+        // 查看中的建筑被己方占领后转为正常选择，面板恢复操作。
+        this.select(city.id);
+      } else {
+        this.options.onSelect(city.id, 1);
+      }
+    } else if (this.selected.length > 0) this.options.onSelect(this.primary, this.selected.length);
     else if (lostSelection) this.options.onSelect(null, 0);
     if (lostSelection && this.multiSelect) this.updatePlanUi();
 
@@ -1801,8 +1852,15 @@ export class GameSession {
     }
 
     const nearCity = nearest ? this.getCity(nearest.id) : undefined;
-    if (nearest && nearCity && nearCity.owner === 1 && nearest.distance <= 72) {
-      this.clickCity(nearest.id);
+    if (nearest && nearCity && nearest.distance <= 72) {
+      if (nearCity.owner === 1) {
+        this.cancelInspectTimer();
+        this.clickCity(nearest.id);
+        return;
+      }
+      // 非己方建筑只查看信息；有己方选择时延迟，避免抢掉双击派兵。
+      if (this.selected.length > 0) this.scheduleInspect(nearest.id);
+      else this.inspect(nearest.id);
       return;
     }
 
@@ -1810,12 +1868,6 @@ export class GameSession {
     // 选中一座己方建筑时，单击目的地会先画出这张行走路线预览。
     const cell = this.gridCellAt(event.clientX, event.clientY);
     if (this.selected.length === 1) {
-      // 和双击派兵的判定顺序一致：先认据点，再认网格。
-      if (cityId) {
-        const target = this.getCity(cityId);
-        if (target) this.previewRouteTo(target.pos[0] * 10, target.pos[1] * 10, target.id);
-        return;
-      }
       if (cell) {
         this.previewRouteTo(cell.xCm, cell.zCm);
         return;
@@ -1829,6 +1881,8 @@ export class GameSession {
 
   private readonly onDoubleClick = (event: MouseEvent): void => {
     if (this.suppressClick) return;
+    // 双击优先派兵，取消单击触发的延迟查看。
+    this.cancelInspectTimer();
     if (this.paused || this.finished || this.multiSelect || this.selectedSquad) return;
     if (this.selected.length === 0) return;
     const target = this.dispatchTargetAt(event.clientX, event.clientY);

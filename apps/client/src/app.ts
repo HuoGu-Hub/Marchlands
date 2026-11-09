@@ -1379,17 +1379,20 @@ export class App {
   private updateCityPanel(cityId: string | null, count = 0): void {
     const panel = this.el("city-panel");
     const multi = this.el("city-multi");
-    multi.textContent = count > 1 ? `已选 ${count} 座` : "";
     if (!cityId) {
-      panel.classList.remove("on");
+      multi.textContent = "";
+      panel.classList.remove("on", "inspect");
       return;
     }
     const city = this.session?.getCity(cityId);
     if (!city) {
-      panel.classList.remove("on");
+      panel.classList.remove("on", "inspect");
       return;
     }
+    const inspectOnly = city.owner !== 1;
     panel.classList.add("on");
+    panel.classList.toggle("inspect", inspectOnly);
+    multi.textContent = inspectOnly ? "仅查看" : count > 1 ? `已选 ${count} 座` : "";
     const kindLabel = siteKindLabel(city.kind);
     this.el("city-name").textContent = `${city.id} · ${kindLabel}`;
     this.el("city-level").textContent = `LV.${city.level}`;
@@ -1405,10 +1408,10 @@ export class App {
       this.session?.getDispatchAmount(city) ?? Math.min(max, Math.max(1, Math.floor(city.pop / 2)));
     range.max = String(max);
     range.value = String(amount);
-    range.disabled = city.pop <= 0;
+    range.disabled = inspectOnly || city.pop <= 0;
     this.el("city-dispatch-count").textContent = String(amount);
     this.el("city-dispatch-max").textContent = `/${max}`;
-    this.el("city-dispatch-label").textContent = count > 1 ? "每座派兵" : "派兵";
+    this.el("city-dispatch-label").textContent = inspectOnly ? "不可操作" : count > 1 ? "每座派兵" : "派兵";
     const accent = this.el("city-accent");
     accent.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#8d8778";
     const fill = this.el("city-pop-fill");
@@ -1422,9 +1425,12 @@ export class App {
     const transit = this.el("city-transit") as HTMLButtonElement;
     const release = city.transit === "open";
     transit.textContent = release ? "通行 · 放行" : "通行 · 拦截";
-    transit.disabled = city.owner === 0;
+    transit.disabled = inspectOnly;
     const button = this.el("city-upgrade") as HTMLButtonElement;
-    if (!isProductionSiteKind(city.kind)) {
+    if (inspectOnly) {
+      button.textContent = "仅查看";
+      button.disabled = true;
+    } else if (!isProductionSiteKind(city.kind)) {
       button.textContent = "不可升级";
       button.disabled = true;
     } else if (!isUpgradableSiteKind(city.kind)) {
@@ -1434,6 +1440,11 @@ export class App {
       button.textContent = city.level >= 3 ? "已满级" : `升级 · ${cost}`;
       button.disabled = city.level >= 3 || city.pop < cost;
     }
+    this.el("city-stance")
+      .querySelectorAll<HTMLButtonElement>("[data-stance]")
+      .forEach((stanceButton) => {
+        stanceButton.disabled = inspectOnly;
+      });
   }
 
   private formatTime(ticks: number): string {

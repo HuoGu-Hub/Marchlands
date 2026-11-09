@@ -856,6 +856,25 @@ body.preview-mode #preview-canvas {
   display: grid;
 }
 
+.city-panel.inspect {
+  border-color: rgba(236, 230, 214, 0.2);
+}
+
+.city-panel.inspect .city-dispatch,
+.city-panel.inspect .city-actions .btn {
+  opacity: 0.55;
+}
+
+.stance-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stance-pill:disabled:hover {
+  border-color: rgba(214, 178, 106, 0.28);
+  color: rgba(236, 230, 214, 0.62);
+}
+
 .city-panel.on ~ .hint {
   opacity: 0;
 }
