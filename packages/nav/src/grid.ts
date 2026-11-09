@@ -216,6 +216,26 @@ export class NavGrid {
     return mask;
   }
 
+  /**
+   * 派生一张只多挡几个格子的网格。
+   * 地形、坡度和地表数组只读共享，不再重新解码或扫描整张地图；
+   * 用于同一张地图按阵营、目标城市派生，避免每次派兵重建 NavGrid。
+   */
+  withBlockedCells(cells: readonly number[]): NavGrid {
+    const blocked = this.blockedMask.slice();
+    const override = this.overrideMask.slice();
+    for (const cell of cells) {
+      if (cell < 0 || cell >= this.cellCount) continue;
+      blocked[cell] = 1;
+      override[cell] = 0;
+    }
+    return Object.assign(Object.create(NavGrid.prototype), this, {
+      blockedMask: blocked,
+      overrideMask: override,
+      clearanceCache: new Map<number, Uint8Array>(),
+    }) as NavGrid;
+  }
+
   stepSlopePermille(from: number, to: number): number {
     const delta = this.heights[to] - this.heights[from];
     const diagonal = this.cellX(from) !== this.cellX(to) && this.cellZ(from) !== this.cellZ(to);

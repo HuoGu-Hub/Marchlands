@@ -117,6 +117,32 @@ describe("nav grid pathfinding", () => {
     }
   });
 
+  it("derives a blocked variant without rebuilding or mutating the base", () => {
+    const grid = makeGrid({ width: 5, height: 5 });
+    const blocked = grid.withBlockedCells([grid.index(2, 2)]);
+    expect(grid.isWalkable(grid.index(2, 2))).toBe(true);
+    expect(blocked.isWalkable(grid.index(2, 2))).toBe(false);
+    expect(blocked.isBlocked(grid.index(2, 2))).toBe(true);
+    expect(plan(blocked, [0, 2], [4, 2], { smooth: false })).not.toBeNull();
+    expect(grid.isWalkable(grid.index(2, 2))).toBe(true);
+  });
+
+  it("reuses a reverse distance field for repeated destinations", () => {
+    const grid = makeGrid({ width: 9, height: 9 });
+    const goal = grid.index(4, 4);
+    let usedField = false;
+    for (let x = 0; x < 9; x += 1) {
+      const start = grid.index(x, 0);
+      const cached = findCellPath(grid, start, goal);
+      const direct = findCellPath(grid, start, goal, { cache: false });
+      expect(cached?.cost).toBe(direct?.cost);
+      expect(cached?.startCell).toBe(start);
+      expect(cached?.goalCell).toBe(goal);
+      if (cached?.expanded === 0) usedField = true;
+    }
+    expect(usedField).toBe(true);
+  });
+
   it("inflates obstacles by unit radius", () => {
     const blocked: Array<[number, number]> = [];
     for (let z = 0; z < 5; z += 1) {

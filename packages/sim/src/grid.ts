@@ -56,25 +56,24 @@ function siteCell(map: MapDef, site: CityState): number {
   return z * grid.width + x;
 }
 
-export function createUnitNavGrid(
-  map: MapDef,
-  cities: readonly CityState[],
-  owner: number,
-  kind: UnitKind,
-  destination?: string,
-): NavGrid | null {
+/** 同一兵种的地形底图：只做地表过滤，不含据点阻挡。 */
+const unitNavBaseCache = new WeakMap<object, Map<string, NavGrid>>();
+const UNIT_NAV_BASE_LIMIT = 12;
+
+function unitNavBase(map: MapDef, kind: UnitKind): NavGrid | null {
   if (!map.grid) return null;
   const grid = map.grid;
   const count = grid.width * grid.height;
   const profile = unitProfile(kind);
-  let cache = unitNavCache.get(grid);
+  let cache = unitNavBaseCache.get(grid);
   if (!cache) {
     cache = new Map<string, NavGrid>();
-    unitNavCache.set(grid, cache);
+    unitNavBaseCache.set(grid, cache);
   }
-  const cacheKey = `${owner}|${kind}|${destination ?? ""}|${map.climbCm ?? ""}|${cityBlockSignature(cities)}`;
-  const cached = cache.get(cacheKey);
+  const baseKey = `${kind}|${map.climbCm ?? ""}`;
+  const cached = cache.get(baseKey);
   if (cached) return cached;
+
   const blocked = decodeBitmapBase64(grid.blocked, count);
   const override = decodeBitmapBase64(grid.walkableOverride, count);
   const surfaces = decodeUint8Base64(grid.surface, count);
@@ -87,17 +86,7 @@ export function createUnitNavGrid(
       override[index] = 1;
     }
   }
-  for (const city of cities) {
-    if (city.owner === owner) continue;
-    if (city.id === destination) continue;
-    if (city.transit === "open") continue;
-    const cell = siteCell(map, city);
-    if (cell >= 0) {
-      blocked[cell] = 1;
-      override[cell] = 0;
-    }
-  }
-  const nav = new NavGrid({
+  const base = new NavGrid({
     cellSizeCm: grid.cellSizeCm,
     width: grid.width,
     height: grid.height,
@@ -112,6 +101,44 @@ export function createUnitNavGrid(
         : profile.maxSlopePermille,
     },
   });
+  if (cache.size >= UNIT_NAV_BASE_LIMIT) {
+    const oldest = cache.keys().next();
+    if (!oldest.done) cache.delete(oldest.value);
+  }
+  cache.set(baseKey, base);
+  return base;
+}
+
+export function createUnitNavGrid(
+  map: MapDef,
+  cities: readonly CityState[],
+  owner: number,
+  kind: UnitKind,
+  destination?: string,
+): NavGrid | null {
+  if (!map.grid) return null;
+  const grid = map.grid;
+  const count = grid.width * grid.height;
+  let cache = unitNavCache.get(grid);
+  if (!cache) {
+    cache = new Map<string, NavGrid>();
+    unitNavCache.set(grid, cache);
+  }
+  const cacheKey = `${owner}|${kind}|${destination ?? ""}|${map.climbCm ?? ""}|${cityBlockSignature(cities)}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const base = unitNavBase(map, kind);
+  if (!base) return null;
+  const blockedCells: number[] = [];
+  for (const city of cities) {
+    if (city.owner === owner) continue;
+    if (city.id === destination) continue;
+    if (city.transit === "open") continue;
+    const cell = siteCell(map, city);
+    if (cell >= 0) blockedCells.push(cell);
+  }
+  const nav = blockedCells.length > 0 ? base.withBlockedCells(blockedCells) : base;
   if (cache.size >= unitNavCacheLimit(count)) {
     const oldest = cache.keys().next();
     if (!oldest.done) cache.delete(oldest.value);

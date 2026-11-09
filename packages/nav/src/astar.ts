@@ -26,8 +26,15 @@ interface FlowField {
 const flowCaches = new WeakMap<NavGrid, Map<string, FlowField>>();
 const flowRequests = new WeakMap<NavGrid, Map<string, number>>();
 const FLOW_LIMIT = 8;
-/** 同一个目标至少被查询几次后才建距离场；避免一次性路径反而多付铺图成本。 */
-const FLOW_REQUEST_THRESHOLD = 4;
+/**
+ * 同一个目标至少被查询几次后才建距离场；避免一次性路径反而多付铺图成本。
+ * 大图铺满整张图的代价更高，需要更多次查询才划算。
+ */
+function flowRequestThreshold(cellCount: number): number {
+  if (cellCount > 100_000) return 10;
+  if (cellCount > 20_000) return 6;
+  return 4;
+}
 
 export interface SearchOptions {
   readonly radiusCm?: number;
@@ -317,8 +324,8 @@ export function findCellPath(
     if (cached !== undefined) return cached;
   }
 
-  // 同一个目标被多个起点查询时，从第二次开始用反向距离场，后续起点
-  // 只需沿父指针回溯，不再重复展开 A*。
+  // 同一个目标被多个起点反复查询，达到阈值后改用反向距离场；
+  // 后续起点只需沿父指针回溯，不再重复展开 A*。
   if (options.cache !== false && options.maxExpanded === undefined) {
     const flowKey = radius + ":" + goalCell;
     let requests = flowRequests.get(grid);
@@ -328,7 +335,7 @@ export function findCellPath(
     }
     const nextCount = (requests.get(flowKey) ?? 0) + 1;
     requests.set(flowKey, nextCount);
-    if (nextCount >= FLOW_REQUEST_THRESHOLD) {
+    if (nextCount >= flowRequestThreshold(grid.cellCount)) {
       const field = flowField(grid, goalCell, coverage, flowKey);
       if (field) {
         const flowPath = pathFromFlow(field, startCell, goalCell);
