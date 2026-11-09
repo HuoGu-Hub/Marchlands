@@ -1389,12 +1389,14 @@ export class EditorNext {
       const x1 = x0 + cellSize;
       const z0 = cz * cellSize - halfZ;
       const z1 = z0 + cellSize;
+      // 一片贴片用一个高度：按格角采地形的话，崖边的格子会被拉成爬墙的竖三角。
+      const y = ground((x0 + x1) / 2, (z0 + z1) / 2);
       const base = positions.length / 3;
       positions.push(
-        x0 / 10, ground(x0, z0), z0 / 10,
-        x1 / 10, ground(x1, z0), z0 / 10,
-        x0 / 10, ground(x0, z1), z1 / 10,
-        x1 / 10, ground(x1, z1), z1 / 10,
+        x0 / 10, y, z0 / 10,
+        x1 / 10, y, z0 / 10,
+        x0 / 10, y, z1 / 10,
+        x1 / 10, y, z1 / 10,
       );
       const color = index === start ? originColor : reachableColor;
       for (let corner = 0; corner < 4; corner += 1) colors.push(color[0], color[1], color[2]);

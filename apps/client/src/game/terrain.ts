@@ -239,6 +239,8 @@ export interface Terrain {
    * 返回 false 表示当前不是网格地图。
    */
   refreshHeights(map: MapDef, region?: GridCellRect): boolean;
+  /** 写每格的可达标记：0 不可达，1 可走，2 可到建筑占地；null 清空。 */
+  setReachCells(cells: Uint8Array | null): void;
   bounds: TerrainBounds;
   island: IslandMetrics;
   islandGroup: THREE.Group;
@@ -733,7 +735,11 @@ export function buildTerrain(
     // 只复用贴图时，旧材质不能再声明这张贴图的所有权。
     previousPaint.material.userData.ownedTextures = undefined;
   }
-  const paintedGround = reusedMaterial ?? (paintedTexture ? createTerrainGroundMaterial(paintedTexture, style) : null);
+  const reachOriginX = gridPlatform?.minX ?? 0;
+  const reachOriginZ = gridPlatform?.minZ ?? 0;
+  const paintedGround =
+    reusedMaterial ??
+    (paintedTexture ? createTerrainGroundMaterial(paintedTexture, style, [reachOriginX, reachOriginZ]) : null);
   if (paintedGround && paintedTexture && reusedMaterial === null) {
     paintedGround.userData.ownedTextures = [paintedTexture];
   }
@@ -756,6 +762,28 @@ export function buildTerrain(
     const vertexRect = gridSurface.refresh((x, z) => heights[z * grid.width + x], region);
     updateGridTerrainRegion(gridMesh, gridSurface, vertexRect);
     return true;
+  };
+  const setReachCells = (cells: Uint8Array | null): void => {
+    if (!gridSurface || !gridMesh) return;
+    const attribute = gridMesh.geometry.getAttribute("aReach") as THREE.BufferAttribute | undefined;
+    if (!attribute) return;
+    const values = attribute.array as Float32Array;
+    if (!cells) {
+      values.fill(0);
+      attribute.needsUpdate = true;
+      return;
+    }
+    const positions = gridSurface.positions;
+    const width = gridSurface.width;
+    const height = gridSurface.height;
+    const cellSize = gridSurface.cellSizeM;
+    for (let index = 0; index < values.length; index += 1) {
+      const x = Math.floor((positions[index * 3] - reachOriginX) / cellSize);
+      const z = Math.floor((positions[index * 3 + 2] - reachOriginZ) / cellSize);
+      values[index] =
+        x < 0 || z < 0 || x >= width || z >= height ? 0 : cells[z * width + x];
+    }
+    attribute.needsUpdate = true;
   };
 
   for (let index = 0; index < platforms.length; index += 1) {
@@ -852,6 +880,7 @@ export function buildTerrain(
     setNavPreview,
     groundPaint: { key: groundKey, texture: paintedTexture, material: paintedGround },
     refreshHeights,
+    setReachCells,
     bounds,
     island,
     islandGroup,

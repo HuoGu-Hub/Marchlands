@@ -89,10 +89,14 @@ uniform float uTerrainAlbedoStrength;
 uniform float uTerrainRockLow;
 uniform float uTerrainRockHigh;
 uniform float uTerrainRockTint;
+uniform vec3 uTerrainReachLight;
+uniform vec3 uTerrainReachDark;
+uniform vec2 uTerrainReachOrigin;
 
 varying vec3 vTerrainWorld;
 varying vec3 vTerrainNormalW;
 varying float vTerrainDither;
+varying float vTerrainReach;
 
 // 三平面权重：陡面削弱顶投影，否则竖直面会吃到被拉长的俯视图，拉出一条条竖纹。
 vec3 terrainWeights( vec3 n ) {
@@ -149,6 +153,16 @@ vec3 terrainRockColor = mix(
   0.6
 );
 diffuseColor.rgb = mix( diffuseColor.rgb, terrainRockColor, terrainRock );
+
+// 可达范围直接染在地形上：陡面淡出，崖壁不会被整片刷绿。
+if ( vTerrainReach > 0.01 ) {
+  float reachFade = smoothstep( 0.55, 0.82, terrainBaseNormal.y );
+  vec3 reachColor = mix( uTerrainReachLight, uTerrainReachDark, step( 1.5, vTerrainReach ) );
+  diffuseColor.rgb = mix( diffuseColor.rgb, reachColor, 0.55 * reachFade );
+  vec2 reachCell = abs( fract( vTerrainWorld.xz - uTerrainReachOrigin ) - 0.5 );
+  float reachLine = smoothstep( 0.40, 0.49, max( reachCell.x, reachCell.y ) );
+  diffuseColor.rgb *= 1.0 - reachLine * 0.18 * reachFade;
+}
 `;
 
 const FRAGMENT_NORMAL = `
@@ -165,9 +179,11 @@ normal = normalize( ( viewMatrix * vec4( terrainBent, 0.0 ) ).xyz );
 
 const VERTEX_PARS = `
 attribute float aRockDither;
+attribute float aReach;
 varying vec3 vTerrainWorld;
 varying vec3 vTerrainNormalW;
 varying float vTerrainDither;
+varying float vTerrainReach;
 `;
 
 interface DetailMaterialOptions {
@@ -183,6 +199,8 @@ interface DetailMaterialOptions {
   readonly albedoStrength: number;
   /** 陡坡上岩石色替换烘焙色的力度，1 = 完全用岩石色。 */
   readonly rockTint: number;
+  /** 网格左下角世界坐标，可达高亮的格线按它对齐。 */
+  readonly reachOrigin: readonly [number, number];
 }
 
 function createDetailMaterial(options: DetailMaterialOptions): THREE.MeshStandardMaterial {
@@ -216,6 +234,9 @@ function createDetailMaterial(options: DetailMaterialOptions): THREE.MeshStandar
     shader.uniforms.uTerrainRockLow = { value: 0.55 };
     shader.uniforms.uTerrainRockHigh = { value: 0.88 };
     shader.uniforms.uTerrainRockTint = { value: options.rockTint };
+    shader.uniforms.uTerrainReachLight = { value: new THREE.Color(0x4fd985) };
+    shader.uniforms.uTerrainReachDark = { value: new THREE.Color(0x1f7a35) };
+    shader.uniforms.uTerrainReachOrigin = { value: new THREE.Vector2(options.reachOrigin[0], options.reachOrigin[1]) };
 
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>\n${VERTEX_PARS}`)
@@ -225,7 +246,7 @@ function createDetailMaterial(options: DetailMaterialOptions): THREE.MeshStandar
       )
       .replace(
         "#include <begin_vertex>",
-        "#include <begin_vertex>\nvTerrainWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\nvTerrainDither = aRockDither;",
+        "#include <begin_vertex>\nvTerrainWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\nvTerrainDither = aRockDither;\nvTerrainReach = aReach;",
       );
 
     shader.fragmentShader = shader.fragmentShader
@@ -240,6 +261,7 @@ function createDetailMaterial(options: DetailMaterialOptions): THREE.MeshStandar
 export function createTerrainGroundMaterial(
   macro: THREE.Texture,
   style: string,
+  reachOrigin: readonly [number, number] = [0, 0],
 ): THREE.MeshStandardMaterial {
   const detail = STYLE_DETAIL[style] ?? STYLE_DETAIL.frontier;
   return createDetailMaterial({
@@ -254,5 +276,6 @@ export function createTerrainGroundMaterial(
     normalStrength: 0.7,
     albedoStrength: 0.38,
     rockTint: 2.0,
+    reachOrigin,
   });
 }

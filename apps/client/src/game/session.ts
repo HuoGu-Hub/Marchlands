@@ -219,15 +219,6 @@ export class GameSession {
     return this.introActive;
   }
 
-  private scheduleReachPreparation(): void {
-    const run = (): void => {
-      if (!this.disposed) this.scene.prepareReachableCells(this.state.map);
-    };
-    const idle = window.requestIdleCallback;
-    if (idle) idle(run, { timeout: 2500 });
-    else window.setTimeout(run, 400);
-  }
-
   private beginIntro(): void {
     if (this.introDisabled) return;
     const home = this.state.cities.find((city) => city.owner === 1);
@@ -286,7 +277,6 @@ export class GameSession {
     this.scene = new BattleScene(this.options.canvas, this.options.map, this.options.visual ?? null, this.options.unitSkins ?? {});
     this.simMap = synthesizeGrid(this.options.map, this.scene);
     this.state = createGame(this.simMap, Math.floor(Math.random() * 1_000_000_000), this.slowRules());
-    this.scene.prepareReachableCells(this.state.map);
     this.routeOverlay = new RouteOverlay({
       canvas: this.options.canvas,
       scene: this.scene,
@@ -984,7 +974,6 @@ export class GameSession {
         }
         this.options.onReady?.();
         this.beginIntro();
-        this.scheduleReachPreparation();
         this.lastTime = performance.now();
         this.raf = requestAnimationFrame(this.frame);
       });

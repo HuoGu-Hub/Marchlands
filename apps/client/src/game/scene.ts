@@ -231,12 +231,8 @@ export class BattleScene {
     side: THREE.DoubleSide,
   });
   private readonly reachGroup = new THREE.Group();
-  private readonly reachCellGroup = new THREE.Group();
   private readonly squadPathGroup = new THREE.Group();
   private readonly squadPathViews = new Map<string, { fill: THREE.Mesh; edges: THREE.LineSegments; key: string }>();
-  private reachCellMesh: THREE.Mesh | null = null;
-  private reachCorners: Float32Array | null = null;
-  private reachCornersKey = "";
   private readonly squadFillMaterial = new THREE.MeshBasicMaterial({
     color: 0x7fe89a,
     transparent: true,
@@ -402,7 +398,6 @@ export class BattleScene {
     this.scene.add(this.propGroup);
     this.scene.add(this.sceneryGroup);
     this.scene.add(this.reachGroup);
-    this.scene.add(this.reachCellGroup);
     this.scene.add(this.squadPathGroup);
     this.scene.add(this.squadInstances.group);
     this.buildGround();
@@ -560,39 +555,23 @@ export class BattleScene {
     this.squadPathViews.set(id, { fill, edges, key });
   }
 
-  /** 开局预采样地形格角高度，避免第一次点建筑时才算两万多个点。 */
-  prepareReachableCells(map: MapDef): void {
-    const grid = map.grid;
-    if (!grid) return;
-    const key = `${grid.width}x${grid.height}x${grid.cellSizeCm}`;
-    if (this.reachCorners && this.reachCornersKey === key) return;
-    const cellM = grid.cellSizeCm / 100;
-    const halfX = map.size[0] / 20;
-    const halfZ = map.size[1] / 20;
-    const stride = grid.width + 1;
-    const corners = new Float32Array(stride * (grid.height + 1));
-    for (let z = 0; z <= grid.height; z += 1) {
-      const wz = z * cellM - halfZ;
-      for (let x = 0; x <= grid.width; x += 1) {
-        corners[z * stride + x] = this.terrain.heightAt(x * cellM - halfX, wz);
-      }
-    }
-    this.reachCorners = corners;
-    this.reachCornersKey = key;
-  }
-
   /**
-   * 网格地图：浅绿色标出可抵达的地面格，深绿色标出可抵达建筑占地内的格子。
-   * 非网格地图传 null，清空网格高亮。
+   * 网格地图：把可达范围直接写进地形顶点属性，由地形材质染色。
+   *
+   * 不单独铺一层贴片：贴片在崖壁上会被格角高度拉成竖三角，而且陡面没有可靠法线可剔除。
+   * 顶点属性跟着真实曲面走，材质按法线在陡处淡出，崖壁不会出现绿色。
+   * 0 不可达，1 普通可走，2 可到建筑占地。
    */
   setReachableCells(reach: GridReach | null, buildings: readonly CityId[]): void {
-    this.clearReachCells();
-    if (!reach) return;
+    if (!reach) {
+      this.terrain.setReachCells(null);
+      return;
+    }
     const nav = reach.nav;
     const cellM = nav.cellSizeCm / 100;
     const halfX = this.map.size[0] / 20;
     const halfZ = this.map.size[1] / 20;
-    const dark = new Set<number>();
+    const values = new Uint8Array(nav.cellCount);
     for (const id of buildings) {
       const city = this.map.cities.find((entry) => entry.id === id);
       if (!city) continue;
@@ -608,89 +587,14 @@ export class BattleScene {
           const px = (x + 0.5) * cellM - halfX;
           const pz = (z + 0.5) * cellM - halfZ;
           if (Math.hypot(px - cx, pz - cz) > radius) continue;
-          dark.add(nav.index(x, z));
+          values[nav.index(x, z)] = 2;
         }
       }
     }
-
-    // 取每个格角的实际地形高度，避免起伏地面把贴地高亮切碎。
-    // 地形在一局内不变，缓存下来，切换建筑时不再重复采样两万多个点。
-    const stride = nav.width + 1;
-    const cornersKey = `${nav.width}x${nav.height}x${nav.cellSizeCm}`;
-    if (!this.reachCorners || this.reachCornersKey !== cornersKey) {
-      const corners = new Float32Array(stride * (nav.height + 1));
-      for (let z = 0; z <= nav.height; z += 1) {
-        const wz = z * cellM - halfZ;
-        for (let x = 0; x <= nav.width; x += 1) {
-          corners[z * stride + x] = this.terrain.heightAt(x * cellM - halfX, wz);
-        }
-      }
-      this.reachCorners = corners;
-      this.reachCornersKey = cornersKey;
-    }
-    const corners = this.reachCorners;
-
-    const positions: number[] = [];
-    const colors: number[] = [];
-    const indices: number[] = [];
-    const light = new THREE.Color(0x4fd985);
-    const heavy = new THREE.Color(0x1f7a35);
-    const lift = 0.1;
-    const addCell = (index: number, color: THREE.Color): void => {
-      const x = nav.cellX(index);
-      const z = nav.cellZ(index);
-      const cx = (x + 0.5) * cellM - halfX;
-      const cz = (z + 0.5) * cellM - halfZ;
-      const half = cellM * 0.42;
-      const y00 = corners[z * stride + x] + lift;
-      const y10 = corners[z * stride + x + 1] + lift;
-      const y11 = corners[(z + 1) * stride + x + 1] + lift;
-      const y01 = corners[(z + 1) * stride + x] + lift;
-      const base = positions.length / 3;
-      positions.push(cx - half, y00, cz - half);
-      positions.push(cx + half, y10, cz - half);
-      positions.push(cx + half, y11, cz + half);
-      positions.push(cx - half, y01, cz + half);
-      for (let vertex = 0; vertex < 4; vertex += 1) colors.push(color.r, color.g, color.b);
-      indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
-    };
-
     for (let index = 0; index < nav.cellCount; index += 1) {
-      if (dark.has(index)) {
-        addCell(index, heavy);
-        continue;
-      }
-      if (reach.cells[index] === 1) addCell(index, light);
+      if (values[index] === 0 && reach.cells[index] === 1) values[index] = 1;
     }
-    if (positions.length === 0) return;
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-    geometry.setIndex(indices);
-    const material = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.55,
-      depthWrite: false,
-      toneMapped: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.renderOrder = 2;
-    this.reachCellMesh = mesh;
-    this.reachCellGroup.add(mesh);
-  }
-
-  private clearReachCells(): void {
-    if (!this.reachCellMesh) return;
-    this.reachCellGroup.remove(this.reachCellMesh);
-    this.reachCellMesh.geometry.dispose();
-    const material = this.reachCellMesh.material as THREE.Material;
-    material.dispose();
-    this.reachCellMesh = null;
+    this.terrain.setReachCells(values);
   }
 
   /** 用浅绿色格子标出当前可派兵抵达的据点。 */

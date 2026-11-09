@@ -23,6 +23,9 @@ export function buildGridTerrainMesh(surface: GridSurface, options: GridTerrainO
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("aRockDither", new THREE.BufferAttribute(surface.rockDithers, 1));
   const count = positions.length / 3;
+  // 可达高亮直接画在地形顶点色里：单独铺一层贴片会在崖壁上被拉成竖三角，
+  // 而且多一层透明三角形。0 不可达，1 普通可走，2 可到建筑占地。
+  geometry.setAttribute("aReach", new THREE.BufferAttribute(new Float32Array(count), 1));
   const uvs = new Float32Array(count * 2);
   const sizeX = Math.max(1e-6, options.uvSizeX);
   const sizeZ = Math.max(1e-6, options.uvSizeZ);
