@@ -1401,8 +1401,16 @@ test("drags an arched arrow from a building to dispatch", async ({ page }) => {
 
 test("single click previews the actual grid route", async ({ page }) => {
   await openGame(page, "frontier01");
-  // 等开场镜头落位，避免按开场相机取到的屏幕坐标已经偏了。
+  // 等开场镜头落位，再放大到一段空地：附近没有据点时，单击才会走路线预览而不是查看建筑。
   await page.waitForTimeout(4200);
+  await page.evaluate(() =>
+    (window as unknown as { __mlDebug?: { focus(x: number, z: number, zoom?: number): unknown } }).__mlDebug?.focus(
+      -600,
+      -280,
+      1.6,
+    ),
+  );
+  await page.waitForTimeout(600);
   const c1 = await page.evaluate(
     () =>
       (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } }).__mlDebug
@@ -1415,7 +1423,7 @@ test("single click previews the actual grid route", async ({ page }) => {
   const target = await page.evaluate(
     () =>
       (window as unknown as { __mlDebug?: { projectGround(x: number, z: number): { x: number; y: number } | null } })
-        .__mlDebug?.projectGround(-500, -250),
+        .__mlDebug?.projectGround(-600, -250),
   );
   if (!target) throw new Error("target cell has no screen position");
   await page.mouse.click(target.x, target.y);

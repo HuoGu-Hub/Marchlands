@@ -19,6 +19,9 @@ test-results/
 playwright-report/
 coverage/
 
+# 原作分析目录
+LandGrabbers/
+
 # 本地压缩包与临时文件
 *.rar
 *.7z

@@ -1,6 +1,6 @@
 # Marchlands 边境之地
 
-![version](https://img.shields.io/badge/version-0.2.3-d6b46a)
+![version](https://img.shields.io/badge/version-0.2.4-d6b46a)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-4d7ea8)
 ![engine](https://img.shields.io/badge/Three.js-0.171-000000)
 
@@ -14,9 +14,18 @@ Marchlands 是一款 3D 领地争夺游戏。玩家从一座产兵据点起步�
 
 Windows 10 或 Windows 11，x64。
 
-[v0.2.3 发布包](https://github.com/HuoGu-Hub/Marchlands/releases/tag/v0.2.3)
+[v0.2.4 发布包](https://github.com/HuoGu-Hub/Marchlands/releases/tag/v0.2.4)
 
 下载后解压，运行 `Marchlands.exe`。无需安装，存档与设置保存在本机浏览器存储中。
+
+## 0.2.4 更新
+
+- 法师塔改为固定等级与范围法术攻击，攻击表现改为火红激光。
+- 修复法师塔火球落点、可见性，以及中立法师塔不攻击的问题。
+- 可以查看非己方建筑信息，并显示可攻击建筑的射程范围。
+- 优化后期据点绘制、镜头外渲染、状态克隆与寻路缓存。
+- 修复可达范围显示染上崖壁的问题。
+- 补充法师塔攻击与射程显示的端到端测试。
 
 ## 0.2.3 更新
 
@@ -87,6 +96,8 @@ Windows 10 或 Windows 11，x64。
 
 ![行军路线](docs/screenshots/ingame-route.png)
 
+![法师塔射程](docs/screenshots/ingame-range.png)
+
 ![地图编辑器](docs/screenshots/editor-next-foundation.png)
 
 ## 从源码运行
@@ -156,6 +167,6 @@ pnpm test:e2e
 
 ## 版本
 
-当前版本 0.2.3。
+当前版本 0.2.4。
 
 已知限制：仅提供 Windows x64 构建，单机对 AI，界面为简体中文，暂未加入联机、战争迷雾与正式关卡平衡。
