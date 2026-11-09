@@ -1146,7 +1146,7 @@ export class GameSession {
       } else if (event.type === "squadClashed") {
         this.showClashLosses(event);
       } else if (event.type === "mageTowerFired") {
-        this.scene.playTowerShot(event.cityId, event.owner, event.targetXCm, event.targetZCm);
+        this.scene.playTowerLaser(event.cityId, event.owner, event.targetXCm, event.targetZCm);
         if (event.owner === 1 || event.squadOwner === 1) audio.spell();
         this.floatSquadText(event.squadId, `-${event.loss}`, event.squadOwner === 1 ? "loss" : "gain");
         if (import.meta.env.DEV) {

@@ -456,8 +456,8 @@ export class BattleScene {
     this.renderer.shadowMap.needsUpdate = true;
   }
 
-  /** 法师塔开火：从塔顶向事件记录的目标位置发一颗火球。 */
-  playTowerShot(cityId: CityId, owner: Owner, xCm: number, zCm: number): void {
+  /** 法师塔开火：从塔顶向事件记录的目标位置打一道火红激光。 */
+  playTowerLaser(cityId: CityId, owner: Owner, xCm: number, zCm: number): void {
     const base = this.positions.get(cityId);
     if (!base) return;
     const from = base.clone();
@@ -465,7 +465,7 @@ export class BattleScene {
     const toX = xCm / 100;
     const toZ = zCm / 100;
     const to = new THREE.Vector3(toX, this.terrain.heightAt(toX, toZ) + 0.9, toZ);
-    this.projectiles.launchTowerShot(owner, from, to);
+    this.projectiles.launchTowerLaser(owner, from, to);
   }
 
   /** 场上每支己方兵团都用浅绿格子显示剩余路线；选中的那支更亮。 */

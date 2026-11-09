@@ -16,9 +16,9 @@ const BOLT_FLIGHT_MS = 420;
 const VOLLEY_INTERVAL_MS = 520;
 const MAX_LIVE = 96;
 
-interface Tracer {
-  object: THREE.Mesh;
-  material: THREE.MeshBasicMaterial;
+interface Laser {
+  object: THREE.Object3D;
+  parts: Array<{ material: THREE.Material & { opacity: number }; baseOpacity: number }>;
   age: number;
   life: number;
 }
@@ -46,7 +46,7 @@ export class ProjectileField {
   private fireballTemplate: THREE.Object3D | null = null;
   private glow: THREE.Texture | null = null;
   private readonly live: Shot[] = [];
-  private readonly tracers: Tracer[] = [];
+  private readonly lasers: Laser[] = [];
   private readonly cooldowns = new Map<string, number>();
   private loaded = false;
 
@@ -93,35 +93,69 @@ export class ProjectileField {
     this.glow.colorSpace = THREE.SRGBColorSpace;
   }
 
-  /** 法师塔开火：用同一颗火球，但比兵团法术弹更大、更慢一点。 */
-  launchTowerShot(owner: Owner, from: THREE.Vector3, to: THREE.Vector3): void {
-    // 塔顶法术弹比兵团法术弹更慢、更亮，保证玩家能看清这一发。
-    this.spawn("bolt", owner, from, to, 0, 2.4, 1200);
-    this.spawnTracer(from, to);
+  /** 法师塔开火：一道火红色激光，不再发射飞行火球。 */
+  launchTowerLaser(_owner: Owner, from: THREE.Vector3, to: THREE.Vector3): void {
+    this.spawnLaser(from, to);
   }
 
-  /** 塔顶到目标的短暂光束，穿过多层模型也能看见这一发。 */
-  private spawnTracer(from: THREE.Vector3, to: THREE.Vector3): void {
+  /** 火红激光：外层红光 + 白热核心，两端各闪一下。 */
+  private spawnLaser(from: THREE.Vector3, to: THREE.Vector3): void {
     const direction = to.clone().sub(from);
     const length = direction.length();
     if (length < 0.05) return;
-    const geometry = new THREE.CylinderGeometry(0.07, 0.07, length, 6, 1, true);
-    geometry.translate(0, length / 2, 0);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xffb05a,
-      transparent: true,
-      opacity: 0.85,
-      depthTest: false,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      toneMapped: false,
-    });
-    const object = new THREE.Mesh(geometry, material);
-    object.position.copy(from);
-    object.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
-    object.renderOrder = 30;
-    this.group.add(object);
-    this.tracers.push({ object, material, age: 0, life: 450 });
+
+    const group = new THREE.Group();
+    const parts: Laser["parts"] = [];
+    const axis = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, direction.clone().normalize());
+
+    const addBeam = (radius: number, color: number, baseOpacity: number): void => {
+      const geometry = new THREE.CylinderGeometry(radius, radius, length, 10, 1, true);
+      geometry.translate(0, length / 2, 0);
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: baseOpacity,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const beam = new THREE.Mesh(geometry, material);
+      beam.position.copy(from);
+      beam.quaternion.copy(quaternion);
+      beam.renderOrder = 30;
+      group.add(beam);
+      parts.push({ material, baseOpacity });
+    };
+    addBeam(0.22, 0xff3a12, 0.45);
+    addBeam(0.075, 0xfff1d0, 1);
+
+    if (this.glow) {
+      const addFlash = (color: number, size: number, point: THREE.Vector3): void => {
+        const material = new THREE.SpriteMaterial({
+          map: this.glow,
+          color,
+          transparent: true,
+          opacity: 0.95,
+          depthTest: false,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          toneMapped: false,
+        });
+        const flash = new THREE.Sprite(material);
+        flash.position.copy(point);
+        flash.scale.setScalar(size);
+        flash.renderOrder = 31;
+        group.add(flash);
+        parts.push({ material, baseOpacity: 0.95 });
+      };
+      addFlash(0xff5a1e, 2.4, from);
+      addFlash(0xff8a3a, 3.2, to);
+    }
+
+    this.group.add(group);
+    this.lasers.push({ object: group, parts, age: 0, life: 360 });
   }
 
   /** 交战中且是远程兵种的兵团每半秒放一轮；位置由场景解析。 */
@@ -177,19 +211,26 @@ export class ProjectileField {
       }
     }
 
-    for (let index = this.tracers.length - 1; index >= 0; index -= 1) {
-      const tracer = this.tracers[index];
-      tracer.age += dt;
-      const fade = 1 - tracer.age / tracer.life;
+    for (let index = this.lasers.length - 1; index >= 0; index -= 1) {
+      const laser = this.lasers[index];
+      laser.age += dt;
+      const fade = 1 - laser.age / laser.life;
       if (fade <= 0) {
-        this.group.remove(tracer.object);
-        tracer.object.geometry.dispose();
-        tracer.material.dispose();
-        this.tracers.splice(index, 1);
+        this.releaseLaser(laser);
+        this.lasers.splice(index, 1);
         continue;
       }
-      tracer.material.opacity = 0.85 * fade;
+      for (const part of laser.parts) part.material.opacity = part.baseOpacity * fade;
     }
+  }
+
+  private releaseLaser(laser: Laser): void {
+    this.group.remove(laser.object);
+    for (const part of laser.parts) part.material.dispose();
+    laser.object.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      if (mesh.isMesh) mesh.geometry.dispose();
+    });
   }
 
   private spawn(
@@ -298,12 +339,8 @@ export class ProjectileField {
   dispose(): void {
     for (const shot of this.live) this.release(shot);
     this.live.length = 0;
-    for (const tracer of this.tracers) {
-      this.group.remove(tracer.object);
-      tracer.object.geometry.dispose();
-      tracer.material.dispose();
-    }
-    this.tracers.length = 0;
+    for (const laser of this.lasers) this.releaseLaser(laser);
+    this.lasers.length = 0;
     this.cooldowns.clear();
     this.glow?.dispose();
     this.glow = null;
