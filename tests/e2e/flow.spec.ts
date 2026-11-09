@@ -1465,3 +1465,53 @@ test("shows the attack range when inspecting a mage tower", async ({ page }) => 
   await expect(page.locator("#city-name")).toContainText("m1");
   await expect(page.locator("#city-trait")).toContainText("射程 7.0 米");
 });
+
+test("neutral mage tower fires at an approaching squad", async ({ page }) => {
+  await openGame(page, "frontier01");
+  const c1 = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCityBase(id: string): { x: number; y: number } | null } }).__mlDebug
+        ?.projectCityBase("c1"),
+  );
+  if (!c1) throw new Error("c1 has no screen position");
+  await page.mouse.click(c1.x, c1.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/on/);
+
+  await page.evaluate(() => {
+    (window as unknown as { __mlDebug?: { focus(x: number, z: number, zoom?: number): unknown } }).__mlDebug?.focus(
+      -710,
+      -470,
+      0.8,
+    );
+  });
+  await page.waitForTimeout(500);
+  const target = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCityBase(id: string): { x: number; y: number } | null } }).__mlDebug
+        ?.projectCityBase("m2"),
+  );
+  if (!target) throw new Error("m2 has no screen position");
+  await page.mouse.dblclick(target.x, target.y);
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => (window as unknown as { __mlTowerShots?: number }).__mlTowerShots ?? 0,
+        ),
+      { timeout: 15000 },
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const hook = (window as unknown as {
+            __mlSquads?: { squads: Array<{ owner: number; count: number }> };
+          }).__mlSquads;
+          return hook?.squads.find((squad) => squad.owner === 1)?.count ?? 15;
+        }),
+      { timeout: 15000 },
+    )
+    .toBeLessThan(15);
+});

@@ -462,7 +462,9 @@ export class BattleScene {
     if (!base) return;
     const from = base.clone();
     from.y = this.terrain.heightAt(base.x, base.z) + MAGE_TOWER_MUZZLE_HEIGHT;
-    const to = new THREE.Vector3(xCm / 10, this.terrain.heightAt(xCm / 10, zCm / 10) + 0.9, zCm / 10);
+    const toX = xCm / 100;
+    const toZ = zCm / 100;
+    const to = new THREE.Vector3(toX, this.terrain.heightAt(toX, toZ) + 0.9, toZ);
     this.projectiles.launchTowerShot(owner, from, to);
   }
 
