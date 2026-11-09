@@ -70,7 +70,7 @@ describe("mage tower", () => {
     expect(state.squads).toHaveLength(0);
   });
 
-  it("stays silent while neutral", () => {
+  it("also fires while neutral, hitting player squads", () => {
     const rules = rulesWith({
       speedDmPerSecond: 10,
       mageTower: { rangeCm: 800, intervalTicks: 20, damage: 2 },
@@ -79,8 +79,10 @@ describe("mage tower", () => {
     site(state, "m1").owner = 0;
     state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
     state = advance(state, 200);
-    expect(state.events.some((event) => event.type === "mageTowerFired")).toBe(false);
-    expect(state.squads[0]?.count).toBe(10);
+    const shot = state.events.find((event) => event.type === "mageTowerFired");
+    expect(shot && shot.type === "mageTowerFired" ? shot.owner : -1).toBe(0);
+    expect(shot && shot.type === "mageTowerFired" ? shot.squadOwner : -1).toBe(1);
+    expect(state.squads[0]?.count ?? 0).toBeLessThan(10);
   });
 
   it("is never picked for an AI upgrade", () => {

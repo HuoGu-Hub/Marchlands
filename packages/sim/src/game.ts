@@ -573,12 +573,12 @@ function advanceSquads(state: SimState, events: SimEvent[]): void {
 }
 
 /**
- * 法师塔按固定间隔向射程内最近的敌方兵团开火。
- * 中立塔不开火：它只是待占领的产兵据点，避免开局就干扰双方行军。
+ * 法师塔按固定间隔向射程内最近的敌对兵团开火。
+ * 中立法师塔会攻击双方玩家，作为地图上的防御性建筑。
  */
 function resolveMageTowers(state: SimState, events: SimEvent[]): void {
   if (state.squads.length === 0) return;
-  const towers = state.cities.filter((city) => city.kind === "mage" && city.owner !== 0).sort(byId);
+  const towers = state.cities.filter((city) => city.kind === "mage").sort(byId);
   if (towers.length === 0) return;
 
   const removed = new Set<string>();
