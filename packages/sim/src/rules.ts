@@ -1,42 +1,9 @@
+import balance from "./balance.json";
 import { isProductionSiteKind } from "./types";
 import type { CityState, LevelRule, Ruleset } from "./types";
 
-export const DEFAULT_RULESET: Ruleset = {
-  ruleset: "1",
-  tickHz: 20,
-  maxTicks: 18000,
-  sendRatio: 0.5,
-  speedDmPerSecond: 36,
-  maxLevel: 3,
-  levels: [
-    { level: 1, maxPop: 30, upgradeCost: 15, defense: 1.0, growthMilli: 50, goldMilli: 100 },
-    { level: 2, maxPop: 45, upgradeCost: 22, defense: 1.1, growthMilli: 62, goldMilli: 125 },
-    { level: 3, maxPop: 65, upgradeCost: 32, defense: 1.2, growthMilli: 75, goldMilli: 150 },
-  ],
-  granary: {
-    capacity: 50,
-    defenseMilli: 1300,
-    speedBonusMilli: 200,
-    strengthBonusMilli: 200,
-  },
-  outpost: {
-    capacity: 50,
-    defenseMilli: 800,
-    graceTicks: 600,
-    decayIntervalTicks: 200,
-    decayPerInterval: 2,
-  },
-  mageTower: {
-    rangeCm: 700,
-    intervalTicks: 100,
-    damage: 5,
-  },
-  supply: {
-    carryTicks: 600,
-    starveIntervalTicks: 200,
-    starveLoss: 1,
-  },
-};
+/** 唯一数值源；开发面板导出的 balance.json 直接替换这份文件。 */
+export const DEFAULT_RULESET: Ruleset = balance.rules as unknown as Ruleset;
 
 export function levelRule(rules: Ruleset, level: number): LevelRule {
   const found = rules.levels.find((entry) => entry.level === level);

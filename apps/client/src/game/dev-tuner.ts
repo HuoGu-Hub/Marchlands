@@ -104,10 +104,16 @@ const STYLE = [
   "  cursor: pointer;",
   "}",
   ".ml-dev-close:hover { color: #f2e6c8; }",
-  ".ml-dev-intro {",
+  ".ml-dev-intro, .ml-dev-status {",
   "  margin: 0 0 8px;",
   "  color: rgba(236, 230, 214, 0.5);",
   "  font-size: 11px;",
+  "}",
+  ".ml-dev-status {",
+  "  min-height: 14px;",
+  "  margin: 8px 0 0;",
+  "  color: rgba(214, 178, 106, 0.8);",
+  "  font-size: 10px;",
   "}",
   ".ml-dev-panel details {",
   "  border-top: 1px solid rgba(214, 178, 106, 0.16);",
@@ -205,6 +211,7 @@ export class DevTuner {
   private readonly toggle: HTMLButtonElement;
   private readonly panel: HTMLElement;
   private readonly body: HTMLElement;
+  private readonly status: HTMLElement;
   private readonly fields: Field[] = [];
   private readonly defaults: { rules: Ruleset };
   private scheduled = false;
@@ -247,13 +254,19 @@ export class DevTuner {
 
     const intro = document.createElement("p");
     intro.className = "ml-dev-intro";
-    intro.textContent = "改动立即写入当前对局；不进入发布包。";
+    intro.textContent = "改动立即写入当前对局；导出后替换 packages/sim/src/balance.json。";
 
     this.body = document.createElement("div");
-    this.panel.append(head, intro, this.body);
+    this.status = document.createElement("p");
+    this.status.className = "ml-dev-status";
+    this.panel.append(head, intro, this.body, this.status);
 
     const actions = document.createElement("div");
     actions.className = "ml-dev-actions";
+    const exportButton = document.createElement("button");
+    exportButton.type = "button";
+    exportButton.textContent = "导出 balance.json";
+    exportButton.addEventListener("click", () => this.exportBalance());
     const reset = document.createElement("button");
     reset.type = "button";
     reset.textContent = "重置为开局值";
@@ -262,7 +275,7 @@ export class DevTuner {
     collapse.type = "button";
     collapse.textContent = "关闭";
     collapse.addEventListener("click", () => this.setOpen(false));
-    actions.append(reset, collapse);
+    actions.append(exportButton, reset, collapse);
     this.panel.append(actions);
 
     this.build();
@@ -688,6 +701,27 @@ export class DevTuner {
     for (const field of this.fields) {
       field.input.value = this.format(clamp(field.get(), field.min, field.max), field.digits);
     }
+  }
+
+  private exportBalance(): void {
+    const rules = JSON.parse(JSON.stringify(this.session.getBalanceRules())) as Ruleset;
+    const units = Object.fromEntries(
+      PRODUCTION_SITE_KINDS.map((kind) => {
+        const profile = UNIT_PROFILES[kind] as unknown as MutableUnitProfile;
+        return [kind, { attackRangeCm: profile.attackRangeCm, maxSlopePermille: profile.maxSlopePermille }];
+      }),
+    ) as Record<UnitKind, MutableUnitProfile>;
+    const text = JSON.stringify({ rules, units }, null, 2) + "\n";
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "balance.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    this.status.textContent = "已导出 balance.json；行军速度已还原为基础值。";
   }
 
   private reset(): void {

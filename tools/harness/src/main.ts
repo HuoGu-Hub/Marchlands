@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadContent, readJsonFile } from "@marchlands/content/node";
 import { validateContent } from "@marchlands/content";
+import { DEFAULT_RULESET } from "@marchlands/sim";
 import type { Ruleset } from "@marchlands/sim";
 import { replayMatch, runMatch } from "./match";
 import type { Replay } from "./match";
@@ -20,7 +21,10 @@ const mapArg = readArg("map", "");
 const rulesArg = readArg("rules", "");
 
 const loaded = mapArg
-  ? validateContent(readJsonFile(resolve(mapArg)), readJsonFile(resolve(rulesArg || "packages/content/rules/1.json")))
+  ? validateContent(
+      readJsonFile(resolve(mapArg)),
+      rulesArg ? readJsonFile(resolve(rulesArg)) : DEFAULT_RULESET,
+    )
   : loadContent();
 const map = loaded.map;
 const rules: Ruleset = loaded.rules;

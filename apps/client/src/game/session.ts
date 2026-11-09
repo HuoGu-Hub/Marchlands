@@ -35,6 +35,8 @@ import { BattleScene } from "./scene";
 
 const FIXED_STEP = 50;
 const PLAN_CANCEL_WINDOW = 500;
+/** 对局内统一把基础行军速度压到这个比例，调参导出时要还原。 */
+const SLOW_SPEED_FACTOR = 0.7;
 /** 开局倒计时与镜头推进时长。 */
 const INTRO_MS = 3600;
 /** 全局共用的派兵比例，跨建筑、跨对局记住上一次选择。 */
@@ -182,7 +184,7 @@ export class GameSession {
     if (!this.options.rules) return undefined;
     return {
       ...this.options.rules,
-      speedDmPerSecond: Math.max(1, this.options.rules.speedDmPerSecond * 0.7),
+      speedDmPerSecond: Math.max(1, this.options.rules.speedDmPerSecond * SLOW_SPEED_FACTOR),
     };
   }
 
@@ -318,6 +320,16 @@ export class GameSession {
   /** 开发调参面板读取的当前规则；修改后调用 applyTuning 刷新派生值。 */
   getRules(): Ruleset {
     return this.state.rules;
+  }
+
+  /** 导出到 balance.json 时还原基础行军速度，避免下次对局再乘一次慢速系数。 */
+  getBalanceRules(): Ruleset {
+    const rules = this.state.rules;
+    if (!this.options.rules) return rules;
+    return {
+      ...rules,
+      speedDmPerSecond: Math.round((rules.speedDmPerSecond / SLOW_SPEED_FACTOR) * 1000) / 1000,
+    };
   }
 
   /** 调参后让现有据点的容量上限与可达范围跟上新规则。 */

@@ -1,12 +1,11 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { loadContent, readJsonFile } from "@marchlands/content/node";
 import { validateContent } from "@marchlands/content";
+import { DEFAULT_RULESET } from "@marchlands/sim";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const mapArg = process.argv[2];
 const { map, rules } = mapArg
-  ? validateContent(readJsonFile(resolve(mapArg)), readJsonFile(resolve(root, "packages/content/rules/1.json")))
+  ? validateContent(readJsonFile(resolve(mapArg)), DEFAULT_RULESET)
   : loadContent();
 
 const neutral = map.cities.filter((city) => city.owner === 0).length;

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
@@ -1550,6 +1551,19 @@ test("dev tuner changes a live value", async ({ page }) => {
   if (!mage) throw new Error("m1 has no screen position");
   await page.mouse.click(mage.x, mage.y);
   await expect(page.locator("#city-trait")).toContainText("射程 9.0 米");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出 balance.json" }).click();
+  const download = await downloadPromise;
+  const file = await download.path();
+  if (!file) throw new Error("balance.json download has no path");
+  const exported = JSON.parse(readFileSync(file, "utf8")) as {
+    rules: { speedDmPerSecond: number; mageTower: { rangeCm: number } };
+    units: { mage: { attackRangeCm: number } };
+  };
+  expect(exported.rules.speedDmPerSecond).toBe(36);
+  expect(exported.rules.mageTower.rangeCm).toBe(900);
+  expect(exported.units.mage.attackRangeCm).toBe(460);
 
   await page.getByRole("button", { name: "重置为开局值" }).click();
   await expect(range).toHaveValue("7");

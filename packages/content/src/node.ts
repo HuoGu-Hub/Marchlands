@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_RULESET } from "@marchlands/sim";
 import type { MapDef, Ruleset } from "@marchlands/sim";
 import { validateContent } from "./validate";
 
@@ -12,7 +13,8 @@ export function readJsonFile(path: string): unknown {
 
 export function loadContent(
   mapFile = "maps/forest01.json",
-  rulesFile = "rules/1.json",
+  rulesFile?: string,
 ): { map: MapDef; rules: Ruleset } {
-  return validateContent(readJsonFile(join(packageRoot, mapFile)), readJsonFile(join(packageRoot, rulesFile)));
+  const rules = rulesFile ? readJsonFile(join(packageRoot, rulesFile)) : DEFAULT_RULESET;
+  return validateContent(readJsonFile(join(packageRoot, mapFile)), rules);
 }

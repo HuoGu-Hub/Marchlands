@@ -250,12 +250,10 @@ packages/sim/src/
   ai.ts           一档 AI
   hash.ts         状态序列化与哈希
   index.ts        导出
+  balance.json    规则与兵种数值的唯一源
 
 packages/content/maps/
   forest01.json
-
-packages/content/rules/
-  1.json
 
 tools/map-export/
   build-forest01.ts
@@ -606,7 +604,7 @@ export function hash(state: SimState): string;
 MapDef 对应 6.1 的地图 JSON；SimEvent 对应 5.6 的事件表。具体字段以两处表为准，不要另造一套命名。
 
 - graph 是运行时路径缓存，不序列化、不参与哈希；map 与 rules 随状态只读共享。
-- 不传 rules 时使用 sim 内置 DEFAULT_RULESET，内容包测试会校验它与 rules/1.json 完全一致。
+- 不传 rules 时使用 sim 内置 DEFAULT_RULESET，它直接来自 `packages/sim/src/balance.json`。
 
 - step 是纯函数：不读全局，不写文件，不依赖时间。
 - 指令在 tick 开始时校验，在 tick 边界生效。

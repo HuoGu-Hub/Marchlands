@@ -2,11 +2,10 @@ import autumnvaleMapJson from "@marchlands/content/maps/autumnvale01.json";
 import frontierMapJson from "@marchlands/content/maps/frontier01.json";
 import highlandMapJson from "@marchlands/content/maps/highland01.json";
 import snowpassMapJson from "@marchlands/content/maps/snowpass01.json";
-import rulesJson from "@marchlands/content/rules/1.json";
 import { validateContent } from "@marchlands/content";
 import { defaultVisualForMap } from "@marchlands/map-authoring";
 import type { MapVisual } from "@marchlands/map-authoring";
-import { isProductionSiteKind } from "@marchlands/sim";
+import { DEFAULT_RULESET, isProductionSiteKind } from "@marchlands/sim";
 import type { MapDef, Ruleset } from "@marchlands/sim";
 
 interface TerrainPreset {
@@ -69,7 +68,7 @@ export interface MapCatalogEntry {
 }
 
 function buildEntry(id: string, json: unknown): MapCatalogEntry {
-  const content = validateContent(json, rulesJson);
+  const content = validateContent(json, DEFAULT_RULESET);
   return {
     id,
     map: content.map,
