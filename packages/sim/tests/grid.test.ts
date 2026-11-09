@@ -72,6 +72,18 @@ describe("grid simulation", () => {
     expect(bridge).toBe(road);
   });
 
+
+  it("shares immutable grid paths between ticks", () => {
+    let state = createGame(gridMap(), 1, TIMED_RULES);
+    state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
+    const path = state.squads[0]?.gridPath;
+    expect(path).toBeDefined();
+    const snapshot = JSON.stringify(path);
+    state = step(state, []).state;
+    expect(state.squads[0]?.gridPath).toBe(path);
+    expect(JSON.stringify(path)).toBe(snapshot);
+  });
+
   it("sends a squad along the grid and captures the target", () => {
     let state = createGame(gridMap(), 1, TIMED_RULES);
     expect(state.nav).not.toBeNull();

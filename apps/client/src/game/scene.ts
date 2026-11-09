@@ -170,6 +170,8 @@ interface CityView {
   labelHeight: number;
   baseRadius: number;
   shadow: THREE.Mesh;
+  /** 远处使用的单网格据点；近处仍显示完整 GLB。 */
+  proxy: THREE.Object3D | null;
   /** 上一次重绘文字标签的时间；人口频繁变化时限频。 */
   labelPaintedAt: number;
   /** 是否挂在场景树里；镜头外会摘下。 */
@@ -315,7 +317,6 @@ export class BattleScene {
   private benchDone = false;
   private settleFrames: number[] = [];
   private settleTimer = 2000;
-  private corrections = 0;
   private selectedIds: CityId[] = [];
   private selectedSquadId: string | null = null;
   private disposed = false;
@@ -380,6 +381,10 @@ export class BattleScene {
     this.renderer.toneMappingExposure = 1.28;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // 阴影投射物都是静态建筑/地形，兵团单位不投影；阴影贴图只需在
+    // 建筑重建后重画，避免每帧把整张地图再渲染一遍。
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0c120e);
@@ -437,6 +442,18 @@ export class BattleScene {
 
   setSelectedSquad(id: string | null): void {
     this.selectedSquadId = id;
+  }
+
+  /** 当前真正挂在场景树里的兵团数，用作远景 LOD 的压力信号。 */
+  private visibleSquadCount(): number {
+    let count = 0;
+    for (const view of this.squadViews.values()) if (view.attached) count += 1;
+    return count;
+  }
+
+  /** 静态投影物变化后重画一次阴影贴图，其余帧直接复用。 */
+  private markShadowDirty(): void {
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   /** 法师塔开火：从塔顶向事件记录的目标位置发一颗火球。 */
@@ -1115,6 +1132,8 @@ export class BattleScene {
       if (justAttached) {
         this.scene.add(view.group);
         view.attached = true;
+        // 首次挂回场景时才需要把这座城补进静态阴影贴图。
+        this.markShadowDirty();
       }
 
       const siteVisual = this.visual?.sites[city.id];
@@ -1137,6 +1156,23 @@ export class BattleScene {
         this.rebuildCityModel(view, city);
       }
 
+      // 只有拉远到全图视角才切单网格据点；正常对局视角保留完整建筑。
+      const selectedCity = this.selectedIds.includes(city.id);
+      const farCity = this.zoom < 0.4;
+      if (view.proxy) {
+        const proxyVisible = farCity && !selectedCity;
+        view.proxy.visible = proxyVisible;
+        const detailVisible = !proxyVisible;
+        if (view.model.visible !== detailVisible) {
+          view.model.visible = detailVisible;
+          // 换 LOD 会改变谁参与静态阴影贴图，重画一次。
+          this.markShadowDirty();
+        }
+      } else if (!view.model.visible) {
+        view.model.visible = true;
+        this.markShadowDirty();
+      }
+
       view.label.position.y = view.labelHeight;
       const label = `${city.id} · L${city.level}\n${city.pop}/${city.maxPop}`;
       // 人口每 tick 都可能变，标签纹理按 4 Hz 限频，避免后期反复上传画布。
@@ -1152,9 +1188,11 @@ export class BattleScene {
       if (seen.has(id)) continue;
       this.scene.remove(view.group);
       for (const unit of view.model.children) disposeObject(unit);
+      if (view.proxy) disposeObject(view.proxy);
       view.label.material.dispose();
       view.texture.dispose();
       this.cityViews.delete(id);
+      this.markShadowDirty();
     }
   }
 
@@ -1164,6 +1202,10 @@ export class BattleScene {
     this.lastSquadUpdate = now;
     const seen = new Set<string>();
     const instanceEntries = new Map<string, SquadInstanceEntry[]>();
+    // 同屏兵团越多，越早切换到静态替身，避免放大看全图时几十支兵团
+    // 同时跑骨骼和逐单位绘制。
+    const enterFarDistance2 = this.squadLodDistance2();
+    const stayFarDistance2 = enterFarDistance2 * 0.81;
     for (const squad of state.squads) {
       seen.add(squad.id);
       let view = this.squadViews.get(squad.id);
@@ -1219,8 +1261,8 @@ export class BattleScene {
       const selected = this.selectedSquadId === squad.id;
       const kind = this.squadUnitKind(squad);
       const skin = this.skinFor(kind, squad.owner);
-      const enterFar = !view.instanced && distance2 > 10000;
-      const stayFar = view.instanced && distance2 > 8100;
+      const enterFar = !view.instanced && distance2 > enterFarDistance2;
+      const stayFar = view.instanced && distance2 > stayFarDistance2;
       const far = visible && !selected && (enterFar || stayFar) && !!skin && assetRegistry.has(skin);
       if (far) {
         if (!this.squadInstances.has(skin as string, squad.owner)) {
@@ -1380,6 +1422,7 @@ export class BattleScene {
       labelHeight: CITY_LABEL_HEIGHT,
       baseRadius: CITY_BASE_RADIUS,
       shadow,
+      proxy: null,
       labelPaintedAt: 0,
       attached: true,
     };
@@ -1410,9 +1453,37 @@ export class BattleScene {
     view.model.add(fallback);
     this.enableShadows(view.model);
     this.fitCityLabel(view);
+    this.markShadowDirty();
     view.owner = city.owner;
     view.level = city.level;
     view.kind = city.kind;
+
+    // 远处只画一个低模据点；完整 GLB 留到镜头靠近时再显示。
+    if (view.proxy) {
+      view.group.remove(view.proxy);
+      disposeObject(view.proxy);
+    }
+    const proxy = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(2.3, 1.7, 2.3),
+      new THREE.MeshStandardMaterial({ color: palette.roofEdge, roughness: 0.9, metalness: 0 }),
+    );
+    body.position.y = 0.85;
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(1.85, 1.25, 4),
+      new THREE.MeshStandardMaterial({ color: palette.roof, roughness: 0.86, metalness: 0 }),
+    );
+    roof.position.y = 2.3;
+    roof.rotation.y = Math.PI / 4;
+    body.castShadow = false;
+    roof.castShadow = false;
+    proxy.add(body, roof);
+    const proxyScale = 1 + Math.max(0, city.level - 1) * 0.08;
+    proxy.scale.setScalar(proxyScale);
+    proxy.position.y = Math.max(0, city.level - 1) * 0.12;
+    proxy.visible = false;
+    view.proxy = proxy;
+    view.group.add(proxy);
 
     const defaultAssetId = siteDefaultAsset(city.kind);
     const assetId = siteVisual?.assetId ?? defaultAssetId;
@@ -1434,6 +1505,7 @@ export class BattleScene {
         view.model.add(object);
         this.enableShadows(view.model);
         this.fitCityLabel(view);
+        this.markShadowDirty();
       })
       .catch(() => {
         this.missingAssets.add(assetId);
@@ -1612,10 +1684,15 @@ export class BattleScene {
   }
 
   /** 100 米内保留完整真实模型，更远交给静态替身；替身数量不减少。 */
+  private squadLodDistance2(): number {
+    const load = this.visibleSquadCount();
+    return load >= 30 ? 2500 : load >= 15 ? 4900 : 10000;
+  }
+
   private squadLodCap(base: number, x: number, z: number): number {
     const dx = this.camera.position.x - x;
     const dz = this.camera.position.z - z;
-    return dx * dx + dz * dz < 10000 ? base : 2;
+    return dx * dx + dz * dz < this.squadLodDistance2() ? base : 2;
   }
 
   /** 兵团人数减少时同步撤掉模型，编队按当前人数重新收拢。 */
@@ -1780,6 +1857,7 @@ export class BattleScene {
     camera.near = 1;
     camera.far = radius * 5;
     camera.updateProjectionMatrix();
+    this.markShadowDirty();
   }
 
   private buildGround(previous?: Terrain, reuseIsland = false, atmosphereChanged = true): void {
@@ -1795,6 +1873,7 @@ export class BattleScene {
     }
     this.scene.add(this.terrain.group);
     this.refreshBounds();
+    this.markShadowDirty();
     // 只在整体地貌参数变化时重建大气；增删地基或更换地表材质不应让云层/雾突然覆盖平台。
     if (atmosphereChanged) this.rebuildAtmosphere(terrain?.style);
   }
@@ -1854,6 +1933,7 @@ export class BattleScene {
           this.foundationGroups.push(group);
           this.scene.add(group);
           entry.shell.visible = false;
+          this.markShadowDirty();
         })
         .catch(() => {
           this.missingAssets.add(assetId);
@@ -2049,6 +2129,7 @@ export class BattleScene {
     }
 
     // 环岛、路灯这类程序化场景件不属于可编辑对象，已移除；交叉路口由普通道路组成。
+    this.markShadowDirty();
   }
 
   private prepareRoadGrid(): void {
@@ -2477,6 +2558,7 @@ export class BattleScene {
         this.propGroup.add(object);
         this.enableShadows(object);
         this.applyPropTransform(prop, object);
+        this.markShadowDirty();
       })
       .catch(() => {
         this.missingAssets.add(prop.assetId);
@@ -2500,6 +2582,7 @@ export class BattleScene {
     this.propBuildToken += 1;
     this.propGroup.name = "map-props";
     for (const prop of this.visual?.props ?? []) this.buildProp(prop);
+    this.markShadowDirty();
   }
 
   /** 同步所有被选中据点的地面环，多选时逐座显示。 */
@@ -2703,8 +2786,8 @@ export class BattleScene {
   }
 
   /**
-   * 开局采样约 90 帧，按目标帧率一次性定下渲染倍率。
-   * 目标 90 帧；如果测出来正好卡在刷新率上，说明是垂直同步在限速，不降分辨率。
+   * 开局采样约 90 帧定基准倍率，之后每 2 秒按中位帧时继续微调。
+   * 垂直同步下中位帧时接近刷新间隔，不会误降分辨率。
    */
   private adaptResolution(deltaMs: number): void {
     if (deltaMs <= 0 || deltaMs > 250) return;
@@ -2723,7 +2806,8 @@ export class BattleScene {
       return;
     }
 
-    if (this.corrections >= 2) return;
+    // 后期兵团和建筑增多时 GPU 负载会继续上升；开局校准之后仍按
+    // 2 秒窗口监测，慢了降分辨率，恢复了再慢慢升回来。
     this.settleFrames.push(deltaMs);
     this.settleTimer -= deltaMs;
     if (this.settleTimer > 0) return;
@@ -2733,12 +2817,11 @@ export class BattleScene {
     const atRefresh = median <= fastest * 1.08;
     this.settleFrames = [];
     this.settleTimer = 2000;
-    if (atRefresh || median <= target * 1.05) {
-      this.corrections = 3;
-      return;
+    if (!atRefresh && median > target * 1.6 && this.renderScale > 0.6) {
+      this.applyRenderScale(this.renderScale - 0.1);
+    } else if (median < target * 0.9 && this.renderScale < 1) {
+      this.applyRenderScale(this.renderScale + 0.05);
     }
-    this.corrections += 1;
-    this.applyRenderScale(this.renderScale - 0.1);
   }
 
   private applyRenderScale(scale: number): void {

@@ -81,11 +81,10 @@ function cloneState(state: SimState): SimState {
     squads: state.squads.map((squad) => ({
       ...squad,
       path: squad.path.slice(),
+      // gridPath 创建后只整体替换，不会原地修改；复制它会在后期每 tick
+      // 为几十支兵团复制数百个坐标点，制造大量短命数组。
       intercepted: squad.intercepted.slice(),
-      ...(squad.gridPath
-        ? { gridPath: squad.gridPath.map((point) => [point[0], point[1]] as [number, number]) }
-        : {}),
-      ...(squad.toCell ? { toCell: [squad.toCell[0], squad.toCell[1]] as [number, number] } : {}),
+      ...(squad.toCell ? { toCell: squad.toCell } : {}),
     })),
     events: [],
   };
