@@ -132,6 +132,77 @@ function shieldPathClear(nav: NavGrid, cells: readonly number[]): boolean {
   return true;
 }
 
+/** 供派兵流程先尝试直线；返回 null 时再走图引导或完整 A*。 */
+export function planDirectGridRoute(
+  map: MapDef,
+  nav: NavGrid,
+  fromCm: [number, number],
+  toCm: [number, number],
+  radiusCm = GRID_UNIT_RADIUS_CM,
+  unitKind?: UnitKind,
+): GridRoute | null {
+  if (unitKind === "warrior") return null;
+  return directGridRoute(nav, fromCm, toCm, map.size[0] * 5, map.size[1] * 5, radiusCm);
+}
+
+/**
+ * 沿据点图的中间节点分段走直线。
+ * 只在最终直线被城/障碍挡住时调用；中间据点不参与阻挡，避免自己把
+ * 路线节点封死。任一段被挡就返回 null，最终回退完整 A*。
+ */
+export function planGridGuideRoute(
+  map: MapDef,
+  cities: readonly CityState[],
+  owner: number,
+  kind: UnitKind,
+  fromCm: [number, number],
+  toCm: [number, number],
+  guide: readonly string[],
+): GridRoute | null {
+  if (kind === "warrior" || guide.length <= 2) return null;
+  const guideIds = new Set(guide);
+  const nav = createUnitNavGrid(
+    map,
+    cities.filter((city) => !guideIds.has(city.id)),
+    owner,
+    kind,
+  );
+  if (!nav) return null;
+  const byId = new Map(cities.map((city) => [city.id, city]));
+  const stops: Array<[number, number]> = [fromCm];
+  for (const id of guide.slice(1, -1)) {
+    const city = byId.get(id);
+    if (!city) return null;
+    stops.push([city.pos[0] * 10, city.pos[1] * 10]);
+  }
+  stops.push(toCm);
+
+  const offsetX = map.size[0] * 5;
+  const offsetZ = map.size[1] * 5;
+  const points: Array<[number, number]> = [];
+  let distance = 0;
+  for (let index = 0; index < stops.length - 1; index += 1) {
+    const segment = directGridRoute(
+      nav,
+      stops[index],
+      stops[index + 1],
+      offsetX,
+      offsetZ,
+      GRID_UNIT_RADIUS_CM,
+    );
+    if (!segment) return null;
+    for (const point of segment.points) {
+      if (points.length === 0) points.push(point);
+      else {
+        const last = points[points.length - 1];
+        if (last[0] !== point[0] || last[1] !== point[1]) points.push(point);
+      }
+    }
+    distance += segment.distance;
+  }
+  return { cost: Math.round(distance), distance, points };
+}
+
 export function gridSpeedCmPerTick(rules: Ruleset, speedMilli: number, surface?: number): number {
   const base = Math.max(
     1,

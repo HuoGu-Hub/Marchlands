@@ -9,6 +9,8 @@ import {
   gridSpeedCmPerTick,
   gridTravelTicks,
   moveAlongGridPath,
+  planDirectGridRoute,
+  planGridGuideRoute,
   planGridRoute,
   polylineLength,
 } from "./grid";
@@ -780,10 +782,27 @@ function sendGridSquad(
   const goal: [number, number] = [to.pos[0] * 10, to.pos[1] * 10];
   let sent = 0;
 
+  const graphRoute = state.graph.route(
+    from.id,
+    to.id,
+    blockedTransit(state, from.owner, to.id),
+  );
   for (const part of parts) {
     const unitNav = createUnitNavGrid(state.map, state.cities, from.owner, part.kind, to.id);
     if (!unitNav) continue;
-    const route = planGridRoute(state.map, unitNav, start, goal, 40, part.kind);
+    let route = planDirectGridRoute(state.map, unitNav, start, goal, 40, part.kind);
+    if (!route && graphRoute) {
+      route = planGridGuideRoute(
+        state.map,
+        state.cities,
+        from.owner,
+        part.kind,
+        start,
+        goal,
+        graphRoute.path,
+      );
+    }
+    if (!route) route = planGridRoute(state.map, unitNav, start, goal, 40, part.kind);
     if (!route) continue;
     spawnGridSquad(
       state,
