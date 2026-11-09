@@ -579,8 +579,10 @@ export class GameSession {
     const signature = `${this.selected.join(",")}|${this.state.cities
       .map(
         (city) =>
+          // 可达范围只看兵种构成；具体人数变化不会改变洪泛结果，
+          // 否则人口每涨一次都会重算整张可达图并重传地形顶点。
           `${city.id}:${city.owner}:${city.transit ?? ""}:${canDispatchFrom(city) ? 1 : 0}:${garrisonEntries(city)
-            .map((entry) => `${entry.kind}${entry.count}`)
+            .map((entry) => entry.kind)
             .join(".")}`,
       )
       .join(",")}`;
