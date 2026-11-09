@@ -19,6 +19,15 @@ interface SearchScratch {
   closed: Uint8Array;
 }
 const scratchCache = new WeakMap<NavGrid, SearchScratch>();
+interface FlowField {
+  distance: Int32Array;
+  parents: Int32Array;
+}
+const flowCaches = new WeakMap<NavGrid, Map<string, FlowField>>();
+const flowRequests = new WeakMap<NavGrid, Map<string, number>>();
+const FLOW_LIMIT = 8;
+/** 同一个目标至少被查询几次后才建距离场；避免一次性路径反而多付铺图成本。 */
+const FLOW_REQUEST_THRESHOLD = 4;
 
 export interface SearchOptions {
   readonly radiusCm?: number;
@@ -174,6 +183,89 @@ function search(
   return null;
 }
 
+/**
+ * 从目标反向铺一张距离场。
+ * 同一目标、同一净空半径被多个起点查询时，后续起点不再单独跑 A*。
+ */
+function flowField(
+  grid: NavGrid,
+  goal: number,
+  coverage: Uint8Array | undefined,
+  key: string,
+): FlowField | null {
+  let cache = flowCaches.get(grid);
+  if (!cache) {
+    cache = new Map<string, FlowField>();
+    flowCaches.set(grid, cache);
+  }
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const count = grid.cellCount;
+  const distance = new Int32Array(count).fill(-1);
+  const parents = new Int32Array(count).fill(-1);
+  const heap = new CellHeap();
+  distance[goal] = 0;
+  heap.push(0, goal);
+  let expanded = 0;
+  const limit = count * 2;
+
+  while (heap.size > 0) {
+    const current = heap.pop();
+    expanded += 1;
+    if (expanded > limit) break;
+    const cx = grid.cellX(current);
+    const cz = grid.cellZ(current);
+    for (const neighbor of NEIGHBORS) {
+      const nx = cx + neighbor[0];
+      const nz = cz + neighbor[1];
+      if (!grid.inBounds(nx, nz)) continue;
+      const next = grid.index(nx, nz);
+      if (!grid.isWalkable(next, coverage)) continue;
+      // 反向扩展，因此要检查 next -> current 的通行方向。
+      if (!grid.canStep(next, current, coverage)) continue;
+      const tentative = distance[current] + grid.stepCost(next, current);
+      if (distance[next] !== -1 && tentative >= distance[next]) continue;
+      distance[next] = tentative;
+      parents[next] = current;
+      heap.push(tentative, next);
+    }
+  }
+
+  const field: FlowField = { distance, parents };
+  const limitSize = count > 100_000 ? 2 : FLOW_LIMIT;
+  if (cache.size >= limitSize) {
+    const oldest = cache.keys().next();
+    if (!oldest.done) cache.delete(oldest.value);
+  }
+  cache.set(key, field);
+  return field;
+}
+
+function pathFromFlow(
+  field: FlowField,
+  start: number,
+  goal: number,
+): NavPath | null {
+  if (field.distance[start] < 0) return null;
+  const cells: number[] = [];
+  let at = start;
+  let guard = 0;
+  while (at !== goal) {
+    cells.push(at);
+    at = field.parents[at];
+    guard += 1;
+    if (at < 0 || guard > field.distance.length) return null;
+  }
+  cells.push(goal);
+  return {
+    cells,
+    cost: field.distance[start],
+    expanded: 0,
+    startCell: start,
+    goalCell: goal,
+  };
+}
+
 function cacheFor(grid: NavGrid): Map<string, NavPath | null> {
   let cache = caches.get(grid);
   if (!cache) {
@@ -186,6 +278,8 @@ function cacheFor(grid: NavGrid): Map<string, NavPath | null> {
 export function clearPathCache(grid: NavGrid): void {
   caches.delete(grid);
   scratchCache.delete(grid);
+  flowCaches.delete(grid);
+  flowRequests.delete(grid);
 }
 
 export function findCellPath(
@@ -221,6 +315,33 @@ export function findCellPath(
   if (options.cache !== false) {
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
+  }
+
+  // 同一个目标被多个起点查询时，从第二次开始用反向距离场，后续起点
+  // 只需沿父指针回溯，不再重复展开 A*。
+  if (options.cache !== false && options.maxExpanded === undefined) {
+    const flowKey = radius + ":" + goalCell;
+    let requests = flowRequests.get(grid);
+    if (!requests) {
+      requests = new Map<string, number>();
+      flowRequests.set(grid, requests);
+    }
+    const nextCount = (requests.get(flowKey) ?? 0) + 1;
+    requests.set(flowKey, nextCount);
+    if (nextCount >= FLOW_REQUEST_THRESHOLD) {
+      const field = flowField(grid, goalCell, coverage, flowKey);
+      if (field) {
+        const flowPath = pathFromFlow(field, startCell, goalCell);
+        if (flowPath !== null) {
+          if (cache.size >= CACHE_LIMIT) {
+            const oldest = cache.keys().next();
+            if (!oldest.done) cache.delete(oldest.value);
+          }
+          cache.set(key, flowPath);
+        }
+        return flowPath;
+      }
+    }
   }
 
   const result = search(grid, startCell, goalCell, coverage, maxExpanded);
