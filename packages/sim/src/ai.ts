@@ -17,7 +17,7 @@ const GRANARY_FIRST_BONUS = 1500;
 export interface AiTuning {
   /** 每隔多少 tick 决策一次，越小反应越快。 */
   decideTicks?: number;
-  /** 守军达到上限的百分比就出兵，越小越激进。 */
+  /** 仅用于测试/调参；正式难度不覆盖，AI 与通用规则共用默认阈值。 */
   sendThresholdPercent?: number;
 }
 

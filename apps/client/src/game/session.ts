@@ -1089,7 +1089,8 @@ export class GameSession {
     const playerCommands = this.commands;
     this.commands = [];
     const commands: Command[] = [];
-    if (this.state.tick % 40 === 0) this.aiQueue.push(...this.ai.decide(this.state));
+    // 决策间隔由 AiTuning 控制；这里每 tick 调用，让 decideTicks 真正生效。
+    this.aiQueue.push(...this.ai.decide(this.state));
     // 每帧最多执行少量 AI 指令：一条派兵要跑一次 A*，
     // 十几条挤在同一个 tick 里会直接卡住半秒，和玩家有没有操作无关。
     const budget = Math.max(1, Math.min(4, Math.ceil(this.timeScale / 4)));

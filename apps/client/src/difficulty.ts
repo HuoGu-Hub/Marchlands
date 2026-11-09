@@ -6,27 +6,28 @@ export interface DifficultyDef {
   id: DifficultyId;
   label: string;
   hint: string;
-  ai: AiTuning;
+  /** 难度只改决策频率；派兵阈值等规则与玩家共用。 */
+  ai: Pick<AiTuning, "decideTicks">;
 }
 
 export const DIFFICULTIES: DifficultyDef[] = [
   {
     id: "easy",
     label: "轻松",
-    hint: "敌军集结迟缓，适合熟悉地图",
-    ai: { decideTicks: 80, sendThresholdPercent: 72 },
+    hint: "敌军决策间隔更长，适合熟悉地图",
+    ai: { decideTicks: 80 },
   },
   {
     id: "normal",
     label: "标准",
     hint: "敌军按常规节奏推进",
-    ai: { decideTicks: 40, sendThresholdPercent: 60 },
+    ai: { decideTicks: 40 },
   },
   {
     id: "hard",
     label: "困难",
-    hint: "敌军频繁出击且更早满编",
-    ai: { decideTicks: 24, sendThresholdPercent: 50 },
+    hint: "敌军决策更频繁，推进更主动",
+    ai: { decideTicks: 24 },
   },
 ];
 
