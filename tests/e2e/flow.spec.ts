@@ -1523,3 +1523,35 @@ test("neutral mage tower fires at an approaching squad", async ({ page }) => {
     )
     .toBeLessThan(15);
 });
+
+test("dev tuner changes a live value", async ({ page }) => {
+  await openGame(page, "frontier01");
+  await page.click("#ml-dev-toggle");
+  await expect(page.locator("#ml-dev-panel")).toBeVisible();
+  await page.locator("#ml-dev-panel summary").filter({ hasText: "法师塔" }).click();
+  const range = page.locator('[data-dev-field="mage.range"]');
+  await expect(range).toHaveValue("7");
+  await range.fill("9");
+  await page.waitForTimeout(120);
+
+  await page.evaluate(() => {
+    (window as unknown as { __mlDebug?: { focus(x: number, z: number, zoom?: number): unknown } }).__mlDebug?.focus(
+      -490,
+      430,
+      0.6,
+    );
+  });
+  await page.waitForTimeout(400);
+  const mage = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCityBase(id: string): { x: number; y: number } | null } }).__mlDebug
+        ?.projectCityBase("m1"),
+  );
+  if (!mage) throw new Error("m1 has no screen position");
+  await page.mouse.click(mage.x, mage.y);
+  await expect(page.locator("#city-trait")).toContainText("射程 9.0 米");
+
+  await page.getByRole("button", { name: "重置为开局值" }).click();
+  await expect(range).toHaveValue("7");
+  await expect(page.locator("#city-trait")).toContainText("射程 7.0 米");
+});

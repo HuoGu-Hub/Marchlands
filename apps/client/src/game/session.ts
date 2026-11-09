@@ -20,6 +20,7 @@ import {
   garrisonEntries,
   isProductionSiteKind,
   isUpgradableSiteKind,
+  levelRule,
   planGridRoute,
   reachableGridCells,
   reachableGridCities,
@@ -312,6 +313,29 @@ export class GameSession {
 
   getSquad(id: string): SquadState | undefined {
     return this.state.squads.find((squad) => squad.id === id);
+  }
+
+  /** 开发调参面板读取的当前规则；修改后调用 applyTuning 刷新派生值。 */
+  getRules(): Ruleset {
+    return this.state.rules;
+  }
+
+  /** 调参后让现有据点的容量上限与可达范围跟上新规则。 */
+  applyTuning(): void {
+    const rules = this.state.rules;
+    for (const city of this.state.cities) {
+      const maxPop =
+        city.kind === "granary"
+          ? rules.granary.capacity
+          : city.kind === "outpost"
+            ? rules.outpost.capacity
+            : levelRule(rules, city.level).maxPop;
+      city.maxPop = Math.max(0, maxPop);
+    }
+    this.refreshReach(true);
+    this.updateHud();
+    const display = this.inspected ?? this.primary;
+    if (display) this.options.onSelect(display, this.inspected ? 1 : this.selected.length);
   }
 
   /** 当前选中的己方据点；最后选中或最后追加的一座作为面板主目标。 */
@@ -1918,6 +1942,16 @@ export class GameSession {
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
     if (event.key === "Control" || event.key === "Meta") {
       if (!event.repeat) this.toggleMultiSelect();
       return;

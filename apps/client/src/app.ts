@@ -8,6 +8,7 @@ import {
   garrisonEntries,
   isProductionSiteKind,
   isUpgradableSiteKind,
+  levelRule,
 } from "@marchlands/sim";
 import type { MapDef, SimState, SquadStance } from "@marchlands/sim";
 import { CAMPAIGN, defaultLevelId, findLevel, previewUrl } from "./campaign";
@@ -23,6 +24,7 @@ import { assetRegistry } from "./game/asset-registry";
 import { art } from "./game/assets";
 import { mapSketch } from "./game/map-sketch";
 import { GameSession } from "./game/session";
+import type { DevTuner } from "./game/dev-tuner";
 import { UNIT_KINDS, UNIT_NAMES } from "./game/unit-models";
 import { skinsForKind, unitSkinAssetId } from "./game/unit-skins";
 import { UNIT_TRAITS, traitTags } from "./game/unit-traits";
@@ -404,6 +406,7 @@ export class App {
   private readonly mapEntries = new Map<string, MapEntry>();
   private settings: Settings = loadSettings();
   private session: GameSession | null = null;
+  private devTuner: DevTuner | null = null;
   private editor: EditorController | EditorNext | null = null;
   private editorKind: "classic" | "next" | null = null;
   private playtestMap: { map: MapDef; visual: MapVisual } | null = null;
@@ -597,6 +600,7 @@ export class App {
   }
 
   private openEditor(): void {
+    this.disposeDevTuner();
     this.session?.dispose();
     this.session = null;
     this.playtestMap = null;
@@ -626,6 +630,7 @@ export class App {
   }
 
   private startEditorPlaytest(map: MapDef, visual: MapVisual): void {
+    this.disposeDevTuner();
     this.session?.dispose();
     this.editor?.suspend();
     this.playtestMap = { map, visual };
@@ -647,10 +652,12 @@ export class App {
       onSelect: (cityId, count) => this.updateCityPanel(cityId, count),
     });
     this.session.start();
+    this.attachDevTuner();
     this.showEditorReturn();
   }
 
   private returnToEditor(): void {
+    this.disposeDevTuner();
     this.session?.dispose();
     this.session = null;
     this.hideOverlay("pause-overlay");
@@ -931,6 +938,7 @@ export class App {
     if (!entry) return;
     this.selection = null;
     this.activeRun = config;
+    this.disposeDevTuner();
     this.session?.dispose();
     this.editor?.suspend();
     this.playtestMap = null;
@@ -955,6 +963,7 @@ export class App {
         onReady: () => this.clearMatchPreparing(),
       });
       this.session.start();
+      this.attachDevTuner();
     };
     if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("intro") === "0") {
       boot();
@@ -963,6 +972,23 @@ export class App {
     // 先让加载画面真正画一帧，再同步建场景，避免点击后立刻定住。
     this.showMatchPreparing();
     requestAnimationFrame(() => requestAnimationFrame(boot));
+  }
+
+  /** 开发环境才挂载数值调参面板；生产构建不会加载这个模块。 */
+  private attachDevTuner(): void {
+    if (!import.meta.env.DEV) return;
+    const session = this.session;
+    if (!session) return;
+    void import("./game/dev-tuner").then(({ DevTuner }) => {
+      if (this.session !== session) return;
+      this.devTuner?.dispose();
+      this.devTuner = new DevTuner(session);
+    });
+  }
+
+  private disposeDevTuner(): void {
+    this.devTuner?.dispose();
+    this.devTuner = null;
   }
 
   private showMatchPreparing(): void {
@@ -989,6 +1015,7 @@ export class App {
       time: this.formatTime(state.tick),
     };
     window.setTimeout(() => {
+      this.disposeDevTuner();
       this.session?.dispose();
       this.session = null;
       this.fillResult(stats);
@@ -1028,11 +1055,14 @@ export class App {
   private restartGame(): void {
     this.hideOverlay("confirm-overlay");
     this.hideOverlay("pause-overlay");
+    this.disposeDevTuner();
     this.session?.restart();
     this.updateCityPanel(null);
+    this.attachDevTuner();
   }
 
   private backToMenu(): void {
+    this.disposeDevTuner();
     this.session?.dispose();
     this.session = null;
     this.editor?.suspend();
@@ -1390,6 +1420,7 @@ export class App {
       panel.classList.remove("on", "inspect");
       return;
     }
+    const rules = this.session?.getRules() ?? BASE_RULES;
     const inspectOnly = city.owner !== 1;
     panel.classList.add("on");
     panel.classList.toggle("inspect", inspectOnly);
@@ -1405,10 +1436,10 @@ export class App {
     this.el("city-garrison").textContent = garrison || "无驻军";
     const trait = this.el("city-trait");
     if (city.kind === "mage") {
-      const rangeM = (BASE_RULES.mageTower.rangeCm / 100).toFixed(1);
-      const interval = Math.max(1, Math.round(BASE_RULES.mageTower.intervalTicks / BASE_RULES.tickHz));
+      const rangeM = (rules.mageTower.rangeCm / 100).toFixed(1);
+      const interval = (rules.mageTower.intervalTicks / rules.tickHz).toFixed(1);
       trait.hidden = false;
-      trait.textContent = `射程 ${rangeM} 米 · ${interval} 秒/发 · 伤害 ${BASE_RULES.mageTower.damage}`;
+      trait.textContent = `射程 ${rangeM} 米 · ${interval} 秒/发 · 伤害 ${rules.mageTower.damage}`;
     } else {
       trait.hidden = true;
       trait.textContent = "";
@@ -1430,9 +1461,9 @@ export class App {
     fill.style.background = city.owner === 1 ? "#57b57a" : city.owner === 2 ? "#d0664a" : "#b3ab97";
     const pips = this.el("city-pips").querySelectorAll("i");
     pips.forEach((pip, index) => pip.classList.toggle("on", index < city.level));
-    const defense = defenseMilliFor(city, BASE_RULES) / 1000;
+    const defense = defenseMilliFor(city, rules) / 1000;
     this.el("city-defense").textContent = defense.toFixed(2);
-    const cost = [15, 22, 32][city.level - 1] ?? 0;
+    const cost = levelRule(rules, city.level).upgradeCost;
     const transit = this.el("city-transit") as HTMLButtonElement;
     const release = city.transit === "open";
     transit.textContent = release ? "通行 · 放行" : "通行 · 拦截";

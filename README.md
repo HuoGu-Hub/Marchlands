@@ -111,6 +111,8 @@ pnpm dev
 
 客户端默认地址为 http://127.0.0.1:5188。开发模式下可以用 `?speed=20` 加速模拟，用 `?scene=frontier-battle&map=crossroads01` 直接进入指定地图的对局，用 `?scene=height` 打开高低差测试场景。
 
+对局内右上角的“DEV 调参”或 F2 可以打开开发数值面板，实时调整兵种属性、建筑规则与全局参数。改动只影响当前对局，不会进入发布包。
+
 ## 构建 Windows 客户端
 
 ```bash
