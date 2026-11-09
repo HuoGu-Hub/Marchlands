@@ -151,6 +151,65 @@ export interface GridRoute {
   readonly points: Array<[number, number]>;
 }
 
+/**
+ * 视线内没有阻挡时直接走直线。
+ * 开阔地图上大多数派兵都属于这种情况，可以跳过整张图的 A* 展开；
+ * 任一点贴墙就返回 null，让调用方回退到完整寻路。
+ */
+function directGridRoute(
+  nav: NavGrid,
+  fromCm: [number, number],
+  toCm: [number, number],
+  offsetX: number,
+  offsetZ: number,
+  radiusCm: number,
+): GridRoute | null {
+  const fromX = fromCm[0] + offsetX;
+  const fromZ = fromCm[1] + offsetZ;
+  const toX = toCm[0] + offsetX;
+  const toZ = toCm[1] + offsetZ;
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  const distance = Math.hypot(dx, dz);
+  if (distance < 1) return null;
+  const coverage = radiusCm > 0 ? nav.clearance(radiusCm) : undefined;
+  const steps = Math.max(1, Math.ceil(distance / (nav.cellSizeCm / 4)));
+  const length = Math.hypot(dx, dz) || 1;
+  const perpX = (-dz / length) * radiusCm;
+  const perpZ = (dx / length) * radiusCm;
+
+  let previousCell = -1;
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    const x = fromX + dx * t;
+    const z = fromZ + dz * t;
+    const cell = nav.cellFromWorld(x, z);
+    if (cell < 0 || !nav.isWalkable(cell, coverage)) return null;
+    if (previousCell >= 0 && cell !== previousCell && !nav.canStep(previousCell, cell, coverage)) {
+      return null;
+    }
+    previousCell = cell;
+    if (radiusCm > 0) {
+      for (const side of [-1, 1]) {
+        const sideX = x + perpX * side;
+        const sideZ = z + perpZ * side;
+        const sideCell = nav.cellFromWorld(sideX, sideZ);
+        if (sideCell < 0 || !nav.isWalkable(sideCell, coverage)) return null;
+      }
+    }
+  }
+
+  // 校验要密，但返回给模拟/渲染的折线不用每个校验点都存；保持约一格一个点。
+  const pointSteps = Math.max(1, Math.ceil(distance / nav.cellSizeCm));
+  const points: Array<[number, number]> = [[fromCm[0], fromCm[1]]];
+  for (let index = 1; index < pointSteps; index += 1) {
+    const t = index / pointSteps;
+    points.push([fromCm[0] + (toCm[0] - fromCm[0]) * t, fromCm[1] + (toCm[1] - fromCm[1]) * t]);
+  }
+  points.push([toCm[0], toCm[1]]);
+  return { cost: Math.round(distance), distance, points };
+}
+
 /** 地图坐标以中心为原点，网格坐标以左下角为原点。 */
 export function planGridRoute(
   map: MapDef,
@@ -162,6 +221,11 @@ export function planGridRoute(
 ): GridRoute | null {
   const offsetX = map.size[0] * 5;
   const offsetZ = map.size[1] * 5;
+  // 盾墙兵种还要额外检查 2×2 格，直线通道留到 A* 后再验证。
+  if (unitKind !== "warrior") {
+    const direct = directGridRoute(nav, fromCm, toCm, offsetX, offsetZ, radiusCm);
+    if (direct) return direct;
+  }
   const path = planPath(
     nav,
     { xCm: Math.round(fromCm[0] + offsetX), zCm: Math.round(fromCm[1] + offsetZ) },

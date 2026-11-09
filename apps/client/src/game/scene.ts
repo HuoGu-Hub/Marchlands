@@ -39,6 +39,7 @@ const PREVIEW_PATH_ID = "__route-preview";
 /** 所有小兵统一缩放到这个身高，和程序化小兵、建筑保持同一档。 */
 const GLB_UNIT_HEIGHT = 0.95;
 const SQUAD_LABEL_HEIGHT = 1.55;
+const SQUAD_DEATH_MS = 340;
 /** 兵团按实际人数铺开，每行站位与行列间距，单位：米。 */
 const SQUAD_COLUMNS = 3;
 const SQUAD_SPACING_X = 0.86;
@@ -186,9 +187,18 @@ export interface SceneViewState {
 
 type SquadUnit = UnitActor | GlbUnitActor;
 
+interface DyingSquadUnit {
+  unit: SquadUnit;
+  started: number;
+  baseScale: THREE.Vector3;
+  baseY: number;
+}
+
 interface SquadView {
   group: THREE.Group;
   units: SquadUnit[];
+  /** 已阵亡但还在播放下沉/缩小收尾的单位；不计入存活模型。 */
+  dying: DyingSquadUnit[];
   label: THREE.Sprite;
   canvas: HTMLCanvasElement;
   texture: THREE.CanvasTexture;
@@ -1258,7 +1268,7 @@ export class BattleScene {
         ? (squad.gridIndex ?? 0) < squad.gridPath.length
         : squad.pathIndex < squad.path.length - 1;
       const marching = pathing && (!squad.engagedWith || squad.stance === "forced");
-      this.syncSquadUnits(view, squad);
+      this.syncSquadUnits(view, squad, now);
       const distance2 = this.camera.position.distanceToSquared(view.group.position);
       const selected = this.selectedSquadId === squad.id;
       const kind = this.squadUnitKind(squad);
@@ -1275,6 +1285,7 @@ export class BattleScene {
           view.instanced = true;
           // 整队烘成一张贴图：每个兵团只保留一个实例，不再逐小兵铺 billboard。
           for (const unit of view.units) unit.visible = false;
+          for (const item of view.dying) item.unit.visible = false;
           const key = `${skin}:${squad.owner}:${bucket}`;
           const list = instanceEntries.get(key) ?? [];
           list.push({
@@ -1331,6 +1342,11 @@ export class BattleScene {
       }
       view.disposed = true;
       for (const unit of view.units) unit.dispose();
+      for (const item of view.dying) {
+        view.group.remove(item.unit);
+        item.unit.dispose();
+      }
+      view.dying.length = 0;
       view.label.material.dispose();
       view.texture.dispose();
       view.shadow.geometry.dispose();
@@ -1574,6 +1590,7 @@ export class BattleScene {
     const view: SquadView = {
       group,
       units: [],
+      dying: [],
       label,
       canvas,
       texture,
@@ -1691,8 +1708,27 @@ export class BattleScene {
     return dx * dx + dz * dz < this.squadLodDistance2() ? base : 2;
   }
 
+  /** 阵亡模型先缩小下沉，播完再从场景里移除。 */
+  private updateDyingUnits(view: SquadView, now: number): void {
+    for (let index = view.dying.length - 1; index >= 0; index -= 1) {
+      const item = view.dying[index];
+      const t = (now - item.started) / SQUAD_DEATH_MS;
+      if (t >= 1) {
+        view.group.remove(item.unit);
+        item.unit.dispose();
+        view.dying.splice(index, 1);
+        continue;
+      }
+      const scale = Math.max(0.05, 1 - t * 0.85);
+      item.unit.scale.copy(item.baseScale).multiplyScalar(scale);
+      item.unit.position.y = item.baseY - t * 0.55;
+      item.unit.visible = true;
+    }
+  }
+
   /** 兵团人数减少时同步撤掉模型，编队按当前人数重新收拢。 */
-  private syncSquadUnits(view: SquadView, squad: SquadState): void {
+  private syncSquadUnits(view: SquadView, squad: SquadState, now: number): void {
+    this.updateDyingUnits(view, now);
     if (view.loading) return;
     const kind = this.squadUnitKind(squad);
     const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
@@ -1704,12 +1740,19 @@ export class BattleScene {
     const target = Math.min(squad.count, maxUnits);
     const offsets = squadFormation(target, spacing, spacingZ);
     let changed = false;
-    while (view.units.length > target) {
+    // 每帧最多撤掉一个模型，让伤亡真的逐个消失；剩余模型继续留在场上
+    // 播放下沉/缩小，而不是一帧里整队凭空消失。
+    if (view.units.length > target) {
       const unit = view.units.pop();
-      if (!unit) break;
-      view.group.remove(unit);
-      unit.dispose();
-      changed = true;
+      if (unit) {
+        view.dying.push({
+          unit,
+          started: now,
+          baseScale: unit.scale.clone(),
+          baseY: unit.position.y,
+        });
+        changed = true;
+      }
     }
     const growsWithGlb = !!skin && assetRegistry.has(skin);
     if (growsWithGlb && view.units.length < target) {
