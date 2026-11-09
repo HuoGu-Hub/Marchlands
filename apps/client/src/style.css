@@ -1036,6 +1036,17 @@ body.preview-mode #preview-canvas {
   text-overflow: ellipsis;
 }
 
+.city-trait {
+  margin-top: 5px;
+  color: var(--gold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.city-trait[hidden] {
+  display: none;
+}
+
 .city-dispatch {
   display: flex;
   align-items: center;

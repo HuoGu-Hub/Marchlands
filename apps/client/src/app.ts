@@ -141,6 +141,7 @@ const TEMPLATE = `
         <div class="city-line">守军 <b id="city-pop">30</b> / <span id="city-max">65</span> · 防御 <b id="city-defense">1.20</b></div>
         <div class="pop-bar"><i id="city-pop-fill"></i></div>
         <div class="city-garrison" id="city-garrison"></div>
+        <div class="city-trait" id="city-trait" hidden></div>
         <div class="city-dispatch">
           <span id="city-dispatch-label">派兵</span>
           <input id="city-dispatch-range" type="range" min="1" max="30" value="15" />
@@ -1402,6 +1403,16 @@ export class App {
       .map((entry) => `${UNIT_PROFILES[entry.kind].label} ${entry.count}`)
       .join(" · ");
     this.el("city-garrison").textContent = garrison || "无驻军";
+    const trait = this.el("city-trait");
+    if (city.kind === "mage") {
+      const rangeM = (BASE_RULES.mageTower.rangeCm / 100).toFixed(1);
+      const interval = Math.max(1, Math.round(BASE_RULES.mageTower.intervalTicks / BASE_RULES.tickHz));
+      trait.hidden = false;
+      trait.textContent = `射程 ${rangeM} 米 · ${interval} 秒/发 · 伤害 ${BASE_RULES.mageTower.damage}`;
+    } else {
+      trait.hidden = true;
+      trait.textContent = "";
+    }
     const range = this.el("city-dispatch-range") as HTMLInputElement;
     const max = Math.max(1, city.pop);
     const amount =

@@ -222,6 +222,8 @@ export class BattleScene {
   private readonly squadSphere = new THREE.Sphere();
   private readonly citySphere = new THREE.Sphere();
   private readonly rings = new Map<CityId, THREE.Mesh>();
+  private readonly attackRangeRings = new Map<CityId, THREE.Mesh>();
+  private mageTowerRangeCm = 700;
   private readonly selectedMarkers = new Map<CityId, THREE.Mesh>();
   private readonly ringGeometry = new THREE.RingGeometry(2.55, 2.85, 48);
   private readonly ringMaterial = new THREE.MeshBasicMaterial({
@@ -920,6 +922,7 @@ export class BattleScene {
     this.frustum.setFromProjectionMatrix(this.frustumMatrix);
     this.updateCities(state);
     this.updateSquads(state);
+    this.mageTowerRangeCm = state.rules.mageTower?.rangeCm ?? 700;
     this.projectiles.update(state, deltaMs, (id) => this.squadAnchorPosition(id));
     this.updateRings();
     if (this.reachTiles.length > 0) {
@@ -2549,6 +2552,76 @@ export class BattleScene {
       marker.rotation.y = this.elapsed / 1400;
     }
     this.ringMaterial.opacity = 0.5 + Math.sin(this.elapsed / 260) * 0.18;
+    this.updateAttackRangeRings();
+  }
+
+  /** 法师塔等可攻击建筑的射程圈：沿地形起伏贴在地表。 */
+  private updateAttackRangeRings(): void {
+    const shown = new Set<CityId>();
+    const radius = this.mageTowerRangeCm / 100;
+    for (const id of this.selectedIds) {
+      const view = this.cityViews.get(id);
+      const position = this.positions.get(id);
+      if (!view || !position || view.kind !== "mage") continue;
+      shown.add(id);
+      let ring = this.attackRangeRings.get(id);
+      if (ring && (ring.userData.radius !== radius || ring.userData.owner !== view.owner)) {
+        this.scene.remove(ring);
+        ring.geometry.dispose();
+        (ring.material as THREE.Material).dispose();
+        this.attackRangeRings.delete(id);
+        ring = undefined;
+      }
+      if (!ring) {
+        ring = this.buildAttackRangeRing(position, radius, view.owner);
+        ring.userData.radius = radius;
+        ring.userData.owner = view.owner;
+        this.attackRangeRings.set(id, ring);
+        this.scene.add(ring);
+      }
+      ring.visible = true;
+      ring.position.set(position.x, 0, position.z);
+    }
+    for (const [id, ring] of this.attackRangeRings) {
+      if (!shown.has(id)) ring.visible = false;
+    }
+  }
+
+  private buildAttackRangeRing(position: THREE.Vector3, radius: number, owner: Owner): THREE.Mesh {
+    const segments = 96;
+    const inner = Math.max(0.2, radius - 0.22);
+    const positions: number[] = [];
+    const indices: number[] = [];
+    for (let index = 0; index <= segments; index += 1) {
+      const angle = (index / segments) * Math.PI * 2;
+      const dx = Math.cos(angle);
+      const dz = Math.sin(angle);
+      for (const r of [inner, radius]) {
+        const x = dx * r;
+        const z = dz * r;
+        positions.push(x, this.terrain.heightAt(position.x + x, position.z + z) + 0.06, z);
+      }
+    }
+    for (let index = 0; index < segments; index += 1) {
+      const base = index * 2;
+      indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    const color = owner === 1 ? 0xffc83a : owner === 2 ? 0xe06a4a : 0xffd98a;
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.renderOrder = 4;
+    mesh.visible = false;
+    return mesh;
   }
 
   /** 贴地绘制浅绿色格子，格子随地形起伏，不会插进山坡。 */

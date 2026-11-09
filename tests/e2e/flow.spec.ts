@@ -1443,3 +1443,25 @@ test("inspects a neutral building without operating it", async ({ page }) => {
   await expect(page.locator("#city-dispatch-range")).toBeDisabled();
   await expect(page.locator("#city-stance [data-stance]").first()).toBeDisabled();
 });
+
+test("shows the attack range when inspecting a mage tower", async ({ page }) => {
+  await openGame(page, "frontier01");
+  await page.evaluate(() => {
+    (window as unknown as { __mlDebug?: { focus(x: number, z: number, zoom?: number): unknown } }).__mlDebug?.focus(
+      -490,
+      430,
+      0.6,
+    );
+  });
+  await page.waitForTimeout(400);
+  const target = await page.evaluate(
+    () =>
+      (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } }).__mlDebug
+        ?.projectCityBase("m1"),
+  );
+  if (!target) throw new Error("m1 has no screen position");
+  await page.mouse.click(target.x, target.y);
+  await expect(page.locator("#city-panel")).toHaveClass(/inspect/, { timeout: 5000 });
+  await expect(page.locator("#city-name")).toContainText("m1");
+  await expect(page.locator("#city-trait")).toContainText("射程 7.0 米");
+});
