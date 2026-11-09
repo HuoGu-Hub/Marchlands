@@ -159,6 +159,7 @@ export class RouteOverlay {
   private pixelRatio = 0;
   private rect = { left: 0, top: 0 };
   private panelVisible = false;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(options: RouteOverlayOptions) {
     this.gameCanvas = options.canvas;
@@ -213,6 +214,9 @@ export class RouteOverlay {
     }
 
     this.resize();
+    // 画布尺寸只在父容器变化时更新；每帧读 clientWidth 会触发布局。
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(page);
   }
 
   /** 单选后从建筑拖拽派兵时显示的拱形箭头；传 null 清除。 */
@@ -256,7 +260,6 @@ export class RouteOverlay {
   }
 
   render(state: SimState, selectedSquadId: string | null): void {
-    this.resize();
     this.projector.update(this.scene, this.map, this.rect.left, this.rect.top);
     const context = this.context;
     context.clearRect(0, 0, this.width, this.height);
@@ -336,6 +339,8 @@ export class RouteOverlay {
   }
 
   dispose(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.canvas.remove();
     this.panel.remove();
     this.style.remove();

@@ -170,6 +170,10 @@ interface CityView {
   labelHeight: number;
   baseRadius: number;
   shadow: THREE.Mesh;
+  /** 上一次重绘文字标签的时间；人口频繁变化时限频。 */
+  labelPaintedAt: number;
+  /** 是否挂在场景树里；镜头外会摘下。 */
+  attached: boolean;
 }
 
 export interface SceneViewState {
@@ -198,6 +202,8 @@ interface SquadView {
   animAccum: number;
   /** 当前是否使用远处静态替身；用滞回避免镜头在阈值附近反复切换。 */
   instanced: boolean;
+  /** 是否挂在场景树里；镜头外会摘下以减少矩阵与渲染遍历。 */
+  attached: boolean;
 }
 
 export class BattleScene {
@@ -212,7 +218,9 @@ export class BattleScene {
   private readonly projectiles = new ProjectileField();
   private readonly squadInstances = new SquadInstanceField();
   private readonly frustum = new THREE.Frustum();
+  private readonly frustumMatrix = new THREE.Matrix4();
   private readonly squadSphere = new THREE.Sphere();
+  private readonly citySphere = new THREE.Sphere();
   private readonly rings = new Map<CityId, THREE.Mesh>();
   private readonly selectedMarkers = new Map<CityId, THREE.Mesh>();
   private readonly ringGeometry = new THREE.RingGeometry(2.55, 2.85, 48);
@@ -1003,6 +1011,9 @@ export class BattleScene {
     this.elapsed += deltaMs;
     this.updateIntro(deltaMs);
     this.updateCamera(deltaMs);
+    this.camera.updateMatrixWorld();
+    this.frustumMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.frustumMatrix);
     this.updateCities(state);
     this.updateSquads(state);
     this.projectiles.update(state, deltaMs, (id) => this.squadAnchorPosition(id));
@@ -1167,6 +1178,7 @@ export class BattleScene {
 
   private updateCities(state: SimState): void {
     const seen = new Set<CityId>();
+    const now = performance.now();
     for (const city of state.cities) {
       seen.add(city.id);
       let view = this.cityViews.get(city.id);
@@ -1176,6 +1188,28 @@ export class BattleScene {
       }
       const position = this.positions.get(city.id);
       if (position) view.group.position.set(position.x, position.y, position.z);
+
+      if (!position) continue;
+      this.citySphere.center.set(
+        position.x,
+        position.y + view.labelHeight * 0.5,
+        position.z,
+      );
+      this.citySphere.radius = Math.max(view.baseRadius, view.labelHeight) + 2;
+      if (!this.frustum.intersectsSphere(this.citySphere)) {
+        // 镜头外的建筑连组一起摘掉；模型和标签都不参与每帧矩阵更新。
+        if (view.attached) {
+          this.scene.remove(view.group);
+          view.attached = false;
+        }
+        continue;
+      }
+      const justAttached = !view.attached;
+      if (justAttached) {
+        this.scene.add(view.group);
+        view.attached = true;
+      }
+
       const siteVisual = this.visual?.sites[city.id];
       const visualKey = siteVisual
         ? [
@@ -1198,8 +1232,10 @@ export class BattleScene {
 
       view.label.position.y = view.labelHeight;
       const label = `${city.id} · L${city.level}\n${city.pop}/${city.maxPop}`;
-      if (label !== view.labelText) {
+      // 人口每 tick 都可能变，标签纹理按 4 Hz 限频，避免后期反复上传画布。
+      if (label !== view.labelText && (justAttached || now - view.labelPaintedAt >= 250)) {
         view.labelText = label;
+        view.labelPaintedAt = now;
         this.paintLabel(view.canvas, view.texture, label.split("\n"), "#f2ead7", [78, 54]);
         view.label.material.map = view.texture;
         view.label.material.needsUpdate = true;
@@ -1219,10 +1255,6 @@ export class BattleScene {
     const now = performance.now();
     const delta = Math.min(50, now - this.lastSquadUpdate || 16);
     this.lastSquadUpdate = now;
-    this.camera.updateMatrixWorld();
-    this.frustum.setFromProjectionMatrix(
-      new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse),
-    );
     const seen = new Set<string>();
     const instanceEntries = new Map<string, SquadInstanceEntry[]>();
     for (const squad of state.squads) {
@@ -1235,6 +1267,25 @@ export class BattleScene {
       const point = this.squadPoint(squad, state.tick);
       point.y = this.terrain.heightAt(point.x, point.z);
       view.group.position.set(point.x, point.y + 0.06, point.z);
+      this.squadSphere.center.set(point.x, view.group.position.y + 1, point.z);
+      this.squadSphere.radius = 4.5;
+      const visible = this.frustum.intersectsSphere(this.squadSphere);
+      if (!visible) {
+        // 镜头外的兵团直接从场景树摘掉：不仅省 draw，
+        // 也避免每帧为它的骨骼和子节点更新矩阵、同步模型。
+        if (view.attached) {
+          this.scene.remove(view.group);
+          view.attached = false;
+        }
+        view.animAccum = 0;
+        view.instanced = false;
+        continue;
+      }
+      if (!view.attached) {
+        this.scene.add(view.group);
+        view.attached = true;
+        view.animAccum = 0;
+      }
       if (squad.gridPath && squad.xCm !== undefined && squad.zCm !== undefined && squad.gridIndex !== undefined) {
         const target = squad.gridPath[squad.gridIndex];
         if (target) {
@@ -1257,9 +1308,6 @@ export class BattleScene {
         : squad.pathIndex < squad.path.length - 1;
       const marching = pathing && (!squad.engagedWith || squad.stance === "forced");
       this.syncSquadUnits(view, squad);
-      this.squadSphere.center.set(point.x, view.group.position.y + 1, point.z);
-      this.squadSphere.radius = 4.5;
-      const visible = this.frustum.intersectsSphere(this.squadSphere);
       const distance2 = this.camera.position.distanceToSquared(view.group.position);
       const selected = this.selectedSquadId === squad.id;
       const kind = this.squadUnitKind(squad);
@@ -1425,6 +1473,8 @@ export class BattleScene {
       labelHeight: CITY_LABEL_HEIGHT,
       baseRadius: CITY_BASE_RADIUS,
       shadow,
+      labelPaintedAt: 0,
+      attached: true,
     };
     this.rebuildCityModel(view, city);
     return view;
@@ -1561,6 +1611,7 @@ export class BattleScene {
       strikeUntil: 0,
       animAccum: 0,
       instanced: false,
+      attached: true,
     };
 
     if (unitAssetId && assetRegistry.has(unitAssetId)) {

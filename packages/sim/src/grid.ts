@@ -14,6 +14,24 @@ import { unitProfile } from "./units";
 export const GRID_UNIT_RADIUS_CM = 40;
 export const GRID_CAPTURE_RADIUS_CM = 400;
 
+/**
+ * 同一张地图上，按 owner/兵种/目标/据点归属复用的导航网格。
+ * 每次派兵都重建 NavGrid 要重新解码地形并扫描净空，后期 AI 连续派兵时会卡帧。
+ */
+const unitNavCache = new WeakMap<object, Map<string, NavGrid>>();
+/** 大地图单张 NavGrid 很大，缓存条目要相应收紧。 */
+function unitNavCacheLimit(cellCount: number): number {
+  return cellCount > 100_000 ? 6 : 24;
+}
+
+function cityBlockSignature(cities: readonly CityState[]): string {
+  let signature = "";
+  for (const city of cities) {
+    signature += `${city.id}:${city.owner}:${city.transit ?? ""};`;
+  }
+  return signature;
+}
+
 export function createNavGrid(map: MapDef): NavGrid | null {
   if (!map.grid) return null;
   const grid = map.grid;
@@ -49,6 +67,14 @@ export function createUnitNavGrid(
   const grid = map.grid;
   const count = grid.width * grid.height;
   const profile = unitProfile(kind);
+  let cache = unitNavCache.get(grid);
+  if (!cache) {
+    cache = new Map<string, NavGrid>();
+    unitNavCache.set(grid, cache);
+  }
+  const cacheKey = `${owner}|${kind}|${destination ?? ""}|${map.climbCm ?? ""}|${cityBlockSignature(cities)}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
   const blocked = decodeBitmapBase64(grid.blocked, count);
   const override = decodeBitmapBase64(grid.walkableOverride, count);
   const surfaces = decodeUint8Base64(grid.surface, count);
@@ -71,7 +97,7 @@ export function createUnitNavGrid(
       override[cell] = 0;
     }
   }
-  return new NavGrid({
+  const nav = new NavGrid({
     cellSizeCm: grid.cellSizeCm,
     width: grid.width,
     height: grid.height,
@@ -86,6 +112,12 @@ export function createUnitNavGrid(
         : profile.maxSlopePermille,
     },
   });
+  if (cache.size >= unitNavCacheLimit(count)) {
+    const oldest = cache.keys().next();
+    if (!oldest.done) cache.delete(oldest.value);
+  }
+  cache.set(cacheKey, nav);
+  return nav;
 }
 
 function shieldPathClear(nav: NavGrid, cells: readonly number[]): boolean {
