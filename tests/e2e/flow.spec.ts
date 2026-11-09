@@ -127,7 +127,7 @@ test("sets forced march before dispatching a squad", async ({ page }) => {
 });
 
 
-test("dispatches the count chosen on the city slider", async ({ page }) => {
+test("always dispatches half of the current garrison", async ({ page }) => {
   await openGame(page);
   const start = await page.evaluate(() => {
     const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
@@ -136,13 +136,9 @@ test("dispatches the count chosen on the city slider", async ({ page }) => {
   });
   if (!start) throw new Error("c1 has no screen position");
   await page.mouse.click(start.x, start.y);
-  await expect(page.locator("#city-dispatch-range")).toBeVisible();
-  await page.evaluate(() => {
-    const range = document.querySelector("#city-dispatch-range") as HTMLInputElement;
-    range.value = "5";
-    range.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  await expect(page.locator("#city-dispatch-count")).toHaveText("5");
+  await expect(page.locator("#city-dispatch-count")).toHaveText("50%");
+  const pop = Number(await page.locator("#city-pop").textContent());
+  const expected = Math.floor(pop / 2);
 
   const target = await page.evaluate(() => {
     const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
@@ -164,57 +160,7 @@ test("dispatches the count chosen on the city slider", async ({ page }) => {
         }),
       { timeout: 10_000 },
     )
-    .toBe(5);
-
-  // 等第一支队伍抵达，避免下一轮统计把它算进来。
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => {
-          const hook = (window as unknown as {
-            __mlSquads?: { squads: Array<{ owner: number }> };
-          }).__mlSquads;
-          return (hook?.squads ?? []).filter((squad) => squad.owner === 1).length;
-        }),
-      { timeout: 30_000 },
-    )
-    .toBe(0);
-
-  const startAgain = await page.evaluate(() => {
-    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
-      .__mlDebug;
-    return hook ? hook.projectCity("c1") : null;
-  });
-  if (!startAgain) throw new Error("c1 has no screen position");
-  await page.mouse.click(startAgain.x, startAgain.y);
-  const remembered = await page.evaluate(() => ({
-    value: Number((document.querySelector("#city-dispatch-range") as HTMLInputElement).value),
-    pop: Number(document.querySelector("#city-pop")?.textContent ?? "0"),
-  }));
-  expect(remembered.value).toBeGreaterThanOrEqual(1);
-  expect(remembered.value).toBeLessThan(Math.floor(remembered.pop / 2));
-
-  const third = await page.evaluate(() => {
-    const hook = (window as unknown as { __mlDebug?: { projectCity(id: string): { x: number; y: number } | null } })
-      .__mlDebug;
-    return hook ? hook.projectCity("c3") : null;
-  });
-  if (!third) throw new Error("c3 has no screen position");
-  await page.mouse.dblclick(third.x, third.y);
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => {
-          const hook = (window as unknown as {
-            __mlSquads?: { squads: Array<{ owner: number; count: number }> };
-          }).__mlSquads;
-          return (hook?.squads ?? [])
-            .filter((squad) => squad.owner === 1)
-            .reduce((sum, squad) => sum + squad.count, 0);
-        }),
-      { timeout: 10_000 },
-    )
-    .toBe(remembered.value);
+    .toBe(expected);
 });
 
 test("creates a map in the editor and returns from playtest", async ({ page }) => {
@@ -1093,7 +1039,7 @@ test("campaign opens a series, a level sheet, difficulty and full map preview", 
 
   await page.click('.difficulty-option:has(input[value="hard"])');
   await expect(page.locator('input[name="level-difficulty"][value="hard"]')).toBeChecked();
-  await expect(page.locator("#difficulty-hint")).toContainText("频繁出击");
+  await expect(page.locator("#difficulty-hint")).toContainText("决策更频繁");
 
   await page.click("#btn-preview-open");
   await expect(page.locator("#map-viewer")).toHaveClass(/on/);
@@ -1449,7 +1395,8 @@ test("inspects a neutral building without operating it", async ({ page }) => {
   await expect(page.locator("#city-multi")).toHaveText("仅查看");
   await expect(page.locator("#city-upgrade")).toBeDisabled();
   await expect(page.locator("#city-transit")).toBeDisabled();
-  await expect(page.locator("#city-dispatch-range")).toBeDisabled();
+  await expect(page.locator("#city-dispatch-count")).toHaveText("50%");
+  await expect(page.locator("#city-dispatch-label")).toHaveText("不可操作");
   await expect(page.locator("#city-stance [data-stance]").first()).toBeDisabled();
 });
 

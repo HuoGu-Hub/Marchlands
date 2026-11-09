@@ -92,6 +92,7 @@ export function createAi(player: PlayerId, tuning: AiTuning = {}): AiController 
 
   return {
     decide(state: SimState): Command[] {
+      // 每 tick 都可以读取状态；只有到达决策间隔才生成指令。
       if (state.tick % decideTicks !== 0) return [];
 
       const commands: Command[] = [];

@@ -21,13 +21,13 @@ export const DIFFICULTIES: DifficultyDef[] = [
     id: "normal",
     label: "标准",
     hint: "敌军按常规节奏推进",
-    ai: { decideTicks: 40 },
+    ai: { decideTicks: 60 },
   },
   {
     id: "hard",
     label: "困难",
     hint: "敌军决策更频繁，推进更主动",
-    ai: { decideTicks: 24 },
+    ai: { decideTicks: 40 },
   },
 ];
 

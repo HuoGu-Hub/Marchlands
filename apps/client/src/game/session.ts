@@ -39,27 +39,6 @@ const PLAN_CANCEL_WINDOW = 500;
 const SLOW_SPEED_FACTOR = 0.7;
 /** 开局倒计时与镜头推进时长。 */
 const INTRO_MS = 3600;
-/** 全局共用的派兵比例，跨建筑、跨对局记住上一次选择。 */
-const DISPATCH_RATIO_KEY = "marchlands.dispatch-ratio";
-
-function loadDispatchRatio(): number {
-  try {
-    const raw = window.localStorage.getItem(DISPATCH_RATIO_KEY);
-    const value = raw === null ? Number.NaN : Number.parseFloat(raw);
-    if (Number.isFinite(value)) return Math.min(1, Math.max(0.0001, value));
-  } catch {
-    // 隐私模式或存储不可用时退回默认值。
-  }
-  return 0.5;
-}
-
-function saveDispatchRatio(ratio: number): void {
-  try {
-    window.localStorage.setItem(DISPATCH_RATIO_KEY, String(ratio));
-  } catch {
-    // 存不下不影响本局。
-  }
-}
 
 const REASONS: Record<string, string> = {
   unknown_city: "据点不存在",
@@ -68,7 +47,6 @@ const REASONS: Record<string, string> = {
   not_owned: "不是你的据点",
   not_producer: "该据点不产兵",
   too_few_troops: "驻军不足",
-  too_many_troops: "派出人数超过驻军",
   no_route: "没有可行路线：中立或敌方据点阻断了道路",
   max_level: "已达最高等级",
   insufficient_pop: "人口不足",
@@ -112,8 +90,6 @@ export class GameSession {
   private inspectTimerCity: CityId | null = null;
   private selectedSquad: string | null = null;
   private dispatchStance: SquadStance = "guard";
-  /** 全局派兵比例；所有己方建筑共用，默认 50%。 */
-  private dispatchRatio = loadDispatchRatio();
   private gridReach = new Map<CityId, GridReach>();
   private gridFocus: GridReach | null = null;
   private multiSelect = false;
@@ -427,26 +403,6 @@ export class GameSession {
     this.setSquadPanelVisible(false);
   }
 
-  /** 把主选建筑上的滑块数量换算成全局比例；后续所有己方建筑共用。 */
-  setDispatchAmount(value: number): void {
-    const city = this.primary ? this.getCity(this.primary) : null;
-    if (!city || city.owner !== 1 || city.pop <= 0 || !Number.isFinite(value)) return;
-    const amount = Math.max(1, Math.min(city.pop, Math.floor(value)));
-    this.dispatchRatio = amount / city.pop;
-    saveDispatchRatio(this.dispatchRatio);
-  }
-
-  /** 按全局比例换算当前建筑的派兵数量，至少 1，至多驻军。 */
-  getDispatchAmount(city: CityState): number {
-    const max = Math.max(1, city.pop);
-    const wanted = Math.max(1, Math.floor(city.pop * this.dispatchRatio));
-    return Math.min(max, wanted);
-  }
-
-  private dispatchCountFor(city: CityState): number {
-    return this.getDispatchAmount(city);
-  }
-
   /** 出兵姿态：之后所有据点派兵都按这个姿态生成兵团。 */
   setDispatchStance(stance: SquadStance): void {
     if (this.dispatchStance === stance) return;
@@ -660,7 +616,6 @@ export class GameSession {
         from: id,
         to,
         stance: this.dispatchStance,
-        count: this.dispatchCountFor(from),
       });
       sent += 1;
     }
@@ -832,7 +787,6 @@ export class GameSession {
             xCm: group.cell[0],
             zCm: group.cell[1],
             stance: this.dispatchStance,
-            count: this.dispatchCountFor(from),
           });
           sent += 1;
           continue;
@@ -847,7 +801,6 @@ export class GameSession {
           from: id,
           to: group.to,
           stance: this.dispatchStance,
-          count: this.dispatchCountFor(from),
         });
         sent += 1;
       }
@@ -1722,7 +1675,6 @@ export class GameSession {
         xCm: cell.xCm,
         zCm: cell.zCm,
         stance: this.dispatchStance,
-        count: this.dispatchCountFor(from),
       });
       sent += 1;
     }
@@ -1745,7 +1697,7 @@ export class GameSession {
       this.scene.setPreviewPath(null);
       return;
     }
-    const parts = dispatchParts(city, this.state.rules, this.dispatchCountFor(city));
+    const parts = dispatchParts(city, this.state.rules);
     if (parts.length === 0) {
       this.scene.setPreviewPath(null);
       return;

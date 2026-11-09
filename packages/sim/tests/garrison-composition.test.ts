@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeBitmapBase64, encodeInt16Base64, encodeUint8Base64 } from "@marchlands/nav";
-import { createGame, dispatchParts, step } from "../src";
+import { createGame, step } from "../src";
 import type { MapDef } from "../src/types";
 import { TIMED_RULES } from "./fixtures";
 
@@ -105,33 +105,6 @@ describe("驻军兵种账本", () => {
   });
 
 
-
-  it("滑块指定总兵数时按兵种比例分成多支队伍", () => {
-    let state = createGame(MAP, 1, TIMED_RULES);
-    state = step(state, [
-      { type: "send", from: "a", to: "g" },
-      { type: "send", from: "b", to: "g" },
-    ]).state;
-    for (let tick = 0; tick < 120; tick += 1) state = step(state, []).state;
-    const granary = state.cities.find((city) => city.id === "g");
-    if (!granary) throw new Error("missing granary");
-    const parts = dispatchParts(granary, state.rules, 7);
-    expect(parts.reduce((sum, part) => sum + part.count, 0)).toBe(7);
-    expect(parts.every((part) => part.count <= granary.garrison[part.kind])).toBe(true);
-
-    const result = step(state, [{ type: "send", from: "g", to: "c", count: 7 }]);
-    state = result.state;
-    expect(result.rejected).toHaveLength(0);
-    expect(state.squads.reduce((sum, squad) => sum + squad.count, 0)).toBe(7);
-    expect(state.cities.find((city) => city.id === "g")?.pop).toBe(3);
-  });
-
-  it("拒绝超过当前驻军的派兵数量", () => {
-    const state = createGame(MAP, 1, TIMED_RULES);
-    const result = step(state, [{ type: "send", from: "a", to: "g", count: 999 }]);
-    expect(result.rejected[0]?.reason).toBe("too_many_troops");
-    expect(result.state.squads).toHaveLength(0);
-  });
 
   it("网格地图也按兵种分别记账和派兵", () => {
     let state = createGame(gridMap(), 1, TIMED_RULES);

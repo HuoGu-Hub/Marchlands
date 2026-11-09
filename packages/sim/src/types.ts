@@ -372,14 +372,13 @@ export type SimEvent =
   | { type: "gameOver"; winner: Owner; reason: FinishReason };
 
 export type Command =
-  | { type: "send"; from: CityId; to: CityId; stance?: SquadStance; count?: number }
+  | { type: "send"; from: CityId; to: CityId; stance?: SquadStance }
   | {
       type: "sendCell";
       from: CityId;
       xCm: number;
       zCm: number;
       stance?: SquadStance;
-      count?: number;
     }
   | { type: "upgrade"; city: CityId }
   | { type: "setStance"; city: CityId; stance: Stance }
