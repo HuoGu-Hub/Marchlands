@@ -9,6 +9,8 @@ export interface SquadInstanceEntry {
   y: number;
   z: number;
   scale: number;
+  /** 左右镜像，给相同兵种/阵营的兵团制造一点队形差异。 */
+  flip?: boolean;
 }
 
 interface BillboardMesh {
@@ -86,9 +88,16 @@ export class SquadInstanceField {
         const actor = index === 0 ? probe : new GlbUnitActor(object, built.animations);
         actor.setMoving(true);
         actor.update(420 + index * 37);
-        actor.scale.setScalar(scale);
-        actor.position.set(layout[index][0], 0, layout[index][1]);
-        actor.rotation.y = (index * 0.73) % (Math.PI * 2);
+        const scaleJitter = 0.9 + formationJitter(index, bucket, 1) * 0.18;
+        actor.scale.setScalar(scale * scaleJitter);
+        actor.position.set(
+          layout[index][0] + (formationJitter(index, bucket, 2) - 0.5) * 0.28,
+          0,
+          layout[index][1] + (formationJitter(index, bucket, 3) - 0.5) * 0.24,
+        );
+        actor.rotation.y =
+          (index * 0.73) % (Math.PI * 2) +
+          (formationJitter(index, bucket, 4) - 0.5) * 0.7;
         actor.updateMatrixWorld(true);
         actors.push(actor);
       }
@@ -138,7 +147,7 @@ export class SquadInstanceField {
         const scale = item.scale;
         this.dummy.position.set(item.x, item.y + scale * 0.5, item.z);
         this.dummy.quaternion.copy(this.camera?.quaternion ?? IDENTITY);
-        this.dummy.scale.setScalar(scale);
+        this.dummy.scale.set(item.flip ? -scale : scale, scale, 1);
         this.dummy.updateMatrix();
         target.mesh.setMatrixAt(index, this.dummy.matrix);
       }
@@ -207,6 +216,12 @@ export class SquadInstanceField {
   private key(assetId: string, owner: Owner, bucket: SquadInstanceBucket): string {
     return assetId + ":" + owner + ":" + bucket;
   }
+}
+
+/** 稳定的伪随机，保证每次重新生成同一档位时队形一致。 */
+function formationJitter(index: number, bucket: number, salt: number): number {
+  const value = Math.sin(index * 12.9898 + bucket * 78.233 + salt * 37.719) * 43758.5453;
+  return value - Math.floor(value);
 }
 
 function formationLayout(bucket: SquadInstanceBucket): Array<[number, number]> {

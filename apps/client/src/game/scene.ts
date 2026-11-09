@@ -1293,6 +1293,7 @@ export class BattleScene {
             y: view.group.position.y + 0.06,
             z: view.group.position.z,
             scale: SQUAD_BILLBOARD_SIZE * (0.96 + unitJitter(squad.id, 0, 5) * 0.08),
+            flip: unitJitter(squad.id, 0, 7) > 0.5,
           });
           instanceEntries.set(key, list);
           view.animAccum = 0;
@@ -1663,11 +1664,11 @@ export class BattleScene {
     // 与队形中心的距离也随机，避免所有小兵均匀铺成一个方块。
     const spread = 0.72 + unitJitter(squadId, index, 8) * 0.56;
     unit.position.set(
-      x * spread + (unitJitter(squadId, index, 1) - 0.5) * 0.9,
+      x * spread + (unitJitter(squadId, index, 1) - 0.5) * 1.15,
       0,
-      z * spread + (unitJitter(squadId, index, 2) - 0.5) * 0.8,
+      z * spread + (unitJitter(squadId, index, 2) - 0.5) * 1.0,
     );
-    unit.rotation.y = (unitJitter(squadId, index, 3) - 0.5) * 0.8;
+    unit.rotation.y = (unitJitter(squadId, index, 3) - 0.5) * 1.15;
     // GLB 的缩放已经在 populateGlbUnits 里按包围盒算好，这里只归一化程序化小兵。
     // 否则补员、收队形时会把它重新放大回模型原始尺寸。
     if (unit instanceof UnitActor) {

@@ -13,6 +13,12 @@ const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
 
 const CACHE_LIMIT = 512;
 const caches = new WeakMap<NavGrid, Map<string, NavPath | null>>();
+interface SearchScratch {
+  scores: Int32Array;
+  parents: Int32Array;
+  closed: Uint8Array;
+}
+const scratchCache = new WeakMap<NavGrid, SearchScratch>();
 
 export interface SearchOptions {
   readonly radiusCm?: number;
@@ -110,9 +116,21 @@ function search(
   maxExpanded: number,
 ): NavPath | null {
   const count = grid.cellCount;
-  const scores = new Int32Array(count).fill(-1);
-  const parents = new Int32Array(count).fill(-1);
-  const closed = new Uint8Array(count);
+  let scratch = scratchCache.get(grid);
+  if (!scratch) {
+    scratch = {
+      scores: new Int32Array(count),
+      parents: new Int32Array(count),
+      closed: new Uint8Array(count),
+    };
+    scratchCache.set(grid, scratch);
+  }
+  const scores = scratch.scores;
+  const parents = scratch.parents;
+  const closed = scratch.closed;
+  scores.fill(-1);
+  parents.fill(-1);
+  closed.fill(0);
   const heap = new CellHeap();
   scores[start] = 0;
   heap.push(heuristic(grid, start, goal), start);
@@ -167,6 +185,7 @@ function cacheFor(grid: NavGrid): Map<string, NavPath | null> {
 
 export function clearPathCache(grid: NavGrid): void {
   caches.delete(grid);
+  scratchCache.delete(grid);
 }
 
 export function findCellPath(
