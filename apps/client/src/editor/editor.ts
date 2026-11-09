@@ -1,4 +1,4 @@
-import { createGame, isProductionSiteKind } from "@marchlands/sim";
+import { createGame, isProductionSiteKind, isUpgradableSiteKind } from "@marchlands/sim";
 import type { CityId, MapDef, Owner, Ruleset, SimState, SiteKind, Stance } from "@marchlands/sim";
 import { SITE_KIND_OPTIONS, siteKindLabel } from "../game/site-kind";
 import {
@@ -2145,13 +2145,15 @@ export class EditorController {
         </select>
       </label>
       ${isProductionSiteKind(site.kind) ? `
+      ${isUpgradableSiteKind(site.kind) ? `
       <label class="ml-ed-field"><span>等级</span>
         <select data-site="${site.id}" data-field="level">
           ${option(1, site.level, "L1")}
           ${option(2, site.level, "L2")}
           ${option(3, site.level, "L3")}
         </select>
-      </label>
+      </label>` : `
+      <div class="ml-ed-kind">固定 L1 · 不可升级</div>`}
       <label class="ml-ed-field"><span>驻军</span><input data-site="${site.id}" data-field="pop" type="number" min="0" max="999" value="${site.pop}"></label>
       ` : ""}
       ${site.kind === "outpost" ? `

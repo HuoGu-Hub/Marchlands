@@ -14,7 +14,7 @@ const MAP = {
   warrior: "Barracks_SecondAge",
   archer: "Archery_FirstAge",
   ranger: "Archery_SecondAge",
-  mage: "Temple_SecondAge",
+  // 法师塔固定使用 Sketchfab 单模型，不走这套多级转换。
 };
 const TARGET_SIZE = { 1: 2.0, 2: 2.3, 3: 2.6 };
 

@@ -31,6 +31,11 @@ export function siteUnitKind(kind: SiteKind): UnitKind | null {
   return isProductionSiteKind(kind) ? kind : null;
 }
 
+/** 可升级的产兵据点；法师塔固定一级，不能升级。 */
+export function isUpgradableSiteKind(kind: SiteKind): kind is ProductionSiteKind {
+  return isProductionSiteKind(kind) && kind !== "mage";
+}
+
 /** 旧地图与旧存档里的据点 id，读到就迁移到新名字。 */
 const LEGACY_SITE_KINDS: Record<string, SiteKind> = {
   barracks: "barbarian",
@@ -172,6 +177,15 @@ export interface OutpostRule {
   decayPerInterval: number;
 }
 
+export interface MageTowerRule {
+  /** 法师塔的索敌半径，厘米。 */
+  rangeCm: number;
+  /** 两发法术之间的间隔 tick。 */
+  intervalTicks: number;
+  /** 每发法术造成的减员。 */
+  damage: number;
+}
+
 export interface SupplyRule {
   /** 队伍出发后可安全行军的 tick 数。 */
   carryTicks: number;
@@ -191,6 +205,7 @@ export interface Ruleset {
   levels: LevelRule[];
   granary: GranaryRule;
   outpost: OutpostRule;
+  mageTower: MageTowerRule;
   supply: SupplyRule;
 }
 
@@ -212,6 +227,8 @@ export interface CityState {
   layer: number;
   stance: Stance;
   decayAtTick: number;
+  /** 法师塔下一次可以开火的 tick；其他建筑恒为 0。 */
+  mageNextShotTick?: number;
   watch: [CityId, CityId] | null;
   /** 中立时的通行规则；被占领后由 blockedTransit 强制友方通行。 */
   transit?: "open" | "closed";
@@ -341,6 +358,17 @@ export type SimEvent =
       defenderDestroyed: boolean;
     }
   | { type: "squadStanceChanged"; squadId: string; stance: SquadStance }
+  | {
+      type: "mageTowerFired";
+      cityId: CityId;
+      owner: Owner;
+      squadId: string;
+      squadOwner: PlayerId;
+      loss: number;
+      squadCount: number;
+      targetXCm: number;
+      targetZCm: number;
+    }
   | { type: "gameOver"; winner: Owner; reason: FinishReason };
 
 export type Command =

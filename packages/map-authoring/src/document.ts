@@ -14,7 +14,7 @@ import type {
   TerrainDraft,
   VisualDraft,
 } from "./types";
-import { isFoundationShape, isProductionSiteKind, TERRAIN_STYLE_IDS } from "./types";
+import { isFoundationShape, isProductionSiteKind, isUpgradableSiteKind, TERRAIN_STYLE_IDS } from "./types";
 import { createHeightField, edgeGrade } from "./height";
 import {
   DEFAULT_CAPTURE_RADIUS_DM,
@@ -1026,7 +1026,7 @@ export function compileDocument(document: MapDocument, options: CompileOptions =
         id: site.id,
         kind: site.kind,
         owner: site.owner,
-        level: isProductionSiteKind(site.kind) ? site.level : 1,
+        level: isUpgradableSiteKind(site.kind) ? site.level : 1,
         pop: site.pop,
         pos: [site.pos[0], site.pos[1]],
         layer: 0,

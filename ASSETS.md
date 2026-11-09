@@ -29,7 +29,7 @@
 
 ## 据点建筑
 
-五个产兵建筑换成 Quaternius Ultimate Fantasy RTS 的模型，CC0：
+四个产兵建筑换成 Quaternius Ultimate Fantasy RTS 的模型，CC0；法师塔单独使用 Sketchfab 模型：
 
 | 据点 | 源模型 |
 | --- | --- |
@@ -37,11 +37,10 @@
 | 精锐战士营 | Barracks_SecondAge_Level1-3 |
 | 弓箭手营 | Archery_FirstAge_Level1-3 |
 | 游侠营地 | Archery_SecondAge_Level1-3 |
-| 法师塔 | Temple_SecondAge_Level1-3 |
 
 转换脚本见 `tools/asset-convert/rts-buildings.mjs`：屋顶材质 `Main` 改名 `team_roof` 参与阵营染色，整体缩放成正比、原点居中、底面贴地，输出到 `apps/client/src/assets/converted/buildings/`。
 
-法师塔改用 Sketchfab 的 Stone Mage Tower，只有一张模型，`converted/buildings/mage.glb`，等级差异由代码按 0.86 / 1 / 1.14 缩放。水晶材质改名 `team_roof` 参与阵营染色。
+法师塔使用 Sketchfab 的 Stone Mage Tower，只有一张模型，`converted/buildings/mage.glb`，也是唯一模型。法师塔固定 L1、不可升级，因此不再生成 L1/L2/L3 三份模型。水晶材质改名 `team_roof` 参与阵营染色；塔顶按规则向射程内最近的敌方兵团发射火球。
 
 ## 战斗表现
 

@@ -21,7 +21,7 @@ import {
   reconcileGarrison,
   resizeGarrison,
 } from "./garrison";
-import { isProductionSiteKind } from "./types";
+import { isProductionSiteKind, isUpgradableSiteKind } from "./types";
 import { unitProfile } from "./units";
 import {
   DEFAULT_RULESET,
@@ -210,7 +210,8 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
   const cities: CityState[] = map.cities
     .map((city: MapCity) => {
       const kind = city.kind;
-      const level: Level = isProductionSiteKind(kind) ? city.level : 1;
+      // 法师塔只有一级；地图或旧存档里写成 2/3 时在开局归一到 1。
+      const level: Level = isUpgradableSiteKind(kind) ? city.level : 1;
       const maxPop = siteMaxPop(kind, level, rules);
       const stance: Stance = kind === "outpost" ? (city.stance ?? "evade") : "evade";
       const watch: [CityId, CityId] | null =
@@ -232,6 +233,7 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
         layer: city.layer,
         stance,
         decayAtTick,
+        ...(kind === "mage" ? { mageNextShotTick: 0 } : {}),
         watch,
         ...(city.transit ? { transit: city.transit } : {}),
         ...(city.captureRadiusCm !== undefined ? { captureRadiusCm: city.captureRadiusCm } : {}),
@@ -287,6 +289,7 @@ export function step(state: SimState, commands: Command[]): StepResult {
   for (const command of commands) applyCommand(next, command, events, rejected);
   growEconomy(next);
   advanceSquads(next, events);
+  resolveMageTowers(next, events);
   starveSquads(next, events);
   decayOutposts(next, events);
   checkFinish(next, events);
@@ -498,7 +501,7 @@ function applyCommand(
   const city = findCity(state, command.city);
   if (!city) return reject(rejected, command, "unknown_city");
   if (city.owner === 0) return reject(rejected, command, "not_owned");
-  if (!isProductionSiteKind(city.kind)) return reject(rejected, command, "not_upgradable");
+  if (!isUpgradableSiteKind(city.kind)) return reject(rejected, command, "not_upgradable");
   if (city.level >= state.rules.maxLevel) return reject(rejected, command, "max_level");
 
   const cost = levelRule(state.rules, city.level).upgradeCost;
@@ -567,6 +570,56 @@ function advanceSquads(state: SimState, events: SimEvent[]): void {
   if (removed.size > 0) {
     state.squads = state.squads.filter((squad) => !removed.has(squad.id));
   }
+}
+
+/**
+ * 法师塔按固定间隔向射程内最近的敌方兵团开火。
+ * 中立塔不开火：它只是待占领的产兵据点，避免开局就干扰双方行军。
+ */
+function resolveMageTowers(state: SimState, events: SimEvent[]): void {
+  if (state.squads.length === 0) return;
+  const towers = state.cities.filter((city) => city.kind === "mage" && city.owner !== 0).sort(byId);
+  if (towers.length === 0) return;
+
+  const removed = new Set<string>();
+  const rule = state.rules.mageTower;
+  for (const tower of towers) {
+    if (state.tick < (tower.mageNextShotTick ?? 0)) continue;
+    const center: [number, number] = [tower.pos[0] * 10, tower.pos[1] * 10];
+    let target: SquadState | null = null;
+    let targetPoint: [number, number] | null = null;
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const squad of state.squads.slice().sort(byId)) {
+      if (removed.has(squad.id) || squad.owner === tower.owner || squad.count <= 0) continue;
+      const point = squadPosition(state, squad);
+      if (!point) continue;
+      const distance = Math.hypot(point[0] - center[0], point[1] - center[1]);
+      if (distance > rule.rangeCm || distance >= nearest) continue;
+      nearest = distance;
+      target = squad;
+      targetPoint = point;
+    }
+    if (!target || !targetPoint) continue;
+
+    const loss = Math.min(target.count, Math.max(1, rule.damage));
+    target.count -= loss;
+    addLoss(state, target.owner, loss);
+    tower.mageNextShotTick = state.tick + Math.max(1, rule.intervalTicks);
+    events.push({
+      type: "mageTowerFired",
+      cityId: tower.id,
+      owner: tower.owner,
+      squadId: target.id,
+      squadOwner: target.owner,
+      loss,
+      squadCount: target.count,
+      targetXCm: targetPoint[0],
+      targetZCm: targetPoint[1],
+    });
+    if (target.count <= 0) removed.add(target.id);
+  }
+
+  if (removed.size > 0) state.squads = state.squads.filter((squad) => !removed.has(squad.id));
 }
 
 function starveSquads(state: SimState, events: SimEvent[]): void {

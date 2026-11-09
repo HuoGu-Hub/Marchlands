@@ -208,11 +208,23 @@ describe("validation", () => {
     expect(() => validateMap(rehash(broken))).toThrow(/level must be 1/);
   });
 
-  it("rejects missing granary and outpost rules", () => {
+  it("rejects missing granary, outpost and mage tower rules", () => {
     const { granary: _granary, ...withoutGranary } = rules;
     expect(() => validateRules(withoutGranary)).toThrow(/granary required/);
     const { outpost: _outpost, ...withoutOutpost } = rules;
     expect(() => validateRules(withoutOutpost)).toThrow(/outpost required/);
+    const { mageTower: _mageTower, ...withoutMageTower } = rules;
+    expect(() => validateRules(withoutMageTower)).toThrow(/mageTower required/);
+  });
+
+  it("rejects a mage tower above level 1", () => {
+    const broken: MapDef = {
+      ...map,
+      cities: map.cities.map((city) =>
+        city.id === "m1" ? ({ ...city, level: 2 } as MapCity) : city,
+      ),
+    };
+    expect(() => validateMap(rehash(broken))).toThrow(/level must be 1/);
   });
 
   it("rejects a missing or broken supply rule", () => {
@@ -224,6 +236,15 @@ describe("validation", () => {
     expect(() =>
       validateRules({ ...rules, supply: { ...rules.supply, carryTicks: -1 } }),
     ).toThrow(/carryTicks/);
+  });
+
+  it("rejects broken mage tower timing and damage", () => {
+    expect(() =>
+      validateRules({ ...rules, mageTower: { ...rules.mageTower, intervalTicks: 0 } }),
+    ).toThrow(/mageTower.intervalTicks/);
+    expect(() =>
+      validateRules({ ...rules, mageTower: { ...rules.mageTower, damage: 0 } }),
+    ).toThrow(/mageTower.damage/);
   });
 
   it("rejects negative granary bonuses and zero decay intervals", () => {

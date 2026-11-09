@@ -30,6 +30,8 @@ const CITY_BASE_RADIUS = 2.3;
 const REACH_CELL_SIZE = 12;
 const REACH_CELL_LIFT = 0.1;
 const CITY_LABEL_HEIGHT = 4.3;
+/** 法师塔火球从塔顶水晶附近发出，而不是从地面。 */
+const MAGE_TOWER_MUZZLE_HEIGHT = 2.9;
 /** 兵团路线要压在道路面之上，否则与道路重叠时会被完全遮住。 */
 const SQUAD_PATH_LIFT = 0.3;
 /** 单击目的地路线预览的保留路径 id。 */
@@ -430,6 +432,16 @@ export class BattleScene {
 
   setSelectedSquad(id: string | null): void {
     this.selectedSquadId = id;
+  }
+
+  /** 法师塔开火：从塔顶向事件记录的目标位置发一颗火球。 */
+  playTowerShot(cityId: CityId, owner: Owner, xCm: number, zCm: number): void {
+    const base = this.positions.get(cityId);
+    if (!base) return;
+    const from = base.clone();
+    from.y = this.terrain.heightAt(base.x, base.z) + MAGE_TOWER_MUZZLE_HEIGHT;
+    const to = new THREE.Vector3(xCm / 10, this.terrain.heightAt(xCm / 10, zCm / 10) + 0.9, zCm / 10);
+    this.projectiles.launchTowerShot(owner, from, to);
   }
 
   /** 场上每支己方兵团都用浅绿格子显示剩余路线；选中的那支更亮。 */

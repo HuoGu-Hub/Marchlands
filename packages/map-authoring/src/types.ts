@@ -9,7 +9,12 @@ import type {
   Stance,
 } from "@marchlands/sim";
 
-export { PRODUCTION_SITE_KINDS, isProductionSiteKind, siteUnitKind } from "@marchlands/sim";
+export {
+  PRODUCTION_SITE_KINDS,
+  isProductionSiteKind,
+  isUpgradableSiteKind,
+  siteUnitKind,
+} from "@marchlands/sim";
 export type { ProductionSiteKind, UnitKind } from "@marchlands/sim";
 
 export const TERRAIN_STYLE_IDS = ["frontier", "meadow", "autumn", "ash", "coast", "snow"] as const;

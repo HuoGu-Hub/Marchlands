@@ -1,7 +1,7 @@
 import { attackValue, defenseValue } from "./combat";
 import { granaryStrengthMilli, levelRule, sendPercent } from "./rules";
 import { blockedTransit } from "./routes";
-import { isProductionSiteKind } from "./types";
+import { isProductionSiteKind, isUpgradableSiteKind } from "./types";
 import type { CityState, Command, Owner, PlayerId, SimState } from "./types";
 
 export interface AiController {
@@ -117,7 +117,7 @@ export function createAi(player: PlayerId, tuning: AiTuning = {}): AiController 
           }
         }
 
-        if (isProductionSiteKind(city.kind) && city.level < state.rules.maxLevel && full) {
+        if (isUpgradableSiteKind(city.kind) && city.level < state.rules.maxLevel && full) {
           const rule = levelRule(state.rules, city.level);
           if (city.pop >= rule.upgradeCost) {
             commands.push({ type: "upgrade", city: city.id });

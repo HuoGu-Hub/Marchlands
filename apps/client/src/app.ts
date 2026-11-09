@@ -2,7 +2,13 @@ import { validateContent } from "@marchlands/content";
 import { BASE_RULES, mapEntry } from "./game/map-catalog";
 import { compileDocument, defaultVisualForMap, parseDocument } from "@marchlands/map-authoring";
 import type { MapDocument, MapVisual } from "@marchlands/map-authoring";
-import { UNIT_PROFILES, defenseMilliFor, garrisonEntries, isProductionSiteKind } from "@marchlands/sim";
+import {
+  UNIT_PROFILES,
+  defenseMilliFor,
+  garrisonEntries,
+  isProductionSiteKind,
+  isUpgradableSiteKind,
+} from "@marchlands/sim";
 import type { MapDef, SimState, SquadStance } from "@marchlands/sim";
 import { CAMPAIGN, defaultLevelId, findLevel, previewUrl } from "./campaign";
 import type { LevelDef, SeriesDef } from "./campaign";
@@ -1420,6 +1426,9 @@ export class App {
     const button = this.el("city-upgrade") as HTMLButtonElement;
     if (!isProductionSiteKind(city.kind)) {
       button.textContent = "不可升级";
+      button.disabled = true;
+    } else if (!isUpgradableSiteKind(city.kind)) {
+      button.textContent = "固定等级";
       button.disabled = true;
     } else {
       button.textContent = city.level >= 3 ? "已满级" : `升级 · ${cost}`;

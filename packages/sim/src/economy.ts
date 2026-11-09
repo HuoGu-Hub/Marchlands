@@ -1,6 +1,6 @@
 import { addGarrison, reconcileGarrison, resizeGarrison } from "./garrison";
 import { levelRule } from "./rules";
-import { isProductionSiteKind, siteUnitKind } from "./types";
+import { isProductionSiteKind, isUpgradableSiteKind, siteUnitKind } from "./types";
 import type { CityState, PlayerState, Ruleset, SiteKind } from "./types";
 
 /** 每秒基础增长：玩家 1.2，中立 0.8；建筑特性再乘系数。 */
@@ -73,7 +73,7 @@ export function growGold(player: PlayerState, milli: number): void {
 }
 
 export function applyUpgrade(city: CityState, rules: Ruleset): boolean {
-  if (!isProductionSiteKind(city.kind)) return false;
+  if (!isUpgradableSiteKind(city.kind)) return false;
   if (city.level >= rules.maxLevel) return false;
   reconcileGarrison(city);
   const cost = levelRule(rules, city.level).upgradeCost;

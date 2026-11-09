@@ -7,6 +7,7 @@ export type {
   GranaryRule,
   Level,
   LevelRule,
+  MageTowerRule,
   MapCity,
   MapDef,
   MapEdge,
@@ -35,7 +36,13 @@ export type {
   UnitKind,
 } from "./types";
 
-export { PRODUCTION_SITE_KINDS, isProductionSiteKind, normalizeSiteKind, siteUnitKind } from "./types";
+export {
+  PRODUCTION_SITE_KINDS,
+  isProductionSiteKind,
+  isUpgradableSiteKind,
+  normalizeSiteKind,
+  siteUnitKind,
+} from "./types";
 
 export { createGame, step } from "./game";
 export { dispatchParts, garrisonEntries, garrisonTotal, initialGarrison, reconcileGarrison } from "./garrison";

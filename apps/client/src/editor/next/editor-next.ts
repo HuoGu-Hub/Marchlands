@@ -17,6 +17,7 @@ import {
   createGame,
   createUnitNavGrid,
   isProductionSiteKind,
+  isUpgradableSiteKind,
 } from "@marchlands/sim";
 import type { CityId, MapDef, Ruleset, SimState, SiteKind, UnitKind } from "@marchlands/sim";
 import type { NavGrid } from "@marchlands/nav";
@@ -1957,16 +1958,23 @@ export class EditorNext {
       (value) => this.commit(updateSite(this.doc, id, { owner: Number(value) as 0 | 1 | 2 }), "已修改归属", { sites: true }),
     );
     if (isProductionSiteKind(site.kind)) {
-      this.addSelect(
-        "等级",
-        site.level,
-        [
-          { t: "L1", v: 1 },
-          { t: "L2", v: 2 },
-          { t: "L3", v: 3 },
-        ],
-        (value) => this.commit(updateSite(this.doc, id, { level: Number(value) as 1 | 2 | 3 }), "已修改等级", { sites: true }),
-      );
+      if (isUpgradableSiteKind(site.kind)) {
+        this.addSelect(
+          "等级",
+          site.level,
+          [
+            { t: "L1", v: 1 },
+            { t: "L2", v: 2 },
+            { t: "L3", v: 3 },
+          ],
+          (value) => this.commit(updateSite(this.doc, id, { level: Number(value) as 1 | 2 | 3 }), "已修改等级", { sites: true }),
+        );
+      } else {
+        const note = document.createElement("p");
+        note.className = "mlnx-note";
+        note.textContent = "法师塔固定 L1 · 不可升级";
+        this.inspectorEl.appendChild(note);
+      }
       this.addNumber("驻军", site.pop, (value) => this.commit(updateSite(this.doc, id, { pop: Math.max(0, Math.round(value)) }), "已修改驻军", { sites: true }), { min: 0, max: 999, step: 1, precision: 0 });
     }
     this.addSection("外观");

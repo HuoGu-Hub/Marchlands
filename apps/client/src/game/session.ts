@@ -19,6 +19,7 @@ import {
   dispatchParts,
   garrisonEntries,
   isProductionSiteKind,
+  isUpgradableSiteKind,
   planGridRoute,
   reachableGridCells,
   reachableGridCities,
@@ -446,6 +447,10 @@ export class GameSession {
     const city = this.getCity(id);
     if (!city || !isProductionSiteKind(city.kind)) {
       this.options.onToast("该据点不能升级");
+      return;
+    }
+    if (!isUpgradableSiteKind(city.kind)) {
+      this.options.onToast("法师塔固定等级，不能升级");
       return;
     }
     this.commands.push({ type: "upgrade", city: id });
@@ -1100,6 +1105,9 @@ export class GameSession {
         if (this.selectedSquad === event.squadId) this.syncSquadPanel();
       } else if (event.type === "squadClashed") {
         this.showClashLosses(event);
+      } else if (event.type === "mageTowerFired") {
+        this.scene.playTowerShot(event.cityId, event.owner, event.targetXCm, event.targetZCm);
+        if (event.owner === 1 || event.squadOwner === 1) audio.spell();
       }
     }
   }

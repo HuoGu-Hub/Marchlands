@@ -14,7 +14,7 @@ import type {
   SiteKind,
   Stance,
 } from "@marchlands/sim";
-import { isProductionSiteKind, mapHashOf, normalizeSiteKind } from "@marchlands/sim";
+import { isProductionSiteKind, isUpgradableSiteKind, mapHashOf, normalizeSiteKind } from "@marchlands/sim";
 
 export class ContentError extends Error {
   readonly issues: string[];
@@ -184,9 +184,9 @@ export function validateMap(input: unknown): MapDef {
     const owner = requireInt(entry.owner, `cities[${id}].owner`, issues, 0);
     if (owner !== 0 && !playerIds.has(owner)) issues.push(`cities[${id}].owner must be 0 or a player id`);
     const level = requireInt(entry.level, `cities[${id}].level`, issues, 1);
-    if (isProductionSiteKind(kind as SiteKind)) {
+    if (isUpgradableSiteKind(kind as SiteKind)) {
       if (level !== 1 && level !== 2 && level !== 3) issues.push(`cities[${id}].level must be 1..3`);
-    } else if (kind === "granary" || kind === "outpost") {
+    } else if (kind === "granary" || kind === "outpost" || kind === "mage") {
       if (level !== 1) issues.push(`cities[${id}].level must be 1 for ${kind}`);
     }
     requireInt(entry.pop, `cities[${id}].pop`, issues, 0);
@@ -448,6 +448,15 @@ export function validateRules(input: unknown): Ruleset {
     requireInt(outpost.graceTicks, "outpost.graceTicks", issues, 0);
     requireInt(outpost.decayIntervalTicks, "outpost.decayIntervalTicks", issues, 1);
     requireInt(outpost.decayPerInterval, "outpost.decayPerInterval", issues, 1);
+  }
+
+  const mageTower = input.mageTower;
+  if (!isRecord(mageTower)) {
+    issues.push("mageTower required");
+  } else {
+    requireInt(mageTower.rangeCm, "mageTower.rangeCm", issues, 1);
+    requireInt(mageTower.intervalTicks, "mageTower.intervalTicks", issues, 1);
+    requireInt(mageTower.damage, "mageTower.damage", issues, 1);
   }
 
   const supply = input.supply;

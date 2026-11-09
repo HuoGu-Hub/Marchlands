@@ -26,6 +26,11 @@ export const DEFAULT_RULESET: Ruleset = {
     decayIntervalTicks: 200,
     decayPerInterval: 2,
   },
+  mageTower: {
+    rangeCm: 700,
+    intervalTicks: 100,
+    damage: 5,
+  },
   supply: {
     carryTicks: 600,
     starveIntervalTicks: 200,

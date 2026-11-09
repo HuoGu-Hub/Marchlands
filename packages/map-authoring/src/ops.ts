@@ -23,7 +23,7 @@ import {
   mergeFoundationRects,
 } from "./foundations";
 import type { FoundationInput } from "./foundations";
-import { isProductionSiteKind } from "./types";
+import { isProductionSiteKind, isUpgradableSiteKind } from "./types";
 
 export function clampPosition(document: MapDocument, pos: [number, number]): [number, number] {
   const bounds = documentBounds(document);
@@ -110,7 +110,7 @@ export function updateSite(
   Object.assign(site, patch);
   if (patch.kind) {
     site.kind = patch.kind;
-    site.level = isProductionSiteKind(site.kind) ? (site.level as Level) : 1;
+    site.level = isUpgradableSiteKind(site.kind) ? (site.level as Level) : 1;
     if (isProductionSiteKind(site.kind)) {
       site.pop = Math.max(0, Math.round(site.pop));
     } else {
@@ -128,7 +128,7 @@ export function updateSite(
     site.pop = Math.max(0, Math.round(site.pop));
     site.stance = site.stance === "engage" ? "engage" : "evade";
   }
-  if (isProductionSiteKind(site.kind)) {
+  if (isUpgradableSiteKind(site.kind)) {
     site.level = site.level === 3 ? 3 : site.level === 2 ? 2 : 1;
     site.pop = Math.max(0, Math.round(site.pop));
   }

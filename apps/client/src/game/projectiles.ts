@@ -85,6 +85,11 @@ export class ProjectileField {
     this.glow.colorSpace = THREE.SRGBColorSpace;
   }
 
+  /** 法师塔开火：用同一颗火球，但比兵团法术弹更大、更慢一点。 */
+  launchTowerShot(owner: Owner, from: THREE.Vector3, to: THREE.Vector3): void {
+    this.spawn("bolt", owner, from, to, 0, 1.8);
+  }
+
   /** 交战中且是远程兵种的兵团每半秒放一轮；位置由场景解析。 */
   update(state: SimState, deltaMs: number, resolve: (id: string) => THREE.Vector3 | null): void {
     const dt = Math.min(100, Math.max(0, deltaMs));
@@ -145,6 +150,7 @@ export class ProjectileField {
     from: THREE.Vector3,
     to: THREE.Vector3,
     delay: number,
+    scale = 1,
   ): void {
     if (this.live.length >= MAX_LIVE) return;
     const start = from.clone();
@@ -170,7 +176,7 @@ export class ProjectileField {
       const holder = new THREE.Group();
       const model = this.fireballTemplate.clone(true);
       model.rotation.y = Math.PI;
-      model.scale.setScalar(0.55);
+      model.scale.setScalar(0.55 * scale);
       const halo = new THREE.Sprite(
         new THREE.SpriteMaterial({
           map: this.glow,
@@ -181,7 +187,7 @@ export class ProjectileField {
           toneMapped: false,
         }),
       );
-      halo.scale.setScalar(1.1);
+      halo.scale.setScalar(1.1 * scale);
       holder.add(model, halo);
       object = holder;
       (object as THREE.Group).userData.glow = halo;
@@ -189,7 +195,7 @@ export class ProjectileField {
       // 没有模型时退回实体核心 + 加色光晕。
       const holder = new THREE.Group();
       const core = new THREE.Mesh(
-        new THREE.SphereGeometry(0.13, 16, 12),
+        new THREE.SphereGeometry(0.13 * scale, 16, 12),
         new THREE.MeshBasicMaterial({
           color: new THREE.Color(TEAM_COLORS[owner] ?? 0x9fd4ff).lerp(new THREE.Color(0xffffff), 0.55),
           toneMapped: false,
@@ -205,7 +211,7 @@ export class ProjectileField {
           toneMapped: false,
         }),
       );
-      sprite.scale.setScalar(0.95);
+      sprite.scale.setScalar(0.95 * scale);
       holder.add(core, sprite);
       object = holder;
       (object as THREE.Group).userData.glow = sprite;

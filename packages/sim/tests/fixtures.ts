@@ -54,6 +54,21 @@ export const SQUARE_MAP: MapDef = {
   ],
 };
 
+export const MAGE_TOWER_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "mage-tower",
+  cities: [
+    { id: "a", kind: "barbarian", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "barbarian", owner: 2, level: 1, pop: 5, pos: [150, 0], layer: 0 },
+    { id: "m1", kind: "mage", owner: 2, level: 1, pop: 10, pos: [0, 0], layer: 0 },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 300 },
+    { from: "a", to: "m1", length: 150 },
+    { from: "m1", to: "b", length: 150 },
+  ],
+};
+
 export const AI_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "ai",
