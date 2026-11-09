@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { Owner } from "@marchlands/sim";
 import { assetRegistry } from "./asset-registry";
 import { GlbUnitActor } from "./unit-glb";
@@ -17,20 +18,32 @@ interface BillboardMesh {
   target: THREE.WebGLRenderTarget;
 }
 
+/** 远景只保留这些人数档位，避免为每个具体人数生成一张贴图。 */
+export type SquadInstanceBucket = 1 | 4 | 8;
+
+export function squadInstanceBucket(count: number): SquadInstanceBucket {
+  if (count <= 2) return 1;
+  if (count <= 5) return 4;
+  return 8;
+}
+
 const CAPACITY = 4096;
 const TARGET_HEIGHT = 0.95;
-const VIEW_HEIGHT = 1.05;
 const TEXTURE_SIZE = 256;
+/** 一张远景四边形的世界高度，贴图内部仍按真实比例绘制小兵。 */
+export const SQUAD_BILLBOARD_SIZE = 4.2;
+const ORTHO_SIZE = 3.8;
 
 /**
- * 远处兵团的静态替身。
- * 把 GLB 的行走姿势烘成一张透明贴图，再用 InstancedMesh 画朝向镜头的四边形，
- * 远处人数不减少，但每个兵团不再维护骨骼和逐单位绘制。
+ * 远处兵团的整队替身。
+ * 把 1/4/8 个小兵按队形烘成一张透明贴图，每个兵团只画一个四边形；
+ * 不再为每个小兵维护骨骼、动画和单独实例。
  */
 export class SquadInstanceField {
   readonly group = new THREE.Group();
   private readonly meshes = new Map<string, BillboardMesh>();
   private readonly pending = new Set<string>();
+  private readonly failed = new Set<string>();
   private readonly dummy = new THREE.Object3D();
   private renderer: THREE.WebGLRenderer | null = null;
   private camera: THREE.Camera | null = null;
@@ -41,37 +54,51 @@ export class SquadInstanceField {
     this.camera = camera;
   }
 
-  has(assetId: string, owner: Owner): boolean {
-    return this.meshes.has(this.key(assetId, owner));
+  has(assetId: string, owner: Owner, bucket: SquadInstanceBucket): boolean {
+    return this.meshes.has(this.key(assetId, owner, bucket));
   }
 
-  async prepare(assetId: string, owner: Owner): Promise<void> {
-    const key = this.key(assetId, owner);
-    if (this.meshes.has(key) || this.pending.has(key) || this.disposed) return;
+  async prepare(assetId: string, owner: Owner, bucket: SquadInstanceBucket): Promise<void> {
+    const key = this.key(assetId, owner, bucket);
+    if (this.meshes.has(key) || this.pending.has(key) || this.failed.has(key) || this.disposed) return;
     if (!this.renderer || !this.camera) return;
     this.pending.add(key);
     try {
       const built = await assetRegistry.buildAnimated(assetId, { owner, seed: 1 });
       if (this.disposed) return;
-      const actor = new GlbUnitActor(built.object, built.animations);
-      actor.setMoving(true);
-      actor.update(420);
-      actor.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(actor);
+
+      // 先由原始对象量一次身高；后面的队形成员都克隆它，避免重复构建 GLB。
+      const probe = new GlbUnitActor(built.object, built.animations);
+      probe.setMoving(true);
+      probe.update(420);
+      probe.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(probe);
       const height = box.max.y - box.min.y;
       if (!Number.isFinite(height) || height <= 0.01) {
-        actor.dispose();
+        probe.dispose();
         return;
       }
-      actor.scale.setScalar(TARGET_HEIGHT / height);
-      actor.updateMatrixWorld(true);
-      const texture = this.renderActor(actor);
-      actor.dispose();
+      const scale = TARGET_HEIGHT / height;
+      const actors: GlbUnitActor[] = [];
+      const layout = formationLayout(bucket);
+      for (let index = 0; index < layout.length; index += 1) {
+        const object = index === 0 ? built.object : cloneSkeleton(built.object);
+        const actor = index === 0 ? probe : new GlbUnitActor(object, built.animations);
+        actor.setMoving(true);
+        actor.update(420 + index * 37);
+        actor.scale.setScalar(scale);
+        actor.position.set(layout[index][0], 0, layout[index][1]);
+        actor.rotation.y = (index * 0.73) % (Math.PI * 2);
+        actor.updateMatrixWorld(true);
+        actors.push(actor);
+      }
+
+      const texture = this.renderFormation(actors);
+      for (const actor of actors) actor.dispose();
 
       const geometry = new THREE.PlaneGeometry(1, 1);
       const material = new THREE.MeshBasicMaterial({
         map: texture,
-        // 不透明队列 + alphaTest，避免大量透明替身互相排序造成闪烁。
         transparent: false,
         alphaTest: 0.02,
         depthWrite: true,
@@ -85,9 +112,15 @@ export class SquadInstanceField {
       mesh.receiveShadow = false;
       mesh.count = 0;
       this.group.add(mesh);
-      this.meshes.set(key, { mesh, material, geometry, target: texture.userData.target as THREE.WebGLRenderTarget });
+      this.meshes.set(key, {
+        mesh,
+        material,
+        geometry,
+        target: texture.userData.target as THREE.WebGLRenderTarget,
+      });
     } catch {
-      // 贴图生成失败就继续用真实模型，不能把远景直接抹掉。
+      // 贴图生成失败就继续用真实模型；记住失败，避免每帧重复烘焙。
+      this.failed.add(key);
     } finally {
       this.pending.delete(key);
     }
@@ -102,7 +135,7 @@ export class SquadInstanceField {
       const count = Math.min(list.length, CAPACITY);
       for (let index = 0; index < count; index += 1) {
         const item = list[index];
-        const scale = item.scale * VIEW_HEIGHT;
+        const scale = item.scale;
         this.dummy.position.set(item.x, item.y + scale * 0.5, item.z);
         this.dummy.quaternion.copy(this.camera?.quaternion ?? IDENTITY);
         this.dummy.scale.setScalar(scale);
@@ -124,9 +157,10 @@ export class SquadInstanceField {
       target.dispose();
     }
     this.meshes.clear();
+    this.failed.clear();
   }
 
-  private renderActor(actor: THREE.Object3D): THREE.Texture {
+  private renderFormation(actors: readonly THREE.Object3D[]): THREE.Texture {
     const renderer = this.renderer as THREE.WebGLRenderer;
     const target = new THREE.WebGLRenderTarget(TEXTURE_SIZE, TEXTURE_SIZE, {
       minFilter: THREE.LinearMipmapLinearFilter,
@@ -136,18 +170,21 @@ export class SquadInstanceField {
     target.texture.colorSpace = THREE.SRGBColorSpace;
 
     const scene = new THREE.Scene();
-    scene.add(actor);
+    for (const actor of actors) scene.add(actor);
     scene.add(new THREE.AmbientLight(0xffffff, 2.2));
     const light = new THREE.DirectionalLight(0xffffff, 2.4);
     light.position.set(2, 4, 3);
     scene.add(light);
-    const box = new THREE.Box3().setFromObject(actor);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const view = Math.max(size.x, size.y) * 1.12;
-    const camera = new THREE.OrthographicCamera(-view / 2, view / 2, view / 2, -view / 2, 0.1, 10);
-    camera.position.set(center.x, center.y, 3);
-    camera.lookAt(center.x, center.y, 0);
+    const camera = new THREE.OrthographicCamera(
+      -ORTHO_SIZE / 2,
+      ORTHO_SIZE / 2,
+      ORTHO_SIZE / 2,
+      -ORTHO_SIZE / 2,
+      0.1,
+      20,
+    );
+    camera.position.set(0, 1.55, 6);
+    camera.lookAt(0, 1.1, 0);
 
     const previousTarget = renderer.getRenderTarget();
     const previousColor = new THREE.Color();
@@ -167,9 +204,31 @@ export class SquadInstanceField {
     return target.texture;
   }
 
-  private key(assetId: string, owner: Owner): string {
-    return `${assetId}:${owner}`;
+  private key(assetId: string, owner: Owner, bucket: SquadInstanceBucket): string {
+    return assetId + ":" + owner + ":" + bucket;
   }
+}
+
+function formationLayout(bucket: SquadInstanceBucket): Array<[number, number]> {
+  if (bucket === 1) return [[0, 0]];
+  if (bucket === 4) {
+    return [
+      [-0.34, -0.28],
+      [0.34, -0.28],
+      [-0.34, 0.28],
+      [0.34, 0.28],
+    ];
+  }
+  return [
+    [-0.62, -0.4],
+    [0, -0.4],
+    [0.62, -0.4],
+    [-0.62, 0.05],
+    [0, 0.05],
+    [0.62, 0.05],
+    [-0.31, 0.5],
+    [0.31, 0.5],
+  ];
 }
 
 const IDENTITY = new THREE.Quaternion();

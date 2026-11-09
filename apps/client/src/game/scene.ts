@@ -9,7 +9,7 @@ import { siteBuildingKind, siteDefaultAsset, producingUnitKind } from "./site-ki
 import { GlbUnitActor } from "./unit-glb";
 import { UnitActor } from "./unit-actor";
 import { ProjectileField } from "./projectiles";
-import { SquadInstanceField } from "./squad-instances";
+import { SQUAD_BILLBOARD_SIZE, SquadInstanceField, squadInstanceBucket } from "./squad-instances";
 import type { SquadInstanceEntry } from "./squad-instances";
 import { buildTerrain } from "./terrain";
 import type { Terrain } from "./terrain";
@@ -1267,28 +1267,22 @@ export class BattleScene {
       const stayFar = view.instanced && distance2 > stayFarDistance2;
       const far = visible && !selected && (enterFar || stayFar) && !!skin && assetRegistry.has(skin);
       if (far) {
-        if (!this.squadInstances.has(skin as string, squad.owner)) {
-          void this.squadInstances.prepare(skin as string, squad.owner);
+        const bucket = squadInstanceBucket(squad.count);
+        if (!this.squadInstances.has(skin as string, squad.owner, bucket)) {
+          void this.squadInstances.prepare(skin as string, squad.owner, bucket);
         }
-        if (this.squadInstances.has(skin as string, squad.owner)) {
+        if (this.squadInstances.has(skin as string, squad.owner, bucket)) {
           view.instanced = true;
-          // 远处改用静态替身：人数不减少，但不跑骨骼、不做逐单位绘制。
+          // 整队烘成一张贴图：每个兵团只保留一个实例，不再逐小兵铺 billboard。
           for (const unit of view.units) unit.visible = false;
-          const total = Math.min(squad.count, MAX_GLB_SQUAD_UNITS);
-          const spacing = kind === "ranger" ? SQUAD_CAVALRY_SPACING : SQUAD_SPACING_X;
-          const offsets = squadFormation(total, spacing, kind === "ranger" ? 0.82 : SQUAD_SPACING_Z);
-          const key = `${skin}:${squad.owner}`;
+          const key = `${skin}:${squad.owner}:${bucket}`;
           const list = instanceEntries.get(key) ?? [];
-          for (let index = 0; index < total; index += 1) {
-            const [x, z] = offsets[index] ?? [0, 0];
-            const spread = 0.72 + unitJitter(squad.id, index, 8) * 0.56;
-            list.push({
-              x: view.group.position.x + x * spread + (unitJitter(squad.id, index, 1) - 0.5) * 0.9,
-              y: view.group.position.y + 0.06,
-              z: view.group.position.z + z * spread + (unitJitter(squad.id, index, 2) - 0.5) * 0.8,
-              scale: 0.92 + unitJitter(squad.id, index, 5) * 0.16,
-            });
-          }
+          list.push({
+            x: view.group.position.x,
+            y: view.group.position.y + 0.06,
+            z: view.group.position.z,
+            scale: SQUAD_BILLBOARD_SIZE * (0.96 + unitJitter(squad.id, 0, 5) * 0.08),
+          });
           instanceEntries.set(key, list);
           view.animAccum = 0;
           continue;
