@@ -235,6 +235,8 @@ describe("outpost", () => {
   it("always fights a direct invasion, even when avoiding battle", () => {
     let state = createGame(OUTPOST_MAP, 1, TIMED_RULES);
     site(state, "o1").stance = "evade";
+    // 箭塔会在接近途中射掉 3 人，用 20 人进攻验证直接入侵仍会结算。
+    site(state, "a").pop = 40;
     state = step(state, [{ type: "send", from: "a", to: "o1" }]).state;
     expect(state.squads[0].arrivalTick).toBe(84);
 
@@ -242,7 +244,7 @@ describe("outpost", () => {
     expect(site(state, "o1").pop).toBe(10);
     state = step(state, []).state;
     expect(site(state, "o1").owner).toBe(1);
-    expect(site(state, "o1").pop).toBe(2);
+    expect(site(state, "o1").pop).toBe(9);
     expect(site(state, "o1").stance).toBe("evade");
     expect(site(state, "o1").decayAtTick).toBe(684);
   });

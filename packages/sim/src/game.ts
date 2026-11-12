@@ -234,7 +234,7 @@ export function createGame(map: MapDef, seed: number, rules: Ruleset = DEFAULT_R
         layer: city.layer,
         stance,
         decayAtTick,
-        ...(kind === "mage" ? { mageNextShotTick: 0 } : {}),
+        ...(kind === "mage" || kind === "outpost" ? { towerNextShotTick: 0 } : {}),
         watch,
         ...(city.transit ? { transit: city.transit } : {}),
         ...(city.captureRadiusCm !== undefined ? { captureRadiusCm: city.captureRadiusCm } : {}),
@@ -290,7 +290,7 @@ export function step(state: SimState, commands: Command[]): StepResult {
   for (const command of commands) applyCommand(next, command, events, rejected);
   growEconomy(next);
   advanceSquads(next, events);
-  resolveMageTowers(next, events);
+  resolveTowerAttacks(next, events);
   starveSquads(next, events);
   decayOutposts(next, events);
   checkFinish(next, events);
@@ -562,18 +562,22 @@ function advanceSquads(state: SimState, events: SimEvent[]): void {
 }
 
 /**
- * 法师塔按固定间隔向射程内最近的敌对兵团开火。
- * 中立法师塔会攻击双方玩家，作为地图上的防御性建筑。
+ * 法师塔与箭塔按固定间隔向射程内最近的敌对兵团开火。
+ * 中立法师塔会攻击双方玩家；箭塔需要至少 1 名驻军才能射箭。
  */
-function resolveMageTowers(state: SimState, events: SimEvent[]): void {
+function resolveTowerAttacks(state: SimState, events: SimEvent[]): void {
   if (state.squads.length === 0) return;
-  const towers = state.cities.filter((city) => city.kind === "mage").sort(byId);
+  const towers = state.cities
+    .filter((city) => city.kind === "mage" || city.kind === "outpost")
+    .sort(byId);
   if (towers.length === 0) return;
 
   const removed = new Set<string>();
-  const rule = state.rules.mageTower;
   for (const tower of towers) {
-    if (state.tick < (tower.mageNextShotTick ?? 0)) continue;
+    if (tower.kind === "outpost" && tower.pop <= 0) continue;
+    if (state.tick < (tower.towerNextShotTick ?? 0)) continue;
+    const rule = tower.kind === "mage" ? state.rules.mageTower : state.rules.arrowTower;
+    const arrow = tower.kind === "outpost";
     const center: [number, number] = [tower.pos[0] * 10, tower.pos[1] * 10];
     let target: SquadState | null = null;
     let targetPoint: [number, number] | null = null;
@@ -593,9 +597,9 @@ function resolveMageTowers(state: SimState, events: SimEvent[]): void {
     const loss = Math.min(target.count, Math.max(1, rule.damage));
     target.count -= loss;
     addLoss(state, target.owner, loss);
-    tower.mageNextShotTick = state.tick + Math.max(1, rule.intervalTicks);
+    tower.towerNextShotTick = state.tick + Math.max(1, rule.intervalTicks);
     events.push({
-      type: "mageTowerFired",
+      type: arrow ? "arrowTowerFired" : "mageTowerFired",
       cityId: tower.id,
       owner: tower.owner,
       squadId: target.id,

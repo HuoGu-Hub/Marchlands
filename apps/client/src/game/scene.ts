@@ -235,7 +235,8 @@ export class BattleScene {
   private readonly citySphere = new THREE.Sphere();
   private readonly rings = new Map<CityId, THREE.Mesh>();
   private readonly attackRangeRings = new Map<CityId, THREE.Mesh>();
-  private mageTowerRangeCm = 700;
+  private mageTowerRangeCm = 1000;
+  private arrowTowerRangeCm = 800;
   private readonly selectedMarkers = new Map<CityId, THREE.Mesh>();
   private readonly ringGeometry = new THREE.RingGeometry(2.55, 2.85, 48);
   private readonly ringMaterial = new THREE.MeshBasicMaterial({
@@ -476,6 +477,18 @@ export class BattleScene {
     const toZ = zCm / 100;
     const to = new THREE.Vector3(toX, this.terrain.heightAt(toX, toZ) + 0.9, toZ);
     this.projectiles.launchTowerLaser(owner, from, to);
+  }
+
+  /** 箭塔开火：从塔顶射出一支箭。 */
+  playArrowTowerShot(cityId: CityId, owner: Owner, xCm: number, zCm: number): void {
+    const base = this.positions.get(cityId);
+    if (!base) return;
+    const from = base.clone();
+    from.y = this.terrain.heightAt(base.x, base.z) + MAGE_TOWER_MUZZLE_HEIGHT;
+    const toX = xCm / 100;
+    const toZ = zCm / 100;
+    const to = new THREE.Vector3(toX, this.terrain.heightAt(toX, toZ) + 0.9, toZ);
+    this.projectiles.launchArrowTowerShot(owner, from, to);
   }
 
   /** 场上每支己方兵团都用浅绿格子显示剩余路线；选中的那支更亮。 */
@@ -951,7 +964,8 @@ export class BattleScene {
     this.frustum.setFromProjectionMatrix(this.frustumMatrix);
     this.updateCities(state);
     this.updateSquads(state);
-    this.mageTowerRangeCm = state.rules.mageTower?.rangeCm ?? 700;
+    this.mageTowerRangeCm = state.rules.mageTower?.rangeCm ?? 1000;
+    this.arrowTowerRangeCm = state.rules.arrowTower?.rangeCm ?? 800;
     this.projectiles.update(state, deltaMs, (id) => this.squadAnchorPosition(id));
     this.updateRings();
     if (this.reachTiles.length > 0) {
@@ -2681,11 +2695,14 @@ export class BattleScene {
   /** 法师塔等可攻击建筑的射程圈：沿地形起伏贴在地表。 */
   private updateAttackRangeRings(): void {
     const shown = new Set<CityId>();
-    const radius = this.mageTowerRangeCm / 100;
     for (const id of this.selectedIds) {
       const view = this.cityViews.get(id);
       const position = this.positions.get(id);
-      if (!view || !position || view.kind !== "mage") continue;
+      if (!view || !position) continue;
+      const rangeCm =
+        view.kind === "mage" ? this.mageTowerRangeCm : view.kind === "outpost" ? this.arrowTowerRangeCm : 0;
+      if (rangeCm <= 0) continue;
+      const radius = rangeCm / 100;
       shown.add(id);
       let ring = this.attackRangeRings.get(id);
       if (ring && (ring.userData.radius !== radius || ring.userData.owner !== view.owner)) {

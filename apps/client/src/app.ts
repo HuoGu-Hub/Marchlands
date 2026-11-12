@@ -1428,11 +1428,14 @@ export class App {
       .join(" · ");
     this.el("city-garrison").textContent = garrison || "无驻军";
     const trait = this.el("city-trait");
-    if (city.kind === "mage") {
-      const rangeM = (rules.mageTower.rangeCm / 100).toFixed(1);
-      const interval = (rules.mageTower.intervalTicks / rules.tickHz).toFixed(1);
+    if (city.kind === "mage" || city.kind === "outpost") {
+      const tower = city.kind === "mage" ? rules.mageTower : rules.arrowTower;
+      const rangeM = (tower.rangeCm / 100).toFixed(1);
+      const interval = (tower.intervalTicks / rules.tickHz).toFixed(1);
+      const label = city.kind === "mage" ? "法师塔" : "箭塔";
+      const garrison = city.kind === "outpost" && city.pop <= 0 ? " · 需驻军" : "";
       trait.hidden = false;
-      trait.textContent = `射程 ${rangeM} 米 · ${interval} 秒/发 · 伤害 ${rules.mageTower.damage}`;
+      trait.textContent = `${label}射程 ${rangeM} 米 · ${interval} 秒/发 · 伤害 ${tower.damage}${garrison}`;
     } else {
       trait.hidden = true;
       trait.textContent = "";

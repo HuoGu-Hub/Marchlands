@@ -208,13 +208,15 @@ describe("validation", () => {
     expect(() => validateMap(rehash(broken))).toThrow(/level must be 1/);
   });
 
-  it("rejects missing granary, outpost and mage tower rules", () => {
+  it("rejects missing granary, outpost, mage tower and arrow tower rules", () => {
     const { granary: _granary, ...withoutGranary } = rules;
     expect(() => validateRules(withoutGranary)).toThrow(/granary required/);
     const { outpost: _outpost, ...withoutOutpost } = rules;
     expect(() => validateRules(withoutOutpost)).toThrow(/outpost required/);
     const { mageTower: _mageTower, ...withoutMageTower } = rules;
     expect(() => validateRules(withoutMageTower)).toThrow(/mageTower required/);
+    const { arrowTower: _arrowTower, ...withoutArrowTower } = rules;
+    expect(() => validateRules(withoutArrowTower)).toThrow(/arrowTower required/);
   });
 
   it("rejects a mage tower above level 1", () => {
@@ -245,6 +247,12 @@ describe("validation", () => {
     expect(() =>
       validateRules({ ...rules, mageTower: { ...rules.mageTower, damage: 0 } }),
     ).toThrow(/mageTower.damage/);
+    expect(() =>
+      validateRules({ ...rules, arrowTower: { ...rules.arrowTower, intervalTicks: 0 } }),
+    ).toThrow(/arrowTower.intervalTicks/);
+    expect(() =>
+      validateRules({ ...rules, arrowTower: { ...rules.arrowTower, damage: 0 } }),
+    ).toThrow(/arrowTower.damage/);
   });
 
   it("rejects negative granary bonuses and zero decay intervals", () => {

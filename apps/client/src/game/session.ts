@@ -1145,6 +1145,14 @@ export class GameSession {
           const target = window as unknown as { __mlTowerShots?: number };
           target.__mlTowerShots = (target.__mlTowerShots ?? 0) + 1;
         }
+      } else if (event.type === "arrowTowerFired") {
+        this.scene.playArrowTowerShot(event.cityId, event.owner, event.targetXCm, event.targetZCm);
+        if (event.owner === 1 || event.squadOwner === 1) audio.arrow();
+        this.floatSquadText(event.squadId, `-${event.loss}`, event.squadOwner === 1 ? "loss" : "gain");
+        if (import.meta.env.DEV) {
+          const target = window as unknown as { __mlArrowShots?: number };
+          target.__mlArrowShots = (target.__mlArrowShots ?? 0) + 1;
+        }
       }
     }
   }

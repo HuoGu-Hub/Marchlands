@@ -46,9 +46,14 @@
       "decayPerInterval": 2
     },
     "mageTower": {
-      "rangeCm": 700,
+      "rangeCm": 1000,
       "intervalTicks": 100,
       "damage": 5
+    },
+    "arrowTower": {
+      "rangeCm": 800,
+      "intervalTicks": 10,
+      "damage": 1
     },
     "supply": {
       "carryTicks": 600,

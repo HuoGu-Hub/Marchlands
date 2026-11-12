@@ -54,6 +54,10 @@ class GameAudio {
     this.tone(180, 0.3, "sine", 0, 0.05, 720);
   }
 
+  arrow(): void {
+    this.tone(1200, 0.06, "square", 0, 0.025, 640);
+  }
+
   capture(): void {
     this.tone(523, 0.1, "sine", 0, 0.07);
     this.tone(659, 0.1, "sine", 0.07, 0.07);

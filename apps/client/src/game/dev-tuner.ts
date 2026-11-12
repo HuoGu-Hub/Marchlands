@@ -618,6 +618,44 @@ export class DevTuner {
       }),
     );
     this.addSection("法师塔", mageRows, false);
+
+    const arrowRows: HTMLElement[] = [];
+    arrowRows.push(
+      this.numberField("射程", {
+        key: "arrow.range",
+        get: () => rules.arrowTower.rangeCm / 100,
+        set: (value) => { rules.arrowTower.rangeCm = value * 100; },
+        min: 1,
+        max: 15,
+        step: 0.5,
+        unit: "米",
+        digits: 1,
+      }),
+    );
+    arrowRows.push(
+      this.numberField("攻击间隔", {
+        key: "arrow.interval",
+        get: () => rules.arrowTower.intervalTicks / tickHz,
+        set: (value) => { rules.arrowTower.intervalTicks = Math.round(value * tickHz); },
+        min: 0.1,
+        max: 5,
+        step: 0.1,
+        unit: "秒",
+        digits: 1,
+      }),
+    );
+    arrowRows.push(
+      this.numberField("单发伤害", {
+        key: "arrow.damage",
+        get: () => rules.arrowTower.damage,
+        set: (value) => { rules.arrowTower.damage = Math.round(value); },
+        min: 1,
+        max: 20,
+        step: 1,
+        unit: "人",
+      }),
+    );
+    this.addSection("箭塔", arrowRows, false, "箭塔至少要有 1 名驻军才会射箭。");
   }
 
   private addSection(title: string, rows: HTMLElement[], open: boolean, note?: string): void {

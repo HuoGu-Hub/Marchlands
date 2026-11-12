@@ -459,6 +459,15 @@ export function validateRules(input: unknown): Ruleset {
     requireInt(mageTower.damage, "mageTower.damage", issues, 1);
   }
 
+  const arrowTower = input.arrowTower;
+  if (!isRecord(arrowTower)) {
+    issues.push("arrowTower required");
+  } else {
+    requireInt(arrowTower.rangeCm, "arrowTower.rangeCm", issues, 1);
+    requireInt(arrowTower.intervalTicks, "arrowTower.intervalTicks", issues, 1);
+    requireInt(arrowTower.damage, "arrowTower.damage", issues, 1);
+  }
+
   const supply = input.supply;
   if (!isRecord(supply)) {
     issues.push("supply required");

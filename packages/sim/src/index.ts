@@ -1,4 +1,5 @@
 export type {
+  ArrowTowerRule,
   CityId,
   CityState,
   Command,

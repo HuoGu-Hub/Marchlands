@@ -98,6 +98,11 @@ export class ProjectileField {
     this.spawnLaser(from, to);
   }
 
+  /** 箭塔开火：复用箭矢模型，略放大后从塔顶射向目标。 */
+  launchArrowTowerShot(owner: Owner, from: THREE.Vector3, to: THREE.Vector3): void {
+    this.spawn("arrow", owner, from, to, 0, 1.4);
+  }
+
   /** 火红激光：外层红光 + 白热核心，两端各闪一下。 */
   private spawnLaser(from: THREE.Vector3, to: THREE.Vector3): void {
     const direction = to.clone().sub(from);
@@ -258,7 +263,7 @@ export class ProjectileField {
       const holder = new THREE.Group();
       const model = this.arrowTemplate ? this.arrowTemplate.clone(true) : makeFallbackArrow();
       model.rotation.x = Math.PI / 2;
-      model.scale.setScalar(1.15);
+      model.scale.setScalar(1.15 * scale);
       holder.add(model);
       object = holder;
     } else if (this.fireballTemplate) {

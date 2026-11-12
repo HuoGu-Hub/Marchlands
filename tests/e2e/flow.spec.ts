@@ -1419,7 +1419,7 @@ test("shows the attack range when inspecting a mage tower", async ({ page }) => 
   await page.mouse.click(target.x, target.y);
   await expect(page.locator("#city-panel")).toHaveClass(/inspect/, { timeout: 5000 });
   await expect(page.locator("#city-name")).toContainText("m1");
-  await expect(page.locator("#city-trait")).toContainText("射程 7.0 米");
+  await expect(page.locator("#city-trait")).toContainText("射程 10.0 米");
 });
 
 test("neutral mage tower fires at an approaching squad", async ({ page }) => {
@@ -1478,7 +1478,7 @@ test("dev tuner changes a live value", async ({ page }) => {
   await expect(page.locator("#ml-dev-panel")).toBeVisible();
   await page.locator("#ml-dev-panel summary").filter({ hasText: "法师塔" }).click();
   const range = page.locator('[data-dev-field="mage.range"]');
-  await expect(range).toHaveValue("7");
+  await expect(range).toHaveValue("10");
   await range.fill("9");
   await page.waitForTimeout(120);
 
@@ -1513,6 +1513,6 @@ test("dev tuner changes a live value", async ({ page }) => {
   expect(exported.units.mage.attackRangeCm).toBe(460);
 
   await page.getByRole("button", { name: "重置为开局值" }).click();
-  await expect(range).toHaveValue("7");
-  await expect(page.locator("#city-trait")).toContainText("射程 7.0 米");
+  await expect(range).toHaveValue("10");
+  await expect(page.locator("#city-trait")).toContainText("射程 10.0 米");
 });

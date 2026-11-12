@@ -69,6 +69,21 @@ export const MAGE_TOWER_MAP: MapDef = {
   ],
 };
 
+export const ARROW_TOWER_MAP: MapDef = {
+  ...THREE_CITY_MAP,
+  slug: "arrow-tower",
+  cities: [
+    { id: "a", kind: "barbarian", owner: 1, level: 1, pop: 20, pos: [-150, 0], layer: 0 },
+    { id: "b", kind: "barbarian", owner: 2, level: 1, pop: 5, pos: [150, 0], layer: 0 },
+    { id: "o1", kind: "outpost", owner: 2, level: 1, pop: 10, pos: [0, 0], layer: 0, stance: "evade" },
+  ],
+  edges: [
+    { from: "a", to: "b", length: 300 },
+    { from: "a", to: "o1", length: 150 },
+    { from: "o1", to: "b", length: 150 },
+  ],
+};
+
 export const AI_MAP: MapDef = {
   ...THREE_CITY_MAP,
   slug: "ai",

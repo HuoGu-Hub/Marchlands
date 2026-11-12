@@ -4,7 +4,7 @@ import { applyUpgrade } from "../src/economy";
 import { createGame, step } from "../src/game";
 import { DEFAULT_RULESET } from "../src/rules";
 import type { SimEvent, SimState } from "../src/types";
-import { MAGE_TOWER_MAP, rulesWith } from "./fixtures";
+import { ARROW_TOWER_MAP, MAGE_TOWER_MAP, rulesWith } from "./fixtures";
 
 function site(state: SimState, id: string) {
   const found = state.cities.find((city) => city.id === id);
@@ -83,6 +83,43 @@ describe("mage tower", () => {
     expect(shot && shot.type === "mageTowerFired" ? shot.owner : -1).toBe(0);
     expect(shot && shot.type === "mageTowerFired" ? shot.squadOwner : -1).toBe(1);
     expect(state.squads[0]?.count ?? 0).toBeLessThan(10);
+  });
+
+  it("arrow towers fire every 0.5 seconds for one damage while garrisoned", () => {
+    const rules = rulesWith({
+      speedDmPerSecond: 10,
+      arrowTower: { rangeCm: 800, intervalTicks: 10, damage: 1 },
+    });
+    let state = createGame(ARROW_TOWER_MAP, 1, rules);
+    state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
+    const shots: Array<{ tick: number; event: Extract<SimEvent, { type: "arrowTowerFired" }> }> = [];
+
+    for (let index = 0; index < 300 && state.squads.length > 0; index += 1) {
+      state = step(state, []).state;
+      for (const event of state.events) {
+        if (event.type === "arrowTowerFired") shots.push({ tick: state.tick, event });
+      }
+    }
+
+    expect(shots.length).toBeGreaterThanOrEqual(3);
+    expect(shots[0].event.cityId).toBe("o1");
+    expect(shots[0].event.owner).toBe(2);
+    expect(shots[0].event.squadOwner).toBe(1);
+    expect(shots[0].event.loss).toBe(1);
+    expect(shots[1].tick - shots[0].tick).toBe(10);
+    expect(shots[2].tick - shots[1].tick).toBe(10);
+  });
+
+  it("arrow towers stay silent without a garrison", () => {
+    const rules = rulesWith({
+      speedDmPerSecond: 10,
+      arrowTower: { rangeCm: 800, intervalTicks: 10, damage: 1 },
+    });
+    let state = createGame(ARROW_TOWER_MAP, 1, rules);
+    site(state, "o1").pop = 0;
+    state = step(state, [{ type: "send", from: "a", to: "b" }]).state;
+    state = advance(state, 200);
+    expect(state.events.some((event) => event.type === "arrowTowerFired")).toBe(false);
   });
 
   it("is never picked for an AI upgrade", () => {

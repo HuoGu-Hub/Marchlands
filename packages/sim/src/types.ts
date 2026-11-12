@@ -186,6 +186,15 @@ export interface MageTowerRule {
   damage: number;
 }
 
+export interface ArrowTowerRule {
+  /** 箭塔的索敌半径，厘米。 */
+  rangeCm: number;
+  /** 两发箭之间的间隔 tick。 */
+  intervalTicks: number;
+  /** 每箭造成的减员。 */
+  damage: number;
+}
+
 export interface SupplyRule {
   /** 队伍出发后可安全行军的 tick 数。 */
   carryTicks: number;
@@ -206,6 +215,7 @@ export interface Ruleset {
   granary: GranaryRule;
   outpost: OutpostRule;
   mageTower: MageTowerRule;
+  arrowTower: ArrowTowerRule;
   supply: SupplyRule;
 }
 
@@ -227,8 +237,8 @@ export interface CityState {
   layer: number;
   stance: Stance;
   decayAtTick: number;
-  /** 法师塔下一次可以开火的 tick；其他建筑恒为 0。 */
-  mageNextShotTick?: number;
+  /** 可攻击建筑下一次可以开火的 tick；其他建筑恒为 0。 */
+  towerNextShotTick?: number;
   watch: [CityId, CityId] | null;
   /** 中立时的通行规则；被占领后由 blockedTransit 强制友方通行。 */
   transit?: "open" | "closed";
@@ -360,6 +370,17 @@ export type SimEvent =
   | { type: "squadStanceChanged"; squadId: string; stance: SquadStance }
   | {
       type: "mageTowerFired";
+      cityId: CityId;
+      owner: Owner;
+      squadId: string;
+      squadOwner: PlayerId;
+      loss: number;
+      squadCount: number;
+      targetXCm: number;
+      targetZCm: number;
+    }
+  | {
+      type: "arrowTowerFired";
       cityId: CityId;
       owner: Owner;
       squadId: string;

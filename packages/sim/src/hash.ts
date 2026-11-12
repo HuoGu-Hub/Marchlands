@@ -73,6 +73,8 @@ export function canonicalState(state: SimState): string {
   );
   const mageTower = state.rules.mageTower;
   parts.push(`M,${mageTower.rangeCm},${mageTower.intervalTicks},${mageTower.damage}`);
+  const arrowTower = state.rules.arrowTower;
+  parts.push(`A,${arrowTower.rangeCm},${arrowTower.intervalTicks},${arrowTower.damage}`);
   const supply = state.rules.supply;
   parts.push(`F,${supply.carryTicks},${supply.starveIntervalTicks},${supply.starveLoss}`);
   for (const player of state.players.slice().sort((a, b) => a.id - b.id)) {
@@ -80,7 +82,7 @@ export function canonicalState(state: SimState): string {
   }
   for (const city of state.cities.slice().sort(byId)) {
     parts.push(
-      `C${city.id},${city.kind},${city.owner},${city.level},${city.pop},${PRODUCTION_SITE_KINDS.map((kind) => `${kind}:${city.garrison?.[kind] ?? 0}`).join(",")},${city.maxPop},${city.growthCarry},${city.growthLockUntil},${city.overCapCarry},${city.layer},${city.pos[0]},${city.pos[1]},${city.stance},${city.decayAtTick},${city.mageNextShotTick ?? 0},${city.watch ? city.watch.join(">") : "-"},T${city.transit ?? "-"}`,
+      `C${city.id},${city.kind},${city.owner},${city.level},${city.pop},${PRODUCTION_SITE_KINDS.map((kind) => `${kind}:${city.garrison?.[kind] ?? 0}`).join(",")},${city.maxPop},${city.growthCarry},${city.growthLockUntil},${city.overCapCarry},${city.layer},${city.pos[0]},${city.pos[1]},${city.stance},${city.decayAtTick},${city.towerNextShotTick ?? 0},${city.watch ? city.watch.join(">") : "-"},T${city.transit ?? "-"}`,
     );
   }
   for (const squad of state.squads.slice().sort(byId)) {
